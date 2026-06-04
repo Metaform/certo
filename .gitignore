@@ -1,0 +1,49 @@
+# ---- Gradle ----
+.gradle/
+build/
+# Local, machine-specific Gradle settings (never commit)
+gradle-app.setting
+.gradletasknamecache
+# Optional Gradle config overrides
+# gradle.properties
+
+# ---- Build output (other tools / multi-module) ----
+**/build/
+out/
+bin/
+
+# ---- IntelliJ IDEA ----
+.idea/
+*.iml
+*.ipr
+*.iws
+# IntelliJ build/output dirs
+.idea_modules/
+atlassian-ide-plugin.xml
+
+# ---- Eclipse ----
+.settings/
+.classpath
+.project
+.apt_generated/
+.factorypath
+
+# ---- VS Code ----
+.vscode/
+
+# ---- Java / JVM ----
+*.class
+*.log
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# ---- OS cruft ----
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini

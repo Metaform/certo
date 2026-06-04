@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: certo
+
+server:
+  port: 8080
+
+# Identity used when this runtime produces CloudEvents (CX-0000 §2.1).
+# These are demo values; in a real deployment they would derive from the participant's DID/BPN.
+certo:
+  provider:
+    # BPN of the Certificate Provider (this runtime, when acting as a provider).
+    bpn: BPNL0000000001AB
+    source: urn:bpn:BPNL0000000001AB
+  consumer:
+    # BPN of the Certificate Consumer (this runtime, when acting as a consumer).
+    bpn: BPNL0000000002CD
+    source: urn:bpn:BPNL0000000002CD
+
+logging:
+  level:
+    org.metaform.certo: INFO
