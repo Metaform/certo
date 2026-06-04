@@ -47,6 +47,13 @@ public class CertificateSeeder implements CommandLineRunner {
         iso14001.addVersion(version(iso14001, 1, LocalDate.of(2024, 6, 1), LocalDate.of(2027, 5, 31)));
         certificates.save(iso14001);
 
+        // An already-expired certificate, so the consumer's REJECTED path can be exercised end-to-end.
+        var expired = new Certificate(
+                "cert-expired-0001", "dataset-ccm-cert-expired", "IATF16949",
+                List.of("BPNS00000003AYRE"));
+        expired.addVersion(version(expired, 1, LocalDate.of(2018, 1, 1), LocalDate.of(2020, 1, 1)));
+        certificates.save(expired);
+
         LOG.info("Seeded {} demo certificates", certificates.all().size());
     }
 

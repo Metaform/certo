@@ -104,6 +104,15 @@ class CertificateProviderApiTest {
     }
 
     @Test
+    void retrieveCertificate_unknown_withMultipartAccept_stillNotFound() throws Exception {
+        // The consumer sends Accept: multipart/related; the JSON error must still be returned (404, not 500).
+        mvc.perform(get("/certificates/{id}", "cert-nope")
+                        .accept(MediaType.parseMediaType("multipart/related")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    @Test
     void query_byType_returnsLatestVersion() throws Exception {
         mvc.perform(post("/certificates/query")
                         .contentType(MediaType.APPLICATION_JSON)

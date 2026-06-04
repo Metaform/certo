@@ -16,6 +16,11 @@ certo:
     # BPN of the Certificate Consumer (this runtime, when acting as a consumer).
     bpn: BPNL0000000002CD
     source: urn:bpn:BPNL0000000002CD
+  # Base URL of the Certificate Provider data plane the consumer retrieves certificates from
+  # and reports acceptance to. Hardcoded (no DSP catalog/negotiation); same runtime by default.
+  provider-base-url: http://localhost:8080
+  # Base URL of the Certificate Consumer notification API the provider pushes lifecycle events to.
+  consumer-base-url: http://localhost:8080
 
 logging:
   level:

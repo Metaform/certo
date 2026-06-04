@@ -91,28 +91,47 @@ A non-offered type still returns `HTTP 202`, but with `DECLINED` and a non-empty
 
 ## Flow B — Provider-initiated "push" (lifecycle CREATED)
 
-The provider has published a certificate and notifies the consumer; the exchange enters directly at
-`FULFILLED` (no request phase).
+The provider publishes a held certificate: it opens the exchange (entering directly at `FULFILLED`,
+no request phase) and pushes a lifecycle `CREATED` event to the consumer. The consumer retrieves,
+evaluates, and reports its decision back — which the provider records, because it owns the exchange.
+The whole loop runs from a single publish trigger (each call below is a real OkHttp call between the
+two roles in this same runtime).
 
 ```mermaid
 sequenceDiagram
     autonumber
+    actor T as Trigger
     participant P as Provider
     participant C as Consumer
+    T->>P: POST /certificates/{id}/publish
+    Note over P: opens FULFILLED exchange, stores it
     P->>C: POST /certificate-notifications, CertificateLifecycleStatus CREATED
-    Note over C: opens exchange, simulates retrieval and evaluation
-    C-->>P: 204
-    P->>C: GET /certificate-acceptance-status/{exchangeId}
-    C-->>P: 200 status ACCEPTED or REJECTED
+    C->>P: GET /certificates/{certificateId}?version (OkHttp retrieval)
+    P-->>C: 200 multipart/related, JSON metadata + PDF
+    Note over C: evaluates retrieved certificate
+    C->>P: POST /certificate-acceptance-notifications, CertificateAcceptanceStatus (OkHttp callback)
+    P-->>C: 204 provider records the outcome
+    C-->>P: 204 notification handled
+    P-->>T: 202 exchangeId, consumerNotified
 ```
 
-1. **Lifecycle CREATED** — `POST /certificate-notifications`. Carries `exchangeId`, `certificateId`,
-   `version`, `datasetId`, `certificateType`, `validFrom`, `validUntil`, `locationBpns?`. Only `CREATED`
-   opens an exchange. `204` on success; `400` if a `CREATED` event lacks `exchangeId`.
-   **Demo behavior:** the consumer immediately decides `ACCEPTED`, or `REJECTED`
-   (`"Certificate has expired"`) if `validUntil` is already in the past.
-2. **Provider queries the decision** — `GET /certificate-acceptance-status/{exchangeId}`. Returns the
-   consumer's Acceptance status (and `errors` where applicable). `404` if unknown to the consumer.
+1. **Publish (provider-initiated)** — `POST /certificates/{id}/publish` (demo trigger; in production
+   the provider's own business logic drives this). The provider opens and **stores** a `FULFILLED`
+   exchange, then pushes a `CertificateLifecycleStatus` `CREATED` event to the consumer's
+   `POST /certificate-notifications` (OkHttp against `certo.consumer-base-url`). Only `CREATED` opens an
+   exchange; `204` from the consumer on success.
+   **Evaluation:** the consumer retrieves the certificate from the provider
+   (`GET /certificates/{certificateId}?version=` via OkHttp against `certo.provider-base-url`),
+   parses the `multipart/related` metadata + PDF, and decides `ACCEPTED`, `REJECTED`
+   (`"Certificate has expired"` when past `validUntil`), or `ERRORED` if it can't be retrieved.
+2. **Report back (callback)** — the consumer POSTs a `CertificateAcceptanceStatus` CloudEvent to the
+   provider's `POST /certificate-acceptance-notifications` (OkHttp). Because the provider opened and
+   stored the exchange in step 1, it recognizes the `exchangeId` and **records the outcome** (`204`),
+   closing the loop. (The callback is best-effort: if the provider didn't know the exchange it would
+   reply `404`, which the consumer logs and ignores, having already recorded its decision locally.)
+3. **Inspect the result** — the consumer's decision is readable at
+   `GET /certificate-acceptance-status/{exchangeId}` (consumer side), and the provider's recorded view
+   of both phases at `GET /certificate-exchanges/{exchangeId}` (provider side, demo/inspection).
 
 ---
 
@@ -191,8 +210,10 @@ sequenceDiagram
 - Offered requests fulfill **immediately** (`FULFILLED`) rather than progressing through
   `ACKNOWLEDGED → CERTIFICATION_REQUESTED`; those states exist in the model but aren't driven by a real
   async backend.
-- On a `CREATED` lifecycle event the consumer auto-decides acceptance synchronously; a real consumer
-  would fetch the PDF, validate asynchronously, and POST a `CertificateAcceptanceStatus` event back to
-  the provider.
-- Storage is in-memory and resets on restart; two certificates are seeded at startup
-  (`cert-iso9001-0001` with versions 1 & 2, `cert-iso14001-0001`).
+- On a `CREATED` lifecycle event the consumer genuinely retrieves the certificate over HTTP (OkHttp),
+  evaluates it synchronously, and reports the outcome back to the provider via a
+  `CertificateAcceptanceStatus` callback; the provider base URL is hardcoded via
+  `certo.provider-base-url` (no DSP catalog/negotiation), and a fuller implementation would run the
+  validation asynchronously.
+- Storage is in-memory and resets on restart; certificates are seeded at startup
+  (`cert-iso9001-0001` with versions 1 & 2, `cert-iso14001-0001`, and an expired `cert-expired-0001`).

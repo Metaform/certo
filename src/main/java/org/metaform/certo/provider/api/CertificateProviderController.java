@@ -6,10 +6,12 @@ import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.provider.CertificateProviderService;
 import org.metaform.certo.provider.api.dto.CertificateMetadata;
 import org.metaform.certo.provider.api.dto.CertificatePage;
+import org.metaform.certo.provider.api.dto.CertificatePublication;
 import org.metaform.certo.provider.api.dto.CertificateQuery;
 import org.metaform.certo.provider.api.dto.CertificateRequest;
 import org.metaform.certo.provider.api.dto.CertificateRequestResponse;
 import org.metaform.certo.provider.api.dto.CertificateRequestStatus;
+import org.metaform.certo.provider.api.dto.ExchangeView;
 import org.metaform.certo.provider.api.dto.RetrievedCertificate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -58,6 +60,27 @@ public class CertificateProviderController {
     @GetMapping(path = "/certificate-requests/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus getRequestStatus(@PathVariable("id") String exchangeId) {
         return service.getRequestStatus(exchangeId);
+    }
+
+    /**
+     * {@code POST /certificates/{id}/publish} — provider-initiated push (demo trigger): open an
+     * exchange for a held certificate and notify the consumer with a lifecycle CREATED event. In a
+     * real deployment this would be driven by the provider's own business logic, not an API call.
+     */
+    @PostMapping(path = "/certificates/{id}/publish", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<CertificatePublication> publish(@PathVariable("id") String certificateId,
+                                                          @RequestParam(value = "version", required = false) Integer version) {
+        return ResponseEntity.accepted().body(service.publish(certificateId, version));
+    }
+
+    /**
+     * {@code GET /certificate-exchanges/{id}} — the provider's full view of an exchange, both phases
+     * (demo/inspection; not part of CX-0135). Lets callers confirm a consumer's acceptance callback
+     * was recorded.
+     */
+    @GetMapping(path = "/certificate-exchanges/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ExchangeView getExchange(@PathVariable("id") String exchangeId) {
+        return service.getExchangeView(exchangeId);
     }
 
     /**

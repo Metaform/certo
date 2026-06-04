@@ -7,17 +7,21 @@ import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.LifecycleStatus;
+import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.pdf.PdfGenerator;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.provider.api.dto.CertificateMetadata;
 import org.metaform.certo.provider.api.dto.CertificatePage;
+import org.metaform.certo.provider.api.dto.CertificatePublication;
 import org.metaform.certo.provider.api.dto.CertificateQuery;
 import org.metaform.certo.provider.api.dto.CertificateQueryResponse;
 import org.metaform.certo.provider.api.dto.CertificateRequest;
 import org.metaform.certo.provider.api.dto.CertificateRequestResponse;
 import org.metaform.certo.provider.api.dto.CertificateRequestStatus;
+import org.metaform.certo.provider.api.dto.ExchangeView;
 import org.metaform.certo.provider.api.dto.RetrievedCertificate;
+import org.metaform.certo.provider.client.ConsumerNotificationClient;
 import org.metaform.certo.provider.model.Certificate;
 import org.metaform.certo.provider.model.CertificateExchange;
 import org.metaform.certo.provider.model.CertificateVersion;
@@ -56,14 +60,17 @@ public class CertificateProviderService {
     private final CertificateStore certificates;
     private final ExchangeStore exchanges;
     private final CloudEventCodec codec;
+    private final ConsumerNotificationClient consumerNotifications;
     private final CertoProperties properties;
     private final Clock clock;
 
     public CertificateProviderService(CertificateStore certificates, ExchangeStore exchanges,
-                                      CloudEventCodec codec, CertoProperties properties, Clock clock) {
+                                      CloudEventCodec codec, ConsumerNotificationClient consumerNotifications,
+                                      CertoProperties properties, Clock clock) {
         this.certificates = certificates;
         this.exchanges = exchanges;
         this.codec = codec;
+        this.consumerNotifications = consumerNotifications;
         this.properties = properties;
         this.clock = clock;
     }
@@ -101,6 +108,56 @@ public class CertificateProviderService {
                 request.certificateType(), certificate.certificateId(), version, exchangeId);
         return new CertificateRequestResponse(
                 exchangeId, certificate.certificateId(), version, FulfillmentStatus.FULFILLED, null);
+    }
+
+    /**
+     * Provider-initiated push (CX-0135 &sect;2.1.1): opens a {@code Certificate Exchange} for a held
+     * certificate (entering directly at {@code FULFILLED}) and notifies the consumer with a
+     * {@code CertificateLifecycleStatus} {@code CREATED} event. Because the provider opens and stores
+     * the exchange here, the consumer's later acceptance callback resolves against a known exchange.
+     */
+    public CertificatePublication publish(String certificateId, Integer version) {
+        var certificate = certificates.find(certificateId)
+                .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
+        var cv = (version == null)
+                ? certificate.latestVersion()
+                : certificate.version(version).orElseThrow(() ->
+                        ApiException.notFound("Unknown version " + version + " for certificate " + certificateId));
+
+        var exchangeId = newExchangeId();
+        var exchange = new CertificateExchange(
+                exchangeId, certificateId, cv.version(), properties.consumer().bpn(), FulfillmentStatus.FULFILLED);
+        exchanges.save(exchange);
+
+        var data = new LifecycleStatusData(
+                exchangeId,
+                certificateId,
+                cv.version(),
+                LifecycleStatus.CREATED,
+                certificate.datasetId(),
+                certificate.certificateType(),
+                cv.validFrom(),
+                cv.validUntil(),
+                certificate.locationBpns().isEmpty() ? null : certificate.locationBpns());
+
+        var notified = consumerNotifications.notifyLifecycle(data);
+        LOG.info("Published certificate {} v{} as exchange {} (consumer notified: {})",
+                certificateId, cv.version(), exchangeId, notified);
+        return new CertificatePublication(exchangeId, certificateId, cv.version(), notified);
+    }
+
+    /** Returns the provider's full view of an exchange — both phases (demo/inspection; not in CX-0135). */
+    public ExchangeView getExchangeView(String exchangeId) {
+        var exchange = exchanges.find(exchangeId)
+                .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
+        return new ExchangeView(
+                exchange.exchangeId(),
+                exchange.certificateId(),
+                exchange.version(),
+                exchange.fulfillmentStatus(),
+                exchange.fulfillmentErrors(),
+                exchange.acceptanceStatus(),
+                exchange.acceptanceErrors());
     }
 
     /** Returns the current fulfillment status of an exchange (CX-0135 &sect;4.4.2). */

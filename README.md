@@ -39,12 +39,13 @@ To run the jar directly, use a Java 25 runtime:
 java -jar build/libs/certo-0.1.0.jar     # requires java 25+ on PATH
 ```
 
-On startup the provider seeds two demo certificates:
+On startup the provider seeds demo certificates:
 
 | certificateId | type | versions | validUntil (latest) |
 |---------------|------|----------|---------------------|
 | `cert-iso9001-0001` | ISO9001 | 1, 2 (CREATED → MODIFIED) | 2027-01-24 |
 | `cert-iso14001-0001` | ISO14001 | 1 | 2027-05-31 |
+| `cert-expired-0001` | IATF16949 | 1 | 2020-01-01 (expired) |
 
 The provider offers the types `ISO9001`, `ISO14001`, `IATF16949`; any other requested type is
 `DECLINED`.
@@ -90,6 +91,24 @@ curl -s -X POST $B/certificate-acceptance-notifications \
     "data":{"exchangeId":"<exchangeId>","certificateId":"cert-iso9001-0001","status":"ACCEPTED"}}'
 ```
 
+### Provider-initiated push — the full loop in one call (demo)
+
+`POST /certificates/{id}/publish` opens an exchange and pushes a lifecycle `CREATED` event to the
+consumer, which retrieves the certificate, evaluates it, and posts its acceptance **back** to the
+provider — all in this one runtime. `GET /certificate-exchanges/{id}` is a demo/inspection endpoint
+(not in CX-0135) showing the provider's recorded view of both phases.
+
+```bash
+B=http://localhost:8080
+
+# Provider publishes a held certificate; the whole exchange runs synchronously
+PUB=$(curl -s -X POST $B/certificates/cert-iso9001-0001/publish)   # 202: {exchangeId, version, consumerNotified:true}
+EXCH=$(echo "$PUB" | python3 -c 'import sys,json;print(json.load(sys.stdin)["exchangeId"])')
+
+curl -s $B/certificate-acceptance-status/$EXCH   # consumer side  -> status ACCEPTED
+curl -s $B/certificate-exchanges/$EXCH           # provider side  -> fulfillmentStatus FULFILLED, acceptanceStatus ACCEPTED
+```
+
 ## Certificate Consumer Notification API (CX-0135 §4.3)
 
 ```bash
@@ -118,10 +137,15 @@ curl -s -X POST $B/certificate-notifications \
 
 Both notification endpoints accept a **single CloudEvent or a batch** (a JSON array), per CX-0000 §4.
 
-**Demo simplification:** on a `CREATED` lifecycle event the consumer immediately simulates
-retrieving and evaluating the certificate — deciding `ACCEPTED`, or `REJECTED` ("Certificate has
-expired") if the certificate's `validUntil` is already in the past. A real consumer would fetch the
-PDF, validate asynchronously, and POST a `CertificateAcceptanceStatus` event back to the provider.
+**Acceptance evaluation:** on a `CREATED` lifecycle event the consumer **retrieves the certificate
+from the provider's data plane** — an OkHttp `GET /certificates/{id}?version=` against the configured
+`certo.provider-base-url` (default `http://localhost:8080`, i.e. this same runtime; no DSP
+catalog/negotiation) — parses the `multipart/related` metadata + PDF, and decides:
+`ACCEPTED` if retrievable and within its validity window, `REJECTED` ("Certificate has expired") if
+past `validUntil`, or `ERRORED` if it can't be retrieved or has no document. It then **reports the
+outcome back to the provider** — a best-effort OkHttp `POST /certificate-acceptance-notifications`
+carrying a `CertificateAcceptanceStatus` CloudEvent — closing the exchange loop. A fuller
+implementation would run the validation asynchronously.
 
 ## Project layout
 
@@ -135,11 +159,13 @@ src/main/java/org/metaform/certo
 │   └── web/                # error handling, application/cloudevents+json media type
 ├── provider/               # Certificate Provider API (§4.4)
 │   ├── api/                # controller + DTOs
+│   ├── client/             # ConsumerNotificationClient (OkHttp push to the consumer)
 │   ├── model/ store/       # Certificate, CertificateExchange, in-memory stores
 │   ├── CertificateProviderService.java
 │   └── CertificateSeeder.java
 └── consumer/               # Certificate Consumer Notification API (§4.3)
     ├── api/                # controller + DTO
+    ├── client/             # ProviderCertificateClient (retrieve) + ProviderAcceptanceClient (callback), OkHttp
     ├── model/ store/       # ConsumerExchange, in-memory store
     └── CertificateConsumerService.java
 ```

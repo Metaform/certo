@@ -10,12 +10,16 @@ import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.api.dto.CertificateAcceptanceStatusResponse;
+import org.metaform.certo.consumer.client.ProviderAcceptanceClient;
+import org.metaform.certo.consumer.client.ProviderCertificateClient;
+import org.metaform.certo.consumer.client.RetrievedCertificate;
 import org.metaform.certo.consumer.model.ConsumerExchange;
 import org.metaform.certo.consumer.store.ConsumerExchangeStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
@@ -25,11 +29,12 @@ import java.util.List;
  * lifecycle and fulfillment CloudEvents from providers, and exposing the consumer's acceptance
  * decision for an exchange.
  *
- * <p>Demo simplification: on a {@code CREATED} lifecycle event the consumer immediately simulates
- * retrieving and evaluating the certificate, deciding {@code ACCEPTED} unless the certificate is
- * already expired (then {@code REJECTED}). A real consumer would retrieve the PDF, run business
- * validation asynchronously, and also POST a {@code CertificateAcceptanceStatus} event back to the
- * provider.
+ * <p>On a {@code CREATED} lifecycle event the consumer actually retrieves the certificate from the
+ * provider's data plane (via {@link ProviderCertificateClient}) and evaluates it: {@code ACCEPTED} if
+ * the certificate is retrievable and within its validity window, {@code REJECTED} if it is expired, or
+ * {@code ERRORED} if it cannot be retrieved or has no document. The decision is recorded locally (so a
+ * provider can query it) and also reported back to the provider as a {@code CertificateAcceptanceStatus}
+ * CloudEvent, closing the exchange loop. A fuller implementation would run validation asynchronously.
  */
 @Service
 public class CertificateConsumerService {
@@ -38,11 +43,17 @@ public class CertificateConsumerService {
 
     private final ConsumerExchangeStore exchanges;
     private final CloudEventCodec codec;
+    private final ProviderCertificateClient providerClient;
+    private final ProviderAcceptanceClient acceptanceClient;
     private final Clock clock;
 
-    public CertificateConsumerService(ConsumerExchangeStore exchanges, CloudEventCodec codec, Clock clock) {
+    public CertificateConsumerService(ConsumerExchangeStore exchanges, CloudEventCodec codec,
+                                      ProviderCertificateClient providerClient,
+                                      ProviderAcceptanceClient acceptanceClient, Clock clock) {
         this.exchanges = exchanges;
         this.codec = codec;
+        this.providerClient = providerClient;
+        this.acceptanceClient = acceptanceClient;
         this.clock = clock;
     }
 
@@ -84,6 +95,9 @@ public class CertificateConsumerService {
                     data.exchangeId(), data.certificateId(), decision.status(), decision.errors()));
             LOG.info("CREATED certificate {} v{} -> opened exchange {}, decided {}",
                     data.certificateId(), data.version(), data.exchangeId(), decision.status());
+            // Close the loop: report the acceptance outcome back to the provider (best-effort).
+            acceptanceClient.report(
+                    data.exchangeId(), data.certificateId(), decision.status(), decision.errors());
         } else {
             // MODIFIED and WITHDRAWN do not open an exchange (CX-0135 §2.2.4); record for the demo log only.
             LOG.info("{} certificate {} v{} (no exchange opened)", data.status(), data.certificateId(), data.version());
@@ -101,10 +115,28 @@ public class CertificateConsumerService {
         LOG.info("Fulfillment status {} for exchange {}", data.status(), data.exchangeId());
     }
 
-    /** Simulates the consumer's evaluation of a newly created certificate. */
+    /**
+     * Retrieves the certificate from the provider and evaluates it. Retrieval failures map to
+     * {@code ERRORED} (a business error — the consumer could not validate the certificate).
+     */
     private AcceptanceDecision evaluate(LifecycleStatusData data) {
-        var today = LocalDate.now(clock);
-        if (data.validUntil() != null && data.validUntil().isBefore(today)) {
+        RetrievedCertificate certificate;
+        try {
+            certificate = providerClient.fetch(data.certificateId(), data.version());
+        } catch (IOException e) {
+            LOG.warn("Could not retrieve certificate {} v{}: {}",
+                    data.certificateId(), data.version(), e.getMessage());
+            return new AcceptanceDecision(AcceptanceStatus.ERRORED,
+                    List.of(new StatusError("Unable to retrieve certificate: " + e.getMessage())));
+        }
+
+        if (certificate.pdf() == null || certificate.pdf().length == 0) {
+            return new AcceptanceDecision(AcceptanceStatus.ERRORED,
+                    List.of(new StatusError("Certificate document is missing or empty")));
+        }
+
+        var validUntil = certificate.metadata().validUntil();
+        if (validUntil != null && validUntil.isBefore(LocalDate.now(clock))) {
             return new AcceptanceDecision(AcceptanceStatus.REJECTED,
                     List.of(new StatusError("Certificate has expired")));
         }
