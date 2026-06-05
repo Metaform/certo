@@ -92,7 +92,10 @@ stateDiagram-v2
     CERTIFICATION_REQUESTED --> FULFILLED: certified & available
     CERTIFICATION_REQUESTED --> DECLINED: authority declines
     CERTIFICATION_REQUESTED --> FAILED: certification invalid
-    FULFILLED --> RETRIEVED: consumer fetches certificate
+    FULFILLED --> RETRIEVED: consumer reports retrieval (OPTIONAL)
+    FULFILLED --> ACCEPTED: consumer accepts
+    FULFILLED --> REJECTED: consumer does not accept content
+    FULFILLED --> ERRORED: certificate invalid
     RETRIEVED --> ACCEPTED: consumer accepts
     RETRIEVED --> REJECTED: consumer does not accept content
     RETRIEVED --> ERRORED: certificate invalid
@@ -111,7 +114,7 @@ stateDiagram-v2
 | `FULFILLED`               | Fulfillment / Provider | No       | The certificate is prepared and available for retrieval. Hand-off point.                                          |
 | `DECLINED`                | Fulfillment / Provider | Yes      | The provider declined the request (a business decision; e.g. the certificate type is not offered).                |
 | `FAILED`                  | Fulfillment / Provider | Yes      | The provider could not produce a valid certificate (a business error; e.g. the certificate is invalid).           |
-| `RETRIEVED`               | Acceptance / Consumer  | No       | The consumer fetched the certificate and is processing it.                                                        |
+| `RETRIEVED`               | Acceptance / Consumer  | No       | The consumer fetched the certificate and is processing it. *(Optional — see the note below.)*                      |
 | `ACCEPTED`                | Acceptance / Consumer  | Yes      | The consumer accepted the certificate.                                                                            |
 | `REJECTED`                | Acceptance / Consumer  | Yes      | The consumer did not accept the certificate content (a business decision).                                        |
 | `ERRORED`                 | Acceptance / Consumer  | Yes      | The consumer found the certificate to be in error (a business error; e.g. the certificate is invalid).            |
@@ -119,6 +122,12 @@ stateDiagram-v2
 A provider-initiated (push) exchange enters the lifecycle directly at `FULFILLED`. There is no request, so `REQUESTED`,
 `ACKNOWLEDGED` and `CERTIFICATION_REQUESTED` are never visited. The Acceptance phase is identical for both pull and
 push.
+
+`RETRIEVED` is **OPTIONAL**. It is a non-terminal acknowledgment that the consumer has fetched the certificate and is
+evaluating it; the consumer **MAY** report it as a delivery receipt but is not required to. An exchange therefore reaches
+a terminal acceptance state either by way of `RETRIEVED` (`FULFILLED → RETRIEVED → {ACCEPTED, REJECTED, ERRORED}`) or
+directly from `FULFILLED` (`FULFILLED → {ACCEPTED, REJECTED, ERRORED}`). The terminal acceptance verdicts remain
+Consumer-owned in both cases.
 
 `REQUESTED` is instantaneous and internal to the Certificate Provider; it is never reported on the wire. The first
 Fulfillment status a Certificate Consumer observes is the one carried in the request response (see
@@ -810,7 +819,7 @@ The Certificate Provider **MUST** expose the following endpoint to retrieve cert
 | **HTTP Method**: | GET                                       |
 | **URL Path**     | `GET /certificates/{id}`                  |
 | **Query**        | `version` (OPTIONAL) — defaults to latest |
-| **Content Type** | `application/json`                        |
+| **Content Type** | `multipart/related` or `application/json` |
 | **Response**     | `HTTP 200` with multipart body or error   |
 
 The Certificate Consumer client **MUST** accept `multipart-related` and the following content types: `application/json`
@@ -818,6 +827,9 @@ and `application/pdf`. The Client Consumer **SHOULD** set the `Accept` header to
 
 The response is a `multipart/related` ([RFC2387](#rfc2387)) message containing the certificate metadata encoded as
 `application/json` ([RFC8259](#rfc8259)) and the binary data encoded as `application/pdf`.
+
+If an error occurs, the Certificate Provider **MUST** set the `Content-Type` to `application/json` and return an error
+body encoded as `application/json` ([RFC8259](#rfc8259)).
 
 By default, the endpoint returns the latest `version`. A consumer **MAY** request a specific version with the `version`
 query parameter (for example, `GET /certificates/{id}?version=2`) — for instance, to retrieve the exact version a
@@ -891,6 +903,11 @@ exchange, so it can only be reported when an exchange is present — one opened 
 ([Section 4.3.1](#431-certificate-lifecycle-events)). Merely retrieving a certificate (for example, after
 a [query](#445-certificate-query)) does **not** establish an exchange and therefore does not permit acceptance feedback.
 If the `exchangeId` is unknown to the Certificate Provider, it **MUST** reject the event with `HTTP 404`.
+
+Reporting `RETRIEVED` is **OPTIONAL** (see [Section 2.1.3](#213-state-machine)). It is a non-terminal delivery
+acknowledgment; a Certificate Consumer **MAY** report it after fetching the certificate, or **MAY** proceed directly to
+a terminal acceptance status (`ACCEPTED`, `REJECTED`, or `ERRORED`) without first reporting `RETRIEVED`. A Certificate
+Provider **MUST NOT** require a prior `RETRIEVED` event as a precondition for accepting a terminal acceptance status.
 
 The `data` payload derives from the common certificate-status base payload and constrains `status` to the acceptance
 values below. It contains the following properties:

@@ -4,7 +4,7 @@ import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.pdf.PdfGenerator;
 import org.metaform.certo.provider.model.Certificate;
 import org.metaform.certo.provider.model.CertificateVersion;
-import org.metaform.certo.provider.store.CertificateStore;
+import org.metaform.certo.provider.store.ProviderCertificateStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -18,14 +18,14 @@ import java.util.List;
  * return data on a fresh run (and so the README's curl examples are reproducible). Demo only.
  */
 @Component
-public class CertificateSeeder implements CommandLineRunner {
+public class ProviderCertificateSeeder implements CommandLineRunner {
 
-    private static final Logger LOG = LoggerFactory.getLogger(CertificateSeeder.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ProviderCertificateSeeder.class);
 
-    private final CertificateStore certificates;
+    private final ProviderCertificateStore certificates;
     private final CertoProperties properties;
 
-    public CertificateSeeder(CertificateStore certificates, CertoProperties properties) {
+    public ProviderCertificateSeeder(ProviderCertificateStore certificates, CertoProperties properties) {
         this.certificates = certificates;
         this.properties = properties;
     }

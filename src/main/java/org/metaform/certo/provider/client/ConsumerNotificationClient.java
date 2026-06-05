@@ -5,10 +5,10 @@ import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
+import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,54 +46,70 @@ public class ConsumerNotificationClient {
     }
 
     /**
-     * Sends a {@code CertificateLifecycleStatus} CloudEvent to the consumer.
+     * Sends a {@code CertificateLifecycleStatus} CloudEvent to the consumer (CX-0135 &sect;4.3.1).
      *
      * @return {@code true} if the consumer accepted the event (2xx), {@code false} otherwise
      */
     public boolean notifyLifecycle(LifecycleStatusData data) {
-        var event = new CloudEvent<>(
+        var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, data);
+        return post(event, data.exchangeId(), data.status() + " certificate " + data.certificateId());
+    }
+
+    /**
+     * Pushes a {@code CertificateFulfillmentStatus} CloudEvent to the consumer for a consumer-initiated
+     * exchange (CX-0135 &sect;4.3.2) — the push counterpart of the consumer polling fulfillment status.
+     *
+     * @return {@code true} if the consumer accepted the event (2xx), {@code false} otherwise
+     */
+    public boolean notifyFulfillment(FulfillmentStatusData data) {
+        var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data);
+        return post(event, data.exchangeId(), "fulfillment " + data.status());
+    }
+
+    private <T> CloudEvent<T> event(String type, String dataSchema, T data) {
+        return new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
-                CcmEvents.TYPE_LIFECYCLE_STATUS,
+                type,
                 properties.provider().source(),
                 properties.consumer().bpn(),
                 UUID.randomUUID().toString(),
                 OffsetDateTime.now(clock),
                 CloudEvent.CONTENT_TYPE_JSON,
-                CcmEvents.SCHEMA_LIFECYCLE_STATUS,
+                dataSchema,
                 properties.provider().bpn(),
                 data);
+    }
 
+    private boolean post(CloudEvent<?> event, String exchangeId, String description) {
         String json;
         try {
             json = mapper.writeValueAsString(event);
         } catch (RuntimeException e) {
-            LOG.warn("Could not serialize lifecycle event for exchange {}: {}", data.exchangeId(), e.getMessage());
+            LOG.warn("Could not serialize event for exchange {}: {}", exchangeId, e.getMessage());
             return false;
         }
 
-        HttpUrl base = HttpUrl.parse(properties.consumerBaseUrl());
+        var base = HttpUrl.parse(properties.consumerBaseUrl());
         if (base == null) {
             LOG.warn("Invalid consumer base URL '{}'; not notifying", properties.consumerBaseUrl());
             return false;
         }
-        HttpUrl url = base.newBuilder().addPathSegment("certificate-notifications").build();
+        var url = base.newBuilder().addPathSegment("certificate-notifications").build();
 
-        Request request = new Request.Builder()
+        var request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(json, CLOUDEVENTS_JSON))
                 .build();
 
-        LOG.info("Notifying consumer of {} certificate {} (exchange {}) at {}",
-                data.status(), data.certificateId(), data.exchangeId(), url);
-        try (Response response = http.newCall(request).execute()) {
+        LOG.info("Notifying consumer of {} (exchange {}) at {}", description, exchangeId, url);
+        try (var response = http.newCall(request).execute()) {
             if (response.isSuccessful()) {
                 return true;
             }
-            LOG.warn("Consumer rejected lifecycle notification for exchange {}: HTTP {}",
-                    data.exchangeId(), response.code());
+            LOG.warn("Consumer rejected notification for exchange {}: HTTP {}", exchangeId, response.code());
             return false;
         } catch (IOException e) {
-            LOG.warn("Failed to notify consumer for exchange {}: {}", data.exchangeId(), e.getMessage());
+            LOG.warn("Failed to notify consumer for exchange {}: {}", exchangeId, e.getMessage());
             return false;
         }
     }

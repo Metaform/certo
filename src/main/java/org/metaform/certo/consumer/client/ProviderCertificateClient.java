@@ -4,7 +4,6 @@ import okhttp3.HttpUrl;
 import okhttp3.MultipartReader;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.metaform.certo.common.CertoProperties;
 import org.slf4j.Logger;
@@ -47,31 +46,31 @@ public class ProviderCertificateClient {
      * @throws IOException on transport failure or a non-2xx response
      */
     public RetrievedCertificate fetch(String certificateId, Integer version) throws IOException {
-        HttpUrl base = HttpUrl.parse(providerBaseUrl);
+        var base = HttpUrl.parse(providerBaseUrl);
         if (base == null) {
             throw new IOException("Invalid provider base URL: " + providerBaseUrl);
         }
-        HttpUrl.Builder urlBuilder = base.newBuilder()
+        var urlBuilder = base.newBuilder()
                 .addPathSegment("certificates")
                 .addPathSegment(certificateId);
         if (version != null) {
             urlBuilder.addQueryParameter("version", Integer.toString(version));
         }
-        HttpUrl url = urlBuilder.build();
+        var url = urlBuilder.build();
 
-        Request request = new Request.Builder()
+        var request = new Request.Builder()
                 .url(url)
                 .header("Accept", "multipart/related")
                 .get()
                 .build();
 
         LOG.info("Retrieving certificate {} (version {}) from {}", certificateId, version, url);
-        try (Response response = http.newCall(request).execute()) {
+        try (var response = http.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Provider returned HTTP " + response.code()
                         + " retrieving certificate " + certificateId);
             }
-            ResponseBody body = response.body();
+            var body = response.body();
             if (body == null) {
                 throw new IOException("Provider returned an empty body for certificate " + certificateId);
             }
@@ -82,10 +81,10 @@ public class ProviderCertificateClient {
     private RetrievedCertificate parseMultipart(ResponseBody body) throws IOException {
         CertificateMetadata metadata = null;
         byte[] pdf = null;
-        try (MultipartReader reader = new MultipartReader(body)) {
+        try (var reader = new MultipartReader(body)) {
             MultipartReader.Part part;
             while ((part = reader.nextPart()) != null) {
-                String contentType = part.headers().get("Content-Type");
+                var contentType = part.headers().get("Content-Type");
                 if (contentType != null && contentType.contains("application/json")) {
                     metadata = mapper.readValue(part.body().readUtf8(), CertificateMetadata.class);
                 } else if (contentType != null && contentType.contains("application/pdf")) {

@@ -5,7 +5,6 @@ import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
@@ -73,20 +72,20 @@ public class ProviderAcceptanceClient {
             return;
         }
 
-        HttpUrl base = HttpUrl.parse(properties.providerBaseUrl());
+        var base = HttpUrl.parse(properties.providerBaseUrl());
         if (base == null) {
             LOG.warn("Invalid provider base URL '{}'; not reporting acceptance for exchange {}",
                     properties.providerBaseUrl(), exchangeId);
             return;
         }
-        HttpUrl url = base.newBuilder().addPathSegment("certificate-acceptance-notifications").build();
+        var url = base.newBuilder().addPathSegment("certificate-acceptance-notifications").build();
 
-        Request request = new Request.Builder()
+        var request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(json, CLOUDEVENTS_JSON))
                 .build();
 
-        try (Response response = http.newCall(request).execute()) {
+        try (var response = http.newCall(request).execute()) {
             if (response.isSuccessful()) {
                 LOG.info("Reported acceptance {} for exchange {} to provider (HTTP {})",
                         status, exchangeId, response.code());

@@ -3,14 +3,17 @@ package org.metaform.certo.provider;
 import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEventCodec;
+import org.metaform.certo.common.cloudevent.ProcessedEventStore;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.FulfillmentStatus;
+import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatus;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.pdf.PdfGenerator;
 import org.metaform.certo.common.web.ApiException;
+import org.metaform.certo.provider.api.dto.CertificateLifecycleResult;
 import org.metaform.certo.provider.api.dto.CertificateMetadata;
 import org.metaform.certo.provider.api.dto.CertificatePage;
 import org.metaform.certo.provider.api.dto.CertificatePublication;
@@ -23,10 +26,10 @@ import org.metaform.certo.provider.api.dto.ExchangeView;
 import org.metaform.certo.provider.api.dto.RetrievedCertificate;
 import org.metaform.certo.provider.client.ConsumerNotificationClient;
 import org.metaform.certo.provider.model.Certificate;
-import org.metaform.certo.provider.model.CertificateExchange;
+import org.metaform.certo.provider.model.ProviderCertificateExchange;
 import org.metaform.certo.provider.model.CertificateVersion;
-import org.metaform.certo.provider.store.CertificateStore;
-import org.metaform.certo.provider.store.ExchangeStore;
+import org.metaform.certo.provider.store.ProviderCertificateStore;
+import org.metaform.certo.provider.store.ProviderCertificateExchangeStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,7 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
@@ -47,67 +51,152 @@ import java.util.UUID;
  * and answering queries. State is held in-memory (demo only).
  */
 @Service
-public class CertificateProviderService {
+public class ProviderCertificateService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(CertificateProviderService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ProviderCertificateService.class);
 
     /** Certificate types this demo provider offers; requests for any other type are DECLINED. */
     private static final Set<String> OFFERED_TYPES = Set.of("ISO9001", "ISO14001", "IATF16949");
 
+    /** Demo trigger: a request whose locations include this BPN fails during fulfillment (FAILED). */
+    private static final String FAIL_LOCATION = "BPNFAIL";
+
     private static final int DEFAULT_QUERY_LIMIT = 50;
     private static final int VALIDITY_YEARS = 3;
 
-    private final CertificateStore certificates;
-    private final ExchangeStore exchanges;
+    /** Certificates allocated for an in-progress exchange but not yet published (until FULFILLED). */
+    private final java.util.concurrent.ConcurrentMap<String, Certificate> pendingCertificates =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final ProviderCertificateStore certificates;
+    private final ProviderCertificateExchangeStore exchanges;
     private final CloudEventCodec codec;
+    private final ProcessedEventStore processedEvents;
     private final ConsumerNotificationClient consumerNotifications;
     private final CertoProperties properties;
     private final Clock clock;
 
-    public CertificateProviderService(CertificateStore certificates, ExchangeStore exchanges,
-                                      CloudEventCodec codec, ConsumerNotificationClient consumerNotifications,
+    public ProviderCertificateService(ProviderCertificateStore certificates, ProviderCertificateExchangeStore exchanges,
+                                      CloudEventCodec codec, ProcessedEventStore processedEvents,
+                                      ConsumerNotificationClient consumerNotifications,
                                       CertoProperties properties, Clock clock) {
         this.certificates = certificates;
         this.exchanges = exchanges;
         this.codec = codec;
+        this.processedEvents = processedEvents;
         this.consumerNotifications = consumerNotifications;
         this.properties = properties;
         this.clock = clock;
     }
 
     /**
-     * Opens a consumer-initiated {@code Certificate Exchange} (CX-0135 &sect;4.4.1). Offered types
-     * the provider already holds (or can immediately produce) are fulfilled at once; unoffered types
-     * open an exchange that terminates immediately at DECLINED.
+     * Opens a consumer-initiated {@code Certificate Exchange} (CX-0135 &sect;4.4.1). Each request opens a
+     * new exchange (so a re-attempt after a terminal outcome is a distinct exchange, &sect;2.1.1):
+     * <ul>
+     *   <li>an unoffered type terminates immediately at {@code DECLINED};</li>
+     *   <li>a certificate already held that covers the requested locations is fulfilled at once
+     *       ({@code FULFILLED});</li>
+     *   <li>otherwise the request is accepted ({@code ACKNOWLEDGED}) and fulfilled asynchronously —
+     *       the certificate id/version are allocated now, the certificate is published only when the
+     *       exchange reaches {@code FULFILLED} (see {@link #advance(String)}).</li>
+     * </ul>
      */
     public CertificateRequestResponse requestCertificate(CertificateRequest request) {
         var exchangeId = newExchangeId();
         var counterparty = properties.consumer().bpn();
+        var requestedLocations = request.locationBpns() == null ? List.<String>of() : request.locationBpns();
 
         if (!OFFERED_TYPES.contains(request.certificateType())) {
             // Every request opens an exchange — even a declined one — so the outcome stays correlatable.
             var certificateId = newCertificateId();
             var errors = List.of(new StatusError(
-                    "Certificate type '" + request.certificateType() + "' is not offered for the requested location"));
-            var exchange =
-                    new CertificateExchange(exchangeId, certificateId, 1, counterparty, FulfillmentStatus.DECLINED);
-            exchange.setFulfillment(FulfillmentStatus.DECLINED, errors);
+                    "Certificate type '" + request.certificateType() + "' is not offered"));
+            var exchange = new ProviderCertificateExchange(
+                    exchangeId, certificateId, 1, counterparty, FulfillmentStatus.DECLINED, errors);
+            exchange.markConsumerInitiated();
             exchanges.save(exchange);
             LOG.info("Declined request for type {} (exchange {})", request.certificateType(), exchangeId);
             return new CertificateRequestResponse(exchangeId, certificateId, 1, FulfillmentStatus.DECLINED, errors);
         }
 
-        var certificate = findActiveByType(request.certificateType())
-                .orElseGet(() -> produce(request.certificateType(), request.locationBpns()));
-        var version = certificate.latestVersion().version();
+        var held = findHeldCertificate(request.certificateType(), requestedLocations);
+        if (held.isPresent()) {
+            var certificate = held.get();
+            var version = certificate.latestVersion().version();
+            var exchange = new ProviderCertificateExchange(
+                    exchangeId, certificate.certificateId(), version, counterparty, FulfillmentStatus.FULFILLED);
+            exchange.markConsumerInitiated();
+            exchanges.save(exchange);
+            LOG.info("Fulfilled request for type {} -> held certificate {} v{} (exchange {})",
+                    request.certificateType(), certificate.certificateId(), version, exchangeId);
+            return new CertificateRequestResponse(
+                    exchangeId, certificate.certificateId(), version, FulfillmentStatus.FULFILLED, null);
+        }
 
-        var exchange = new CertificateExchange(
-                exchangeId, certificate.certificateId(), version, counterparty, FulfillmentStatus.FULFILLED);
+        // Not held: accept and produce asynchronously. Allocate identity now; publish at FULFILLED.
+        var certificateId = newCertificateId();
+        pendingCertificates.put(exchangeId, buildCertificate(certificateId, request.certificateType(), requestedLocations));
+        var exchange = new ProviderCertificateExchange(
+                exchangeId, certificateId, 1, counterparty, FulfillmentStatus.ACKNOWLEDGED);
+        exchange.markConsumerInitiated();
+        exchange.planSteps(FulfillmentStatus.CERTIFICATION_REQUESTED, FulfillmentStatus.FULFILLED);
+        if (requestedLocations.contains(FAIL_LOCATION)) {
+            exchange.markWillFail();
+        }
         exchanges.save(exchange);
-        LOG.info("Fulfilled request for type {} -> certificate {} v{} (exchange {})",
-                request.certificateType(), certificate.certificateId(), version, exchangeId);
+        LOG.info("Acknowledged request for type {} -> certificate {} (exchange {}, async fulfillment)",
+                request.certificateType(), certificateId, exchangeId);
         return new CertificateRequestResponse(
-                exchangeId, certificate.certificateId(), version, FulfillmentStatus.FULFILLED, null);
+                exchangeId, certificateId, 1, FulfillmentStatus.ACKNOWLEDGED, null);
+    }
+
+    /**
+     * Advances an in-progress exchange one Fulfillment step (demo trigger for the provider's
+     * asynchronous fulfillment backend): {@code ACKNOWLEDGED → CERTIFICATION_REQUESTED → FULFILLED}, or
+     * {@code → FAILED}. On reaching {@code FULFILLED} the allocated certificate is published.
+     */
+    public CertificateRequestStatus advance(String exchangeId) {
+        var exchange = exchanges.find(exchangeId)
+                .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
+        if (!exchange.hasPendingFulfillment()) {
+            return toRequestStatus(exchange); // already FULFILLED or terminal — nothing to advance
+        }
+        var next = exchange.pollNextStep();
+        if (next == FulfillmentStatus.FULFILLED && exchange.willFail()) {
+            pendingCertificates.remove(exchangeId);
+            exchange.transitionFulfillment(FulfillmentStatus.FAILED,
+                    List.of(new StatusError("The certification authority rejected the certificate")));
+            LOG.info("Fulfillment FAILED for exchange {}", exchangeId);
+        } else if (next == FulfillmentStatus.FULFILLED) {
+            var published = pendingCertificates.remove(exchangeId);
+            if (published != null) {
+                certificates.save(published); // publication (lifecycle CREATED)
+            }
+            exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
+            LOG.info("Fulfilled exchange {} -> published certificate {}", exchangeId, exchange.certificateId());
+        } else {
+            exchange.transitionFulfillment(next, null);
+            LOG.info("Advanced exchange {} to {}", exchangeId, next);
+        }
+        pushFulfillmentStatus(exchange);
+        return toRequestStatus(exchange);
+    }
+
+    /**
+     * Pushes the current Fulfillment status of a consumer-initiated exchange to the consumer's
+     * notification API (CX-0135 &sect;4.3.2) — the push counterpart of polling. Best-effort; the provider
+     * SHOULD push at least the terminal outcomes (FULFILLED/DECLINED/FAILED).
+     */
+    private void pushFulfillmentStatus(ProviderCertificateExchange exchange) {
+        if (!exchange.isConsumerInitiated()) {
+            return;
+        }
+        var status = exchange.fulfillmentStatus();
+        if (status != FulfillmentStatus.FULFILLED && status != FulfillmentStatus.FAILED) {
+            return; // only push terminal-ish outcomes in this demo
+        }
+        consumerNotifications.notifyFulfillment(new FulfillmentStatusData(
+                exchange.exchangeId(), exchange.certificateId(), status, exchange.fulfillmentErrors()));
     }
 
     /**
@@ -125,7 +214,7 @@ public class CertificateProviderService {
                         ApiException.notFound("Unknown version " + version + " for certificate " + certificateId));
 
         var exchangeId = newExchangeId();
-        var exchange = new CertificateExchange(
+        var exchange = new ProviderCertificateExchange(
                 exchangeId, certificateId, cv.version(), properties.consumer().bpn(), FulfillmentStatus.FULFILLED);
         exchanges.save(exchange);
 
@@ -146,6 +235,53 @@ public class CertificateProviderService {
         return new CertificatePublication(exchangeId, certificateId, cv.version(), notified);
     }
 
+    /**
+     * Publishes a new version of an existing certificate (CX-0135 &sect;2.2: lifecycle CREATED → MODIFIED)
+     * and notifies the consumer with a {@code MODIFIED} lifecycle event. Modification does not open an
+     * exchange (&sect;2.2.4). The location set is fixed, so a modification keeps the same locations.
+     */
+    public CertificateLifecycleResult modify(String certificateId) {
+        var certificate = certificates.find(certificateId)
+                .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
+        if (certificate.lifecycleStatus() == LifecycleStatus.WITHDRAWN) {
+            throw ApiException.conflict("Certificate " + certificateId + " is withdrawn and cannot be modified");
+        }
+        var today = LocalDate.now(clock);
+        var version = certificate.nextVersionNumber();
+        var validUntil = today.plusYears(VALIDITY_YEARS);
+        var pdf = renderPdf(certificateId, version, certificate.certificateType(), today, validUntil, certificate.locationBpns());
+        certificate.addVersion(new CertificateVersion(version, today, validUntil, pdf));
+
+        var data = new LifecycleStatusData(null, certificateId, version, LifecycleStatus.MODIFIED,
+                certificate.datasetId(), certificate.certificateType(), today, validUntil,
+                certificate.locationBpns().isEmpty() ? null : certificate.locationBpns());
+        var notified = consumerNotifications.notifyLifecycle(data);
+        LOG.info("Modified certificate {} -> version {} (consumer notified: {})", certificateId, version, notified);
+        return new CertificateLifecycleResult(certificateId, version, LifecycleStatus.MODIFIED, notified);
+    }
+
+    /**
+     * Withdraws a certificate (CX-0135 &sect;2.2: lifecycle → WITHDRAWN, terminal): it becomes
+     * unretrievable and is excluded from queries, and the consumer is notified with a {@code WITHDRAWN}
+     * lifecycle event. Withdrawal does not open an exchange (&sect;2.2.4).
+     */
+    public CertificateLifecycleResult withdraw(String certificateId) {
+        var certificate = certificates.find(certificateId)
+                .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
+        if (certificate.lifecycleStatus() == LifecycleStatus.WITHDRAWN) {
+            throw ApiException.conflict("Certificate " + certificateId + " is already withdrawn");
+        }
+        certificate.withdraw();
+        var version = certificate.latestVersion().version();
+
+        // WITHDRAWN MAY omit the validity period (CX-0135 §4.3.1).
+        var data = new LifecycleStatusData(null, certificateId, version, LifecycleStatus.WITHDRAWN,
+                certificate.datasetId(), certificate.certificateType(), null, null, null);
+        var notified = consumerNotifications.notifyLifecycle(data);
+        LOG.info("Withdrew certificate {} (consumer notified: {})", certificateId, notified);
+        return new CertificateLifecycleResult(certificateId, version, LifecycleStatus.WITHDRAWN, notified);
+    }
+
     /** Returns the provider's full view of an exchange — both phases (demo/inspection; not in CX-0135). */
     public ExchangeView getExchangeView(String exchangeId) {
         var exchange = exchanges.find(exchangeId)
@@ -164,6 +300,10 @@ public class CertificateProviderService {
     public CertificateRequestStatus getRequestStatus(String exchangeId) {
         var exchange = exchanges.find(exchangeId)
                 .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
+        return toRequestStatus(exchange);
+    }
+
+    private static CertificateRequestStatus toRequestStatus(ProviderCertificateExchange exchange) {
         return new CertificateRequestStatus(
                 exchange.exchangeId(),
                 exchange.certificateId(),
@@ -176,6 +316,9 @@ public class CertificateProviderService {
     public RetrievedCertificate getCertificate(String certificateId, Integer version) {
         var certificate = certificates.find(certificateId)
                 .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
+        if (certificate.lifecycleStatus() == LifecycleStatus.WITHDRAWN) {
+            throw ApiException.notFound("Certificate " + certificateId + " has been withdrawn");
+        }
 
         var cv = (version == null)
                 ? certificate.latestVersion()
@@ -194,11 +337,13 @@ public class CertificateProviderService {
 
     /**
      * Records acceptance feedback delivered as one or more {@code CertificateAcceptanceStatus}
-     * CloudEvents (CX-0135 &sect;4.4.4). Unknown exchanges are rejected with 404.
+     * CloudEvents (CX-0135 &sect;4.4.4). Unknown exchanges are rejected with 404. The batch is atomic:
+     * every event is validated before any is applied, so one bad event leaves the rest unapplied.
+     * Duplicate events (same {@code source}+{@code id}) are ignored.
      */
     public void recordAcceptance(byte[] body) {
-        var nodes = codec.toEventNodes(body);
-        for (var node : nodes) {
+        var pending = new ArrayList<PendingEvent>();
+        for (var node : codec.toEventNodes(body)) {
             var type = codec.typeOf(node);
             if (!CcmEvents.TYPE_ACCEPTANCE_STATUS.equals(type)) {
                 throw ApiException.badRequest("Unexpected event type for acceptance endpoint: " + type);
@@ -212,12 +357,34 @@ public class CertificateProviderService {
                 throw ApiException.badRequest("Acceptance event is missing data.status");
             }
             validateAcceptanceErrors(data.status(), data.errors());
-
             var exchange = exchanges.find(data.exchangeId())
                     .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + data.exchangeId()));
-            exchange.setAcceptance(data.status(), data.errors());
-            LOG.info("Recorded acceptance {} for exchange {}", data.status(), data.exchangeId());
+            // Acceptance may only be reported once the exchange is FULFILLED (CX-0135 §2.1.2 / §4.4.4).
+            if (exchange.fulfillmentStatus() != FulfillmentStatus.FULFILLED) {
+                throw ApiException.conflict("Exchange " + data.exchangeId() + " is not FULFILLED"
+                        + " (current fulfillment status: " + exchange.fulfillmentStatus() + ")");
+            }
+
+            pending.add(new PendingEvent(codec.dedupKey(event), () -> {
+                exchange.recordAcceptance(data.status(), data.errors());
+                LOG.info("Recorded acceptance {} for exchange {}", data.status(), data.exchangeId());
+            }));
         }
+        applyOnce(pending);
+    }
+
+    /** Applies each pending event exactly once, skipping duplicates (by {@code source}+{@code id}). */
+    private void applyOnce(List<PendingEvent> pending) {
+        for (var event : pending) {
+            if (processedEvents.firstSeen(event.dedupKey())) {
+                event.apply().run();
+            } else {
+                LOG.info("Ignoring duplicate event {}", event.dedupKey());
+            }
+        }
+    }
+
+    private record PendingEvent(String dedupKey, Runnable apply) {
     }
 
     /** Answers a certificate query with one page of results and adjacent-page cursors (CX-0135 &sect;4.4.5). */
@@ -241,29 +408,39 @@ public class CertificateProviderService {
 
         var next = end < matches.size() ? encodeCursor(end) : null;
         var prev = offset > 0 ? encodeCursor(Math.max(0, offset - limit)) : null;
-        return new CertificatePage(page, next, prev);
+
+        // first/last are optional; include them only when the result is actually paginated.
+        var paginated = next != null || prev != null;
+        var first = paginated ? encodeCursor(0) : null;
+        var last = paginated ? encodeCursor(((matches.size() - 1) / limit) * limit) : null;
+        return new CertificatePage(page, next, prev, first, last);
     }
 
     // --- helpers -------------------------------------------------------------------------------
 
-    private Optional<Certificate> findActiveByType(String certificateType) {
+    /**
+     * Finds a held, non-withdrawn certificate of the given type whose fixed location set covers the
+     * requested locations (CX-0135 &sect;2.2.1). An empty request applies to the legal entity and matches
+     * a certificate with no location set.
+     */
+    private Optional<Certificate> findHeldCertificate(String certificateType, List<String> requestedLocations) {
         return certificates.all().stream()
                 .filter(c -> c.lifecycleStatus() != LifecycleStatus.WITHDRAWN)
                 .filter(c -> c.certificateType().equals(certificateType))
+                .filter(c -> requestedLocations.isEmpty()
+                        ? c.locationBpns().isEmpty()
+                        : c.locationBpns().containsAll(requestedLocations))
                 .findFirst();
     }
 
-    /** Produces and publishes a new certificate of the given type (used when none is already held). */
-    public Certificate produce(String certificateType, List<String> locationBpns) {
+    /** Builds (but does not publish) a new single-version certificate covering the requested locations. */
+    private Certificate buildCertificate(String certificateId, String certificateType, List<String> locationBpns) {
         var today = LocalDate.now(clock);
-        var certificateId = newCertificateId();
         var datasetId = "dataset-" + UUID.randomUUID();
         var certificate = new Certificate(certificateId, datasetId, certificateType, locationBpns);
         var validUntil = today.plusYears(VALIDITY_YEARS);
         var pdf = renderPdf(certificateId, 1, certificateType, today, validUntil, certificate.locationBpns());
         certificate.addVersion(new CertificateVersion(1, today, validUntil, pdf));
-        certificates.save(certificate);
-        LOG.info("Produced certificate {} of type {}", certificateId, certificateType);
         return certificate;
     }
 

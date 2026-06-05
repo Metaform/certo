@@ -1,5 +1,7 @@
 package org.metaform.certo.common.model;
 
+import java.util.Set;
+
 /**
  * States of the Fulfillment phase of a {@code Certificate Exchange} (CX-0135 &sect;2.1.3), owned by
  * the Certificate Provider.
@@ -26,5 +28,15 @@ public enum FulfillmentStatus {
 
     public boolean isTerminal() {
         return terminal;
+    }
+
+    /** The Fulfillment states reachable from this one (CX-0135 &sect;2.1.3 state machine). */
+    public Set<FulfillmentStatus> allowedNext() {
+        return switch (this) {
+            case REQUESTED -> Set.of(ACKNOWLEDGED, DECLINED);
+            case ACKNOWLEDGED -> Set.of(CERTIFICATION_REQUESTED, FULFILLED, FAILED, DECLINED);
+            case CERTIFICATION_REQUESTED -> Set.of(FULFILLED, FAILED, DECLINED);
+            case FULFILLED, DECLINED, FAILED -> Set.of();
+        };
     }
 }

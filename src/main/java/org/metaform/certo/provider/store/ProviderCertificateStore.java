@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentMap;
 
 /** In-memory store of certificate artifacts held by the provider (demo only). */
 @Component
-public class CertificateStore {
+public class ProviderCertificateStore {
 
     private final ConcurrentMap<String, Certificate> certificates = new ConcurrentHashMap<>();
 
