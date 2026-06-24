@@ -52,7 +52,8 @@ public class ConsumerNotificationClient {
      */
     public boolean notifyLifecycle(LifecycleStatusData data) {
         var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, data);
-        return post(event, data.exchangeId(), data.status() + " certificate " + data.certificateId());
+        var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
+        return post(event, data.exchangeId(), data.status() + " certificate " + certificateId);
     }
 
     /**

@@ -53,7 +53,7 @@ class ConsumerPollFlowTest {
     void consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts() throws Exception {
         // Open a request for a not-yet-held certificate -> ACKNOWLEDGED.
         var exchangeId = mapper.readTree(postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"locationBpns\":[\"BPNS-POLL-1\"]}").body())
+                "{\"certificateType\":\"ISO14001\",\"certifiedLocationBpns\":[\"BPNS-POLL-1\"]}").body())
                 .get("exchangeId").asString();
 
         // Provider fulfils; the FULFILLED push to the (unreachable) consumer base URL fails silently.

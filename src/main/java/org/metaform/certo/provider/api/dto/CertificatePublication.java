@@ -10,6 +10,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 public record CertificatePublication(
         String exchangeId,
         String certificateId,
-        int version,
+        int revision,
         boolean consumerNotified) {
 }

@@ -1,22 +1,24 @@
 package org.metaform.certo.provider.api.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotNull;
 
-import java.time.LocalDate;
+import java.util.List;
 
 /**
- * Request body for {@code POST /certificates/query} (CX-0135 &sect;4.4.5).
- *
- * @param certificateType opaque certificate type to match (mandatory)
- * @param from            inclusive lower bound on {@code validFrom} (optional)
- * @param to              inclusive upper bound on {@code validUntil} (optional)
- * @param limit           maximum results per page (optional)
+ * A self-contained CCM certificate query (CX-0135 &sect;3.3.4), the body of
+ * {@code POST /certificates/search}. A single root {@code $condition} whose {@code $match} array
+ * combines its clauses with logical AND.
  */
-public record CertificateQuery(
-        @NotBlank String certificateType,
-        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate from,
-        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate to,
-        @Min(1) Integer limit) {
+public record CertificateQuery(@NotNull @JsonProperty("$condition") Condition condition) {
+
+    /** A conjunction of match clauses. A certificate matches only if it satisfies every clause. */
+    public record Condition(@NotNull @JsonProperty("$match") List<MatchClause> match) {
+    }
+
+    /** An equality comparison of a single dotted field path against a string value. */
+    public record MatchClause(
+            @JsonProperty("$field") String field,
+            @JsonProperty("$eq") String eq) {
+    }
 }

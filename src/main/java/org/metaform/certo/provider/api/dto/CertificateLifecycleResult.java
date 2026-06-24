@@ -8,7 +8,7 @@ import org.metaform.certo.common.model.LifecycleStatus;
  */
 public record CertificateLifecycleResult(
         String certificateId,
-        int version,
+        int revision,
         LifecycleStatus lifecycleStatus,
         boolean consumerNotified) {
 }

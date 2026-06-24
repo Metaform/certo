@@ -1,26 +1,28 @@
 package org.metaform.certo.consumer.client;
 
 import okhttp3.HttpUrl;
-import okhttp3.MultipartReader;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.ResponseBody;
 import org.metaform.certo.common.CertoProperties;
+import org.metaform.certo.common.model.CertificateDocument;
+import org.metaform.certo.common.model.CertificateRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
- * Retrieves certificates from a Certificate Provider's data plane via {@code GET /certificates/{id}}
- * (CX-0135 &sect;4.4.3) using OkHttp. The response is a {@code multipart/related} message whose JSON
- * part is parsed into {@link CertificateMetadata} and whose PDF part is read as raw bytes.
+ * Retrieves certificates from a Certificate Provider's data plane (CX-0135 v3) using OkHttp, in two
+ * steps (push-pull): {@code GET /certificates/{id}} returns JSON metadata listing the documents by
+ * reference, then {@code GET /documents/{id}} fetches each document binary. No embedded-document
+ * (push) form is used.
  *
- * <p>The provider base URL is hardcoded via configuration ({@code certo.provider-base-url}); there is
- * no DSP catalog lookup or contract negotiation (out of scope).
+ * <p>The provider base URL is hardcoded via {@code certo.provider-base-url} (no DSP catalog lookup).
  */
 @Component
 public class ProviderCertificateClient {
@@ -38,33 +40,27 @@ public class ProviderCertificateClient {
     }
 
     /**
-     * Fetches a certificate from the provider.
+     * Fetches a certificate's metadata and all its referenced document binaries.
      *
      * @param certificateId the certificate to retrieve
-     * @param version       the specific version to retrieve, or {@code null} for the latest
-     * @return the metadata and PDF binary
+     * @param revision      the specific revision to retrieve, or {@code null} for the latest
      * @throws IOException on transport failure or a non-2xx response
      */
-    public RetrievedCertificate fetch(String certificateId, Integer version) throws IOException {
+    public RetrievedCertificate fetch(String certificateId, Integer revision) throws IOException {
         var base = HttpUrl.parse(providerBaseUrl);
         if (base == null) {
             throw new IOException("Invalid provider base URL: " + providerBaseUrl);
         }
-        var urlBuilder = base.newBuilder()
-                .addPathSegment("certificates")
-                .addPathSegment(certificateId);
-        if (version != null) {
-            urlBuilder.addQueryParameter("version", Integer.toString(version));
+        var urlBuilder = base.newBuilder().addPathSegment("certificates").addPathSegment(certificateId);
+        if (revision != null) {
+            urlBuilder.addQueryParameter("revision", Integer.toString(revision));
         }
         var url = urlBuilder.build();
 
-        var request = new Request.Builder()
-                .url(url)
-                .header("Accept", "multipart/related")
-                .get()
-                .build();
+        var request = new Request.Builder().url(url).header("Accept", "application/json").get().build();
+        LOG.info("Retrieving certificate {} (revision {}) from {}", certificateId, revision, url);
 
-        LOG.info("Retrieving certificate {} (version {}) from {}", certificateId, version, url);
+        CertificateRecord metadata;
         try (var response = http.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Provider returned HTTP " + response.code()
@@ -74,29 +70,32 @@ public class ProviderCertificateClient {
             if (body == null) {
                 throw new IOException("Provider returned an empty body for certificate " + certificateId);
             }
-            return parseMultipart(body);
+            metadata = mapper.readValue(body.string(), CertificateRecord.class);
         }
-    }
 
-    private RetrievedCertificate parseMultipart(ResponseBody body) throws IOException {
-        CertificateMetadata metadata = null;
-        byte[] pdf = null;
-        try (var reader = new MultipartReader(body)) {
-            MultipartReader.Part part;
-            while ((part = reader.nextPart()) != null) {
-                var contentType = part.headers().get("Content-Type");
-                if (contentType != null && contentType.contains("application/json")) {
-                    metadata = mapper.readValue(part.body().readUtf8(), CertificateMetadata.class);
-                } else if (contentType != null && contentType.contains("application/pdf")) {
-                    pdf = part.body().readByteArray();
-                } else {
-                    part.body().readByteArray(); // drain any unexpected part
-                }
+        var documents = new ArrayList<RetrievedDocument>();
+        if (metadata.documents() != null) {
+            for (CertificateDocument ref : metadata.documents()) {
+                documents.add(fetchDocument(base, ref));
             }
         }
-        if (metadata == null) {
-            throw new IOException("multipart/related response is missing its application/json metadata part");
+        return new RetrievedCertificate(metadata, documents);
+    }
+
+    private RetrievedDocument fetchDocument(HttpUrl base, CertificateDocument ref) throws IOException {
+        var url = base.newBuilder().addPathSegment("documents").addPathSegment(ref.documentId()).build();
+        var request = new Request.Builder().url(url).get().build();
+        try (var response = http.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Provider returned HTTP " + response.code()
+                        + " retrieving document " + ref.documentId());
+            }
+            var body = response.body();
+            if (body == null) {
+                throw new IOException("Provider returned an empty body for document " + ref.documentId());
+            }
+            var contentType = response.header("Content-Type", ref.mediaType());
+            return new RetrievedDocument(ref.documentId(), contentType, body.bytes());
         }
-        return new RetrievedCertificate(metadata, pdf);
     }
 }

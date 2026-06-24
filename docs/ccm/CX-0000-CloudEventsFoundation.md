@@ -103,7 +103,11 @@ Event IDs **MUST** be unique within the scope of a `source`:
 
 - Combination of `source` + `id` **MUST** uniquely identify an event
 - Duplicate events (e.g., retries) **MUST** reuse the same `source` and `id`
-- It is **RECOMMENDED** to use UUIDs for event IDs
+- Event IDs **MUST** be UUIDs as defined by [RFC9562](#rfc9562)
+
+> NOTE: Consumers **MUST NOT** assume which UUID version a given `id` uses. The `id` is to be treated as an opaque
+> identifier and used only for equality comparison; its internal structure (version, timestamp, or any other embedded
+> data) **MUST NOT** be interpreted.
 
 ### 2.3 Event Types
 
@@ -155,7 +159,7 @@ Custom attributes **MAY** be added following CloudEvents naming rules:
 - The attribute **MUST** consist of lowercase letters (a-z) or digits (0–9)
 - The attribute **MUST** be at least one character, **SHOULD NOT** exceed 20 characters
 - The attribute **SHOULD** start with a letter
-- The attribute **MUST NOT** use the name `data`, `data_base64`, or any CloudEvens reserved attribute names
+- The attribute **MUST NOT** use the name `data`, `data_base64`, or any CloudEvents reserved attribute names
 
 #### 2.5.2 Extension Attribute Types
 
@@ -346,6 +350,10 @@ STD 66, RFC 3986, January 2005, <https://www.rfc-editor.org/rfc/rfc3986>.
 <a id="rfc8174"></a>
 **[RFC8174]** Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14, RFC 8174, May 2017,
 <https://www.rfc-editor.org/rfc/rfc8174>.
+
+<a id="rfc9562"></a>
+**[RFC9562]** Davis, K., Peabody, B., and Leach, P., "Universally Unique IDentifiers (UUIDs)", RFC 9562, May 2024,
+<https://www.rfc-editor.org/rfc/rfc9562>.
 
 ### 6.2 Non-Normative References
 

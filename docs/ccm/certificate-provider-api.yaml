@@ -5,15 +5,15 @@ info:
     HTTP API exposed by a Certificate Provider to accept certificate requests,
     report request fulfillment status, serve certificate data, accept
     acceptance status updates, and answer certificate queries, as defined in
-    CX-0135 Section 4.4.
+    CX-0135.
 
-    A certificate is identified by the (`certificateId`, `version`) pair. A
+    A certificate is identified by the (`certificateId`, `revision`) pair. A
     consumer-initiated request opens a Certificate Exchange; the Certificate
-    Provider assigns `certificateId` and `version` when it accepts the request.
+    Provider assigns `certificateId` and `revision` when it accepts the request.
 
     All requests MUST use HTTPS (TLS 1.2 or higher). Authorization MUST adhere
-    to CX-0000 (CloudEventsFoundation) Section 4.
-  version: 1.0.0
+    to CX-0000 (CloudEventsFoundation).
+  version: 3.0.0
 
 servers:
   - url: https://{base}
@@ -31,7 +31,7 @@ paths:
         Invoked by a Certificate Consumer to request a certificate. A request
         opens a consumer-initiated Certificate Exchange. On acceptance the
         Certificate Provider assigns and returns a `certificateId` and
-        `version`, enabling the consumer to poll fulfillment status and later
+        `revision`, enabling the consumer to poll fulfillment status and later
         retrieve the certificate.
       operationId: createCertificateRequest
       requestBody:
@@ -44,14 +44,14 @@ paths:
               byType:
                 summary: Request a certificate by type and location
                 value:
-                  certificateType: ISO9001
-                  locationBpns:
+                  certificateType: iso9001
+                  certifiedLocationBpns:
                     - BPNS00000003AYRE
       responses:
         '202':
           description: |
             The request was accepted. The body carries the assigned
-            `certificateId` and `version` and the current fulfillment status.
+            `certificateId` and `revision` and the current fulfillment status.
           content:
             application/json:
               schema:
@@ -62,21 +62,21 @@ paths:
                   value:
                     exchangeId: exch-7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44
                     certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                    version: 1
+                    revision: 1
                     status: ACKNOWLEDGED
                 fulfilled:
                   summary: Certificate already available
                   value:
                     exchangeId: exch-7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44
                     certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                    version: 1
+                    revision: 1
                     status: FULFILLED
                 declined:
                   summary: Request refused
                   value:
                     exchangeId: exch-7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44
                     certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                    version: 1
+                    revision: 1
                     status: DECLINED
                     errors:
                       - message: Certificate type not offered for the requested location
@@ -98,12 +98,12 @@ paths:
         Fulfillment phase; the consumer's acceptance outcome is reported
         separately via `POST /certificate-acceptance-notifications`.
 
-        Polling is optional: if the Certificate Consumer exposes the Certificate
-        Consumer Notification API, the Certificate Provider MAY instead push
-        these fulfillment status updates to it as a
-        `org.catena-x.ccm.CertificateFulfillmentStatus.v1` event (CX-0135
-        Section 4.3.2). The push and the poll are equivalent and carry the same
-        `exchangeId` and `status`.
+        If the Certificate Consumer exposes the Certificate Consumer API, the
+        Certificate Provider MUST push fulfillment status updates to it
+        as a `org.catena-x.ccm.CertificateFulfillmentStatus.v1` event for all
+        provider-owned terminal states (CX-0135 §3.2.1). This poll endpoint then
+        serves as a fallback/recovery mechanism and carries the same `exchangeId`
+        and `status` as the pushed event.
       operationId: getCertificateRequestStatus
       parameters:
         - name: id
@@ -127,21 +127,21 @@ paths:
                   value:
                     exchangeId: exch-7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44
                     certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                    version: 1
+                    revision: 1
                     status: ACKNOWLEDGED
                 fulfilled:
                   summary: Status FULFILLED
                   value:
                     exchangeId: exch-7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44
                     certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                    version: 1
+                    revision: 1
                     status: FULFILLED
                 declined:
                   summary: Status DECLINED
                   value:
                     exchangeId: exch-7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44
                     certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                    version: 1
+                    revision: 1
                     status: DECLINED
                     errors:
                       - message: Certificate type not offered for the requested location
@@ -156,15 +156,16 @@ paths:
 
   /certificates/{id}:
     get:
-      summary: Retrieve a certificate
+      summary: Retrieve certificate metadata
       description: |
-        Retrieves the metadata and binary content of a certificate as a
-        `multipart/related` message containing one `application/json` part
-        (metadata) and one `application/pdf` part (the certificate binary).
-        Returns the latest version by default; a specific version may be
-        requested with the `version` query parameter (e.g. to retrieve the exact
-        version a Certificate Exchange concerns). The provider MUST be able to
-        return any version still referenced by a non-terminal Certificate
+        Retrieves the metadata of a certificate as `application/json`. The
+        certificate is metadata only; binary documents are not included. Each
+        associated document is listed by reference in the `documents` array and
+        retrieved independently via `GET /documents/{id}`.
+        Returns the latest revision by default; a specific revision may be
+        requested with the `revision` query parameter (e.g. to retrieve the exact
+        revision a Certificate Exchange concerns). The provider MUST be able to
+        return any revision still referenced by a non-terminal Certificate
         Exchange.
       operationId: getCertificate
       parameters:
@@ -174,25 +175,98 @@ paths:
           description: The unique identifier of the certificate.
           schema:
             type: string
-        - name: version
+        - name: revision
           in: query
           required: false
           description: |
-            The specific version to retrieve. If omitted, the latest version is
+            The specific revision to retrieve. If omitted, the latest revision is
             returned.
           schema:
             type: integer
       responses:
         '200':
           description: |
-            Certificate found. The response is a `multipart/related` message
-            whose root part is the JSON metadata described by
-            `CertificateMetadata` and whose second part is the certificate
-            binary encoded as `application/pdf`.
+            Certificate found. For an active certificate the response is the JSON
+            metadata described by `CertificateMetadata`, including the `documents`
+            array referencing the documents associated with the returned revision.
+            A withdrawn certificate need not remain retrievable; in that case the
+            response is the minimal `WithdrawnCertificate` status body
+            (`certificateId` + `status: WITHDRAWN`), with no metadata or documents,
+            so a consumer holding the `certificateId` can still observe the
+            withdrawal (CX-0135 §3.3.2).
           content:
-            multipart/related:
+            application/json:
               schema:
-                $ref: '#/components/schemas/CertificateMultipart'
+                oneOf:
+                  - $ref: '#/components/schemas/CertificateMetadata'
+                  - $ref: '#/components/schemas/WithdrawnCertificate'
+              examples:
+                active:
+                  summary: Active certificate (full metadata)
+                  value:
+                    certificateId: cert-550e8400-e29b-41d4-a716-446655440000
+                    revision: 1
+                    certificateType: iso9001
+                    registrationNumber: "12 100 4711"
+                    validFrom: "2023-01-25"
+                    validUntil: "2026-01-24"
+                    trustLevel: high
+                    certifiedLocations:
+                      - bpnl: BPNL00000001AXS
+                        bpna: BPNA00000001AXS
+                        bpns: BPNS00000001AXS
+                        locationRole: MAIN_LOCATION
+                withdrawn:
+                  summary: Withdrawn certificate (status only)
+                  value:
+                    certificateId: cert-550e8400-e29b-41d4-a716-446655440000
+                    status: WITHDRAWN
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /documents/{id}:
+    get:
+      summary: Retrieve a certificate document
+      description: |
+        Retrieves a certificate document by its identifier. The response body is
+        the document binary, served directly with the `Content-Type` set to the
+        document's `mediaType` (e.g. `application/pdf`) as advertised in the
+        certificate metadata.
+        A `documentId` is opaque and independent of any certificate revision; the
+        same document may be referenced by multiple certificate revisions, so no
+        `revision` parameter is required.
+      operationId: getDocument
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The opaque, version-independent identifier of the document.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            Document found. The response body is the document binary, served with
+            the `Content-Type` set to the document's `mediaType`.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -307,18 +381,29 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /certificates/query:
+  /certificates/search:
     post:
-      summary: Query certificates
+      summary: Search certificates
       description: |
-        Returns certificates matching the supplied criteria. Results MAY be
-        paginated; when paginated, navigation URLs are provided in the `Link`
-        response header in accordance with RFC 8288 (Web Linking). Only the
-        `next` and `prev` link relations are guaranteed; `first` and `last`
-        MAY also be returned. To retrieve a subsequent page, the client
-        re-issues a `POST` with the same request body against the URL
-        provided in the corresponding `Link` value.
+        Returns the certificate records matching the supplied search criteria.
+        The query grammar and the mandatory field/operator subset are defined by
+        CX-0135 §3.3.4; a provider MUST support that subset and MAY support more,
+        rejecting a query that uses an unsupported field or operator with `501`.
+
+        Results are returned inline as full certificate records (without document
+        binaries). When the result set is paginated, pagination is conveyed via
+        the RFC 8288 `Link` response header (`next`/`prev`).
       operationId: queryCertificates
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Maximum number of results to return in a single page. If omitted, the
+            provider MAY apply a default limit.
+          schema:
+            type: integer
+            minimum: 1
       requestBody:
         required: true
         content:
@@ -326,48 +411,32 @@ paths:
             schema:
               $ref: '#/components/schemas/CertificateQuery'
             examples:
-              byType:
-                summary: Query by certificate type and validity window
+              byLegalEntityAndType:
+                summary: Match a legal entity and a certificate type
                 value:
-                  certificateType: ISO9001
-                  from: "2023-01-25"
-                  to: "2026-01-24"
-                  limit: 50
+                  $condition:
+                    $match:
+                      - $field: certifiedLocations.bpnl
+                        $eq: BPNL00000001AXS
+                      - $field: certificateType
+                        $eq: iso14001
       responses:
         '200':
           description: |
-            Matching certificates. When the result set is paginated, the
-            response includes a `Link` header per RFC 8288.
+            Certificate records matching the query. When paginated, the `Link`
+            header carries `next`/`prev` URLs (RFC 8288).
           headers:
             Link:
               description: |
-                Web Linking pagination header (RFC 8288). Contains URLs for
-                the `next` and/or `prev` pages. Omitted when the response is
-                not paginated.
+                Pagination links per RFC 8288. Present only on paginated
+                responses; a `next` or `prev` link is omitted when no further
+                results exist in that direction.
               schema:
                 type: string
-              example: >-
-                <https://provider.example.com/certificates/query?cursor=eyJvZmZzZXQiOjUwfQ>; rel="next",
-                <https://provider.example.com/certificates/query?cursor=eyJvZmZzZXQiOjB9>; rel="prev"
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CertificateQueryResponse'
-              examples:
-                page:
-                  summary: A single page of results
-                  value:
-                    - certificateId: cert-550e8400-e29b-41d4-a716-446655440000
-                      version: 1
-                      datasetId: dataset-ccm-cert-abc123
-                      certificateType: ISO9001
-                      validFrom: "2023-01-25"
-                      validUntil: "2026-01-24"
-                      locationBpns:
-                        - BPNS00000003AYRE
-                        - BPNA000000000001
+                $ref: '#/components/schemas/CertificateQueryResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -376,6 +445,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
 
 components:
   schemas:
@@ -389,12 +460,12 @@ components:
           type: string
           description: |
             Opaque string identifying the certificate type to be requested
-            (for example, `ISO9001`).
-        locationBpns:
+            (for example, `iso9001`).
+        certifiedLocationBpns:
           type: array
           description: |
-            BPNs of the sites or addresses the request applies to. If omitted,
-            the request applies to the legal entity.
+            BPNs (BPNL, BPNS, or BPNA) of the certified locations the request
+            targets. If omitted, the request applies to the legal entity.
           items:
             type: string
 
@@ -406,7 +477,7 @@ components:
       required:
         - exchangeId
         - certificateId
-        - version
+        - revision
         - status
       properties:
         exchangeId:
@@ -419,9 +490,9 @@ components:
           description: |
             Identifier assigned to the requested certificate. Used to retrieve
             the certificate via `GET /certificates/{id}`.
-        version:
+        revision:
           type: integer
-          description: Version assigned to the requested certificate.
+          description: Revision assigned to the requested certificate.
         status:
           type: string
           enum: [ACKNOWLEDGED, CERTIFICATION_REQUESTED, FULFILLED, DECLINED]
@@ -441,7 +512,7 @@ components:
       required:
         - exchangeId
         - certificateId
-        - version
+        - revision
         - status
       properties:
         exchangeId:
@@ -452,9 +523,9 @@ components:
         certificateId:
           type: string
           description: Unique identifier of the requested certificate.
-        version:
+        revision:
           type: integer
-          description: The version of the requested certificate.
+          description: The revision of the requested certificate.
         status:
           type: string
           enum: [ACKNOWLEDGED, CERTIFICATION_REQUESTED, FULFILLED, DECLINED, FAILED]
@@ -467,67 +538,44 @@ components:
           items:
             $ref: '#/components/schemas/StatusError'
 
-    CertificateMultipart:
+    CertificateMetadata:
+      description: |
+        A retrieved certificate record (CX-0135 §4). On retrieval the full record
+        is mandatory, and document content (`contentBase64`) MUST NOT be included
+        (CX-0135 §3.3.2). The field definitions are shared with the Certificate
+        Consumer API via `ccm-schemas.yaml`.
+      allOf:
+        - $ref: './ccm-schemas.yaml#/components/schemas/Certificate'
+        - type: object
+          required:
+            - revision
+            - certificateType
+            - registrationNumber
+            - validFrom
+            - validUntil
+            - trustLevel
+            - certifiedLocations
+
+    WithdrawnCertificate:
       type: object
       description: |
-        Logical schema describing the two-part `multipart/related` response.
-        OpenAPI 3.0 cannot fully express multipart-related binding; the first
-        part is the JSON metadata described by `CertificateMetadata` and the
-        second part is the binary certificate (`application/pdf`).
-      required:
-        - metadata
-        - certificate
-      properties:
-        metadata:
-          $ref: '#/components/schemas/CertificateMetadata'
-        certificate:
-          type: string
-          format: binary
-          description: The certificate binary encoded as `application/pdf`.
-
-    CertificateMetadata:
-      type: object
-      description: JSON metadata accompanying a retrieved certificate.
+        Minimal status body returned by `GET /certificates/{id}` for a withdrawn
+        certificate (CX-0135 §3.3.2). A withdrawn certificate need not remain
+        retrievable; this body lets a consumer holding the `certificateId` observe
+        the withdrawal. It carries no metadata or documents.
+      additionalProperties: false
       required:
         - certificateId
-        - version
-        - certificateType
-        - validFrom
-        - validUntil
+        - status
       properties:
         certificateId:
           type: string
-          description: |
-            Unique identifier of the certificate. Matches the `{id}` path
-            parameter of the request.
-        version:
-          type: integer
-          description: |
-            The version returned — the version requested via the `version` query
-            parameter, or the latest version if none was specified.
-        certificateType:
+          description: Unique identifier of the withdrawn certificate.
+          example: "cert-550e8400-e29b-41d4-a716-446655440000"
+        status:
           type: string
-          description: Opaque string identifying the certificate type (e.g. `ISO9001`).
-        validFrom:
-          type: string
-          format: date
-          description: |
-            Inclusive start date of the certificate validity period
-            (ISO 8601 full-date, `YYYY-MM-DD`).
-        validUntil:
-          type: string
-          format: date
-          description: |
-            Inclusive end date of the certificate validity period
-            (ISO 8601 full-date, `YYYY-MM-DD`).
-        locationBpns:
-          type: array
-          description: |
-            BPNs of the sites or addresses the certificate applies to. If
-            omitted, the certificate applies to the issuing legal entity as a
-            whole.
-          items:
-            type: string
+          enum: [WITHDRAWN]
+          description: Lifecycle status of the certificate.
 
     CertificateAcceptanceStatusEvent:
       type: object
@@ -639,72 +687,59 @@ components:
 
     CertificateQuery:
       type: object
-      description: Request body for `POST /certificates/query`.
+      description: |
+        Self-contained CCM certificate query (CX-0135 §3.3.4). A single root
+        `$condition` whose `$match` array combines its clauses with logical AND.
       required:
-        - certificateType
+        - $condition
+      additionalProperties: false
       properties:
-        certificateType:
-          type: string
-          description: |
-            Opaque string identifying the certificate type to be matched
-            (for example, `ISO9001`).
-        from:
-          type: string
-          format: date
-          description: |
-            Inclusive lower bound of the certificate validity range
-            (ISO 8601 full-date). Only certificates whose `validFrom` is on
-            or after this date are returned.
-        to:
-          type: string
-          format: date
-          description: |
-            Inclusive upper bound of the certificate validity range
-            (ISO 8601 full-date). Only certificates whose `validUntil` is on
-            or before this date are returned.
-        limit:
-          type: integer
-          minimum: 1
-          description: |
-            Maximum number of results to return in a single page. If
-            omitted, the Certificate Provider MAY apply a default limit.
-
-    CertificateQueryResponse:
+        $condition:
+          $ref: '#/components/schemas/Condition'
+    Condition:
       type: object
-      description: A single result entry in a certificate query response.
       required:
-        - certificateId
-        - version
-        - datasetId
-        - certificateType
-        - validFrom
-        - validUntil
+        - $match
+      additionalProperties: false
       properties:
-        certificateId:
-          type: string
-          description: |
-            Unique identifier of the certificate, usable in
-            `GET /certificates/{id}`.
-        version:
-          type: integer
-          description: The latest version of the certificate.
-        datasetId:
-          type: string
-          description: |
-            Identifier of the DSP dataset under which the certificate is
-            exposed in the Certificate Provider's catalog.
-        certificateType:
-          type: string
-        validFrom:
-          type: string
-          format: date
-        validUntil:
-          type: string
-          format: date
-        locationBpns:
+        $match:
           type: array
+          minItems: 1
+          description: |
+            Comparison clauses combined with logical AND; a certificate matches
+            only if it satisfies every clause.
           items:
-            type: string
+            $ref: '#/components/schemas/MatchClause'
+    MatchClause:
+      type: object
+      description: An equality comparison of a single field against a string value.
+      required:
+        - $field
+        - $eq
+      additionalProperties: false
+      properties:
+        $field:
+          type: string
+          description: |
+            Dotted path of the field to compare. Providers MUST support at least
+            `certifiedLocations.bpnl`, `certifiedLocations.bpns`,
+            `certifiedLocations.bpna`, and `certificateType`, and MAY support
+            more; an unsupported field MUST be rejected with `501`.
+          pattern: '^[a-zA-Z]+(\.[a-zA-Z]+)*$'
+          example: certifiedLocations.bpnl
+        $eq:
+          type: string
+          description: The string value the field must equal.
+          example: BPNL00000001AXS
+    CertificateQueryResponse:
+      type: array
+      description: |
+        Certificate records matching a query. Each item is the full certificate
+        metadata for the latest revision (without document binaries). A consumer
+        retrieves the certificate via `GET /certificates/{id}` using its
+        `certificateId`.
+      items:
+        $ref: '#/components/schemas/CertificateMetadata'
 
     Error:
       type: object
@@ -746,6 +781,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    NotImplemented:
+      description: |
+        The query uses a field or operator the provider does not support
+        (CX-0135 §3.3.4).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
   securitySchemes:
     bearerAuth:
@@ -753,7 +796,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Bearer token as defined by CX-0000 Section 4 (HTTPS Binding).
+        Bearer token as defined by CX-0000.
 
 security:
   - bearerAuth: []

@@ -1,16 +1,13 @@
 package org.metaform.certo.provider.api.dto;
 
+import org.metaform.certo.common.model.CertificateRecord;
+
 import java.util.List;
 
 /**
- * A page of certificate query results plus opaque cursors for related pages (CX-0135 &sect;4.4.5.1).
- * {@code next}/{@code prev} are required by the spec; {@code first}/{@code last} are optional. A null
- * cursor means there is no page in that direction (and, for first/last, that the result isn't paginated).
+ * One page of {@code POST /certificates/search} results plus opaque cursors for the adjacent pages
+ * (CX-0135 &sect;3.3.4). Pagination is conveyed to the client via the RFC 8288 {@code Link} header
+ * ({@code next}/{@code prev}); a null cursor means there is no page in that direction.
  */
-public record CertificatePage(
-        List<CertificateQueryResponse> items,
-        String nextCursor,
-        String prevCursor,
-        String firstCursor,
-        String lastCursor) {
+public record CertificatePage(List<CertificateRecord> items, String nextCursor, String prevCursor) {
 }

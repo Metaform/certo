@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * The provider's record of a {@code Certificate Exchange} (CX-0135 &sect;2.1) — one end-to-end
- * delivery interaction for a specific (certificateId, version), correlated by {@code exchangeId}.
+ * delivery interaction for a specific (certificateId, revision), correlated by {@code exchangeId}.
  *
  * <p>Enforces the CX-0135 &sect;2.1.3 state machine: Fulfillment transitions must be legal, terminal
  * states are immutable, and Acceptance may only be recorded once the exchange is {@code FULFILLED}.
@@ -23,7 +23,7 @@ public class ProviderCertificateExchange {
 
     private final String exchangeId;
     private final String certificateId;
-    private final int version;
+    private final int revision;
     private final String counterpartyBpn;
 
     private FulfillmentStatus fulfillmentStatus;
@@ -36,16 +36,16 @@ public class ProviderCertificateExchange {
     private boolean willFail;
     private boolean consumerInitiated;
 
-    public ProviderCertificateExchange(String exchangeId, String certificateId, int version, String counterpartyBpn,
+    public ProviderCertificateExchange(String exchangeId, String certificateId, int revision, String counterpartyBpn,
                                FulfillmentStatus initialStatus) {
-        this(exchangeId, certificateId, version, counterpartyBpn, initialStatus, null);
+        this(exchangeId, certificateId, revision, counterpartyBpn, initialStatus, null);
     }
 
-    public ProviderCertificateExchange(String exchangeId, String certificateId, int version, String counterpartyBpn,
+    public ProviderCertificateExchange(String exchangeId, String certificateId, int revision, String counterpartyBpn,
                                FulfillmentStatus initialStatus, List<StatusError> initialErrors) {
         this.exchangeId = exchangeId;
         this.certificateId = certificateId;
-        this.version = version;
+        this.revision = revision;
         this.counterpartyBpn = counterpartyBpn;
         this.fulfillmentStatus = initialStatus;
         this.fulfillmentErrors = initialErrors;
@@ -124,8 +124,8 @@ public class ProviderCertificateExchange {
         return certificateId;
     }
 
-    public int version() {
-        return version;
+    public int revision() {
+        return revision;
     }
 
     public String counterpartyBpn() {

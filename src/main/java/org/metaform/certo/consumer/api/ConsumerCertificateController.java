@@ -51,7 +51,7 @@ public class ConsumerCertificateController {
     @PostMapping(path = "/consumer/certificate-requests",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ConsumerRequestView> initiate(@Valid @RequestBody InitiateRequest request) {
-        var opened = service.initiateRequest(request.certificateType(), request.locationBpns());
+        var opened = service.initiateRequest(request.certificateType(), request.certifiedLocationBpns());
         return ResponseEntity.accepted().body(ConsumerRequestView.of(opened));
     }
 

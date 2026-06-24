@@ -14,7 +14,7 @@ import java.util.List;
 public record CertificateRequestStatus(
         String exchangeId,
         String certificateId,
-        int version,
+        int revision,
         FulfillmentStatus status,
         List<StatusError> errors) {
 }

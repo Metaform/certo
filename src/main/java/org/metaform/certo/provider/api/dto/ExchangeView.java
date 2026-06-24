@@ -15,7 +15,7 @@ import java.util.List;
 public record ExchangeView(
         String exchangeId,
         String certificateId,
-        int version,
+        int revision,
         FulfillmentStatus fulfillmentStatus,
         List<StatusError> fulfillmentErrors,
         AcceptanceStatus acceptanceStatus,

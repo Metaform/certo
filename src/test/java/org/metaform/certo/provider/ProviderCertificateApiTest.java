@@ -1,9 +1,13 @@
 package org.metaform.certo.provider;
 
 import org.junit.jupiter.api.Test;
+import org.metaform.certo.common.model.CertifiedLocation;
+import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.provider.model.Certificate;
-import org.metaform.certo.provider.model.CertificateVersion;
+import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.model.Document;
 import org.metaform.certo.provider.store.ProviderCertificateStore;
+import org.metaform.certo.provider.store.ProviderDocumentStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,23 +40,26 @@ class ProviderCertificateApiTest {
     @Autowired
     ProviderCertificateStore certificateStore;
 
+    @Autowired
+    ProviderDocumentStore documentStore;
+
     @Test
     void requestOfferedType_fulfilledImmediately_andPollable() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"locationBpns\":[\"BPNS00000003AYRE\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS00000003AYRE\"]}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
                 .andExpect(jsonPath("$.certificateId").value("cert-iso9001-0001"))
-                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.revision").value(2))
                 .andReturn();
 
-        var body = mapper.readTree(result.getResponse().getContentAsString());
-        var exchangeId = body.get("exchangeId").asString();
+        var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
         mvc.perform(get("/certificate-requests/{id}", exchangeId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exchangeId").value(exchangeId))
+                .andExpect(jsonPath("$.revision").value(2))
                 .andExpect(jsonPath("$.status").value("FULFILLED"));
     }
 
@@ -82,89 +89,94 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void retrieveCertificate_returnsMultipartWithMetadataAndPdf() throws Exception {
-        var result = mvc.perform(get("/certificates/{id}", "cert-iso9001-0001"))
+    void retrieveCertificate_returnsJsonMetadataWithDocumentReferences() throws Exception {
+        mvc.perform(get("/certificates/{id}", "cert-iso9001-0001"))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Type",
-                        org.hamcrest.Matchers.startsWith("multipart/related")))
-                .andReturn();
-
-        // RFC 2387: the Content-Type names the root part via `start`, and each part has a Content-ID.
-        assertThat(result.getResponse().getHeader("Content-Type")).contains("start=\"<metadata@certo>\"");
-        var body = result.getResponse().getContentAsString();
-        assertThat(body).contains("Content-Type: application/json");
-        assertThat(body).contains("Content-ID: <metadata@certo>");
-        assertThat(body).contains("\"certificateId\":\"cert-iso9001-0001\"");
-        assertThat(body).contains("\"version\":2"); // latest by default
-        assertThat(body).contains("Content-Type: application/pdf");
-        assertThat(body).contains("Content-ID: <certificate@certo>");
-        assertThat(body).contains("%PDF-1.4");
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.certificateId").value("cert-iso9001-0001"))
+                .andExpect(jsonPath("$.revision").value(2)) // latest by default
+                .andExpect(jsonPath("$.certificateType").value("ISO9001"))
+                .andExpect(jsonPath("$.trustLevel").value("high"))
+                .andExpect(jsonPath("$.certifiedLocations[0].bpns").value("BPNS00000003AYRE"))
+                .andExpect(jsonPath("$.certifiedLocations[0].locationRole").value("MAIN_LOCATION"))
+                .andExpect(jsonPath("$.documents[0].documentId").isNotEmpty())
+                .andExpect(jsonPath("$.documents[0].mediaType").value("application/pdf"));
     }
 
     @Test
-    void retrieveCertificate_multipartAccept_ok_butIncompatibleAccept_is406() throws Exception {
-        mvc.perform(get("/certificates/{id}", "cert-iso9001-0001")
-                        .accept(MediaType.parseMediaType("multipart/related")))
-                .andExpect(status().isOk());
+    void retrieveDocument_returnsBinaryWithItsMediaType() throws Exception {
+        var metadata = mapper.readTree(mvc.perform(get("/certificates/{id}", "cert-iso9001-0001"))
+                .andReturn().getResponse().getContentAsString());
+        var documentId = metadata.get("documents").get(0).get("documentId").asString();
 
-        mvc.perform(get("/certificates/{id}", "cert-iso9001-0001")
-                        .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isNotAcceptable());
+        var result = mvc.perform(get("/documents/{id}", documentId))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andReturn();
+        assertThat(result.getResponse().getContentAsByteArray()).isNotEmpty();
     }
 
     @Test
-    void retrieveCertificate_specificVersion() throws Exception {
-        var result = mvc.perform(get("/certificates/{id}", "cert-iso9001-0001").param("version", "1"))
+    void retrieveDocument_unknown_notFound() throws Exception {
+        mvc.perform(get("/documents/{id}", "doc-nope")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void retrieveCertificate_specificRevision() throws Exception {
+        mvc.perform(get("/certificates/{id}", "cert-iso9001-0001").param("revision", "1"))
                 .andExpect(status().isOk())
-                .andReturn();
-        assertThat(result.getResponse().getContentAsString()).contains("\"version\":1");
+                .andExpect(jsonPath("$.revision").value(1));
     }
 
     @Test
     void retrieveCertificate_unknown_notFound() throws Exception {
         mvc.perform(get("/certificates/{id}", "cert-nope"))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void retrieveCertificate_unknown_withMultipartAccept_stillNotFound() throws Exception {
-        // The consumer sends Accept: multipart/related; the JSON error must still be returned (404, not 500).
-        mvc.perform(get("/certificates/{id}", "cert-nope")
-                        .accept(MediaType.parseMediaType("multipart/related")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").isNotEmpty());
     }
 
     @Test
-    void query_byType_returnsLatestVersion() throws Exception {
-        mvc.perform(post("/certificates/query")
+    void search_byType_returnsLatestRevision() throws Exception {
+        mvc.perform(post("/certificates/search")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\"}"))
+                        .content(searchByType("ISO9001")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].certificateId").value("cert-iso9001-0001"))
-                .andExpect(jsonPath("$[0].version").value(2))
-                .andExpect(jsonPath("$[0].datasetId").value("dataset-ccm-cert-abc123"));
+                .andExpect(jsonPath("$[0].revision").value(2));
+    }
+
+    @Test
+    void search_byCertifiedLocationBpns_matches() throws Exception {
+        mvc.perform(post("/certificates/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"$condition\":{\"$match\":[{\"$field\":\"certifiedLocations.bpns\",\"$eq\":\"BPNS00000003AYRE\"}]}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)));
+    }
+
+    @Test
+    void search_unsupportedField_notImplemented() throws Exception {
+        mvc.perform(post("/certificates/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"$condition\":{\"$match\":[{\"$field\":\"registrationNumber\",\"$eq\":\"x\"}]}}"))
+                .andExpect(status().isNotImplemented());
     }
 
     @Test
     void acceptanceNotification_recordsStatus_thenUnknownIs404_andRejectedNeedsErrors() throws Exception {
-        // Open an exchange for a held certificate -> immediately FULFILLED, so acceptance is allowed.
         var exchangeId = openExchange();
         var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
-        // ACCEPTED acceptance event is recorded.
         mvc.perform(post("/certificate-acceptance-notifications")
                         .contentType("application/cloudevents+json")
                         .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
 
-        // Unknown exchange -> 404.
         mvc.perform(post("/certificate-acceptance-notifications")
                         .contentType("application/cloudevents+json")
                         .content(acceptanceEvent("exch-unknown", certificateId, "ACCEPTED", false)))
                 .andExpect(status().isNotFound());
 
-        // REJECTED without errors -> 400.
         mvc.perform(post("/certificate-acceptance-notifications")
                         .contentType("application/cloudevents+json")
                         .content(acceptanceEvent(exchangeId, certificateId, "REJECTED", false)))
@@ -173,8 +185,6 @@ class ProviderCertificateApiTest {
 
     @Test
     void acceptanceNotification_directTerminalWithoutRetrieved_isRecorded() throws Exception {
-        // RETRIEVED is optional (CX-0135 §2.1.3): a terminal verdict may be reported straight from
-        // FULFILLED with no prior RETRIEVED. This is the path Certo's consumer takes.
         var exchangeId = openExchange();
         var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
@@ -188,7 +198,6 @@ class ProviderCertificateApiTest {
 
     @Test
     void acceptanceNotification_optionalRetrievedThenTerminal_isRecorded() throws Exception {
-        // The optional RETRIEVED receipt remains valid: FULFILLED -> RETRIEVED -> ACCEPTED.
         var exchangeId = openExchange();
         var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
@@ -206,12 +215,38 @@ class ProviderCertificateApiTest {
     }
 
     @Test
+    void acceptanceNotification_rejectedWithPerSiteSpecifier_isRecorded() throws Exception {
+        // CX-0135 errors[] may carry a per-site `specifier` (e.g. a BPNS) scoping the error.
+        var exchangeId = openExchange();
+        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
+
+        var event = """
+                {
+                  "specversion": "1.0",
+                  "type": "org.catena-x.ccm.CertificateAcceptanceStatus.v1",
+                  "source": "urn:bpn:BPNL0000000002CD",
+                  "sourcebpn": "BPNL0000000002CD",
+                  "id": "acc-specifier-%s",
+                  "time": "2025-05-04T08:00:00Z",
+                  "data": { "exchangeId": "%s", "certificateId": "%s", "status": "REJECTED",
+                            "errors": [ {"message": "Certificate has expired"},
+                                        {"specifier": "BPNS000000000002", "message": "Site rejected"} ] }
+                }
+                """.formatted(exchangeId, exchangeId, certificateId);
+        mvc.perform(post("/certificate-acceptance-notifications")
+                        .contentType("application/cloudevents+json").content(event))
+                .andExpect(status().isNoContent());
+
+        var view = exchangeView(exchangeId);
+        assertThat(view.get("acceptanceStatus").asString()).isEqualTo("REJECTED");
+        assertThat(view.get("acceptanceErrors").get(1).get("specifier").asString()).isEqualTo("BPNS000000000002");
+    }
+
+    @Test
     void request_notHeld_acknowledgesThenFulfillsAsynchronously() throws Exception {
-        // A type+location not already held -> ACKNOWLEDGED, then advances to FULFILLED.
-        // (IATF16949 so the published produced certificate doesn't pollute the ISO9001 query assertion.)
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"IATF16949\",\"locationBpns\":[\"BPNS-NEW-SITE\"]}"))
+                        .content("{\"certificateType\":\"IATF16949\",\"certifiedLocationBpns\":[\"BPNS-NEW-SITE\"]}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("ACKNOWLEDGED"))
                 .andReturn();
@@ -219,14 +254,12 @@ class ProviderCertificateApiTest {
         var exchangeId = body.get("exchangeId").asString();
         var certificateId = body.get("certificateId").asString();
 
-        // Not retrievable until published (FULFILLED).
         mvc.perform(get("/certificates/{id}", certificateId)).andExpect(status().isNotFound());
 
         assertThat(advance(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
         assertThat(advance(exchangeId)).isEqualTo("FULFILLED");
         assertThat(requestStatus(exchangeId)).isEqualTo("FULFILLED");
 
-        // Now published and retrievable.
         mvc.perform(get("/certificates/{id}", certificateId)).andExpect(status().isOk());
     }
 
@@ -234,7 +267,7 @@ class ProviderCertificateApiTest {
     void request_failTrigger_endsInFailed() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"locationBpns\":[\"BPNFAIL\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNFAIL\"]}"))
                 .andExpect(jsonPath("$.status").value("ACKNOWLEDGED"))
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
@@ -250,7 +283,7 @@ class ProviderCertificateApiTest {
     void acceptance_beforeFulfilled_isConflict() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"locationBpns\":[\"BPNS-NEW-SITE\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS-NEW-SITE\"]}"))
                 .andReturn();
         var body = mapper.readTree(result.getResponse().getContentAsString());
         var exchangeId = body.get("exchangeId").asString(); // ACKNOWLEDGED, not yet FULFILLED
@@ -270,7 +303,6 @@ class ProviderCertificateApiTest {
                         .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
 
-        // A new (non-duplicate) event trying to change a terminal acceptance -> 409.
         mvc.perform(post("/certificate-acceptance-notifications").contentType("application/cloudevents+json")
                         .content(acceptanceEvent(exchangeId, certificateId, "REJECTED", true)))
                 .andExpect(status().isConflict());
@@ -284,22 +316,24 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void modify_publishesNewVersion_servedAndQueryable() throws Exception {
+    void modify_publishesNewRevision_servedAndSearchable() throws Exception {
         seedCertificate("cert-mod-test", "MODTEST");
 
         mvc.perform(post("/certificates/{id}/modify", "cert-mod-test"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.revision").value(2))
                 .andExpect(jsonPath("$.lifecycleStatus").value("MODIFIED"));
 
-        mvc.perform(get("/certificates/{id}", "cert-mod-test")).andExpect(status().isOk());
-        mvc.perform(post("/certificates/query").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"MODTEST\"}"))
-                .andExpect(jsonPath("$[0].version").value(2));
+        mvc.perform(get("/certificates/{id}", "cert-mod-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revision").value(2));
+        mvc.perform(post("/certificates/search").contentType(MediaType.APPLICATION_JSON)
+                        .content(searchByType("MODTEST")))
+                .andExpect(jsonPath("$[0].revision").value(2));
     }
 
     @Test
-    void withdraw_makesUnretrievableAndExcludedFromQuery_andSecondWithdrawConflicts() throws Exception {
+    void withdraw_returnsWithdrawnStatusBody_excludedFromSearch_andSecondWithdrawConflicts() throws Exception {
         seedCertificate("cert-wd-test", "WDTEST");
         mvc.perform(get("/certificates/{id}", "cert-wd-test")).andExpect(status().isOk());
 
@@ -307,23 +341,31 @@ class ProviderCertificateApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lifecycleStatus").value("WITHDRAWN"));
 
-        mvc.perform(get("/certificates/{id}", "cert-wd-test")).andExpect(status().isNotFound());
-        mvc.perform(post("/certificates/query").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"WDTEST\"}"))
+        // A withdrawn certificate stays observable: 200 with the minimal withdrawn status body (CX-0135 §3.3.2).
+        mvc.perform(get("/certificates/{id}", "cert-wd-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("WITHDRAWN"))
+                .andExpect(jsonPath("$.certifiedLocations").doesNotExist());
+
+        mvc.perform(post("/certificates/search").contentType(MediaType.APPLICATION_JSON)
+                        .content(searchByType("WDTEST")))
                 .andExpect(jsonPath("$.length()").value(0));
 
         mvc.perform(post("/certificates/{id}/withdraw", "cert-wd-test")).andExpect(status().isConflict());
     }
 
     private void seedCertificate(String certificateId, String type) {
-        var cert = new Certificate(certificateId, "ds-" + certificateId, type, List.of());
-        cert.addVersion(new CertificateVersion(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), new byte[]{'%', 'P', 'D', 'F'}));
+        var cert = new Certificate(certificateId, type, "2015", "REG-" + certificateId, "high", null,
+                List.of(new CertifiedLocation("BPNL00000001AXS", "BPNA000000000009", "BPNS00000009ZZZZ", LocationRole.MAIN_LOCATION)),
+                null, null);
+        var documentId = "doc-" + certificateId + "-r1";
+        documentStore.save(new Document(documentId, LocalDate.of(2024, 1, 1), "en", "application/pdf", new byte[]{'%', 'P', 'D', 'F'}));
+        cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of(documentId)));
         certificateStore.save(cert);
     }
 
     @Test
     void acceptanceEvent_missingSourcebpn_isBadRequest() throws Exception {
-        // Required CX-0000 extension attribute 'sourcebpn' is absent -> envelope validation fails (400).
         var event = """
                 {
                   "specversion": "1.0",
@@ -342,11 +384,11 @@ class ProviderCertificateApiTest {
     void acceptanceEvent_invalidEnvelope_isBadRequest() throws Exception {
         var data = "\"data\":{\"exchangeId\":\"x\",\"certificateId\":\"c\",\"status\":\"ACCEPTED\"}";
         var t = "\"type\":\"org.catena-x.ccm.CertificateAcceptanceStatus.v1\"";
-        post400("{\"specversion\":\"2.0\"," + t + ",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\",\"id\":\"e1\"," + data + "}"); // wrong specversion
-        post400("{" + t + ",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\",\"id\":\"e2\"," + data + "}");                        // missing specversion
-        post400("{\"specversion\":\"1.0\"," + t + ",\"sourcebpn\":\"BPN\",\"id\":\"e3\"," + data + "}");                        // missing source
-        post400("{\"specversion\":\"1.0\"," + t + ",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\"," + data + "}");            // missing id
-        post400("{\"specversion\":\"1.0\",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\",\"id\":\"e5\"," + data + "}");        // missing type
+        post400("{\"specversion\":\"2.0\"," + t + ",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\",\"id\":\"e1\"," + data + "}");
+        post400("{" + t + ",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\",\"id\":\"e2\"," + data + "}");
+        post400("{\"specversion\":\"1.0\"," + t + ",\"sourcebpn\":\"BPN\",\"id\":\"e3\"," + data + "}");
+        post400("{\"specversion\":\"1.0\"," + t + ",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\"," + data + "}");
+        post400("{\"specversion\":\"1.0\",\"source\":\"urn:bpn:x\",\"sourcebpn\":\"BPN\",\"id\":\"e5\"," + data + "}");
     }
 
     private void post400(String event) throws Exception {
@@ -360,14 +402,12 @@ class ProviderCertificateApiTest {
         var exchangeId = openExchange();
         var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
-        // Batch: a valid ACCEPTED followed by an invalid REJECTED (no errors). The whole batch -> 400.
         var batch = "[" + acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)
                 + "," + acceptanceEvent(exchangeId, certificateId, "REJECTED", false) + "]";
         mvc.perform(post("/certificate-acceptance-notifications")
                         .contentType("application/cloudevents+json").content(batch))
                 .andExpect(status().isBadRequest());
 
-        // The valid event in the batch must NOT have been applied.
         assertThat(exchangeView(exchangeId).hasNonNull("acceptanceStatus")).isFalse();
     }
 
@@ -382,7 +422,6 @@ class ProviderCertificateApiTest {
                 .andExpect(status().isNoContent());
         assertThat(exchangeView(exchangeId).get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
 
-        // Same source+id, different status -> ignored as a duplicate; status stays ACCEPTED.
         mvc.perform(post("/certificate-acceptance-notifications").contentType("application/cloudevents+json")
                         .content(acceptanceEvent(id, exchangeId, certificateId, "REJECTED", true)))
                 .andExpect(status().isNoContent());
@@ -390,22 +429,20 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void query_paginates_withNextFirstLastLinks() throws Exception {
-        // Seed three certificates of a dedicated type so a limit=1 query paginates.
+    void search_paginates_withNextPrevLinks() throws Exception {
         for (int i = 1; i <= 3; i++) {
-            var cert = new Certificate("cert-paged-000" + i, "ds-paged", "PAGED", List.of());
-            cert.addVersion(new CertificateVersion(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), new byte[0]));
-            certificateStore.save(cert);
+            seedCertificate("cert-paged-000" + i, "PAGED");
         }
 
-        var link = mvc.perform(post("/certificates/query")
+        var link = mvc.perform(post("/certificates/search")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"PAGED\",\"limit\":1}"))
+                        .param("limit", "1")
+                        .content(searchByType("PAGED")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andReturn().getResponse().getHeader("Link");
 
-        assertThat(link).contains("rel=\"next\"").contains("rel=\"first\"").contains("rel=\"last\"");
+        assertThat(link).contains("rel=\"next\"");
         assertThat(link).doesNotContain("rel=\"prev\""); // first page
     }
 
@@ -413,7 +450,7 @@ class ProviderCertificateApiTest {
     private String openExchange() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"locationBpns\":[\"BPNS00000003AYRE\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS00000003AYRE\"]}"))
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
                 .andReturn();
         return mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
@@ -434,8 +471,11 @@ class ProviderCertificateApiTest {
         return mapper.readTree(result.getResponse().getContentAsString());
     }
 
+    private static String searchByType(String type) {
+        return "{\"$condition\":{\"$match\":[{\"$field\":\"certificateType\",\"$eq\":\"" + type + "\"}]}}";
+    }
+
     private static String acceptanceEvent(String exchangeId, String certificateId, String acceptanceStatus, boolean withErrors) {
-        // Unique CloudEvent id per call so the idempotency layer doesn't dedupe distinct events.
         return acceptanceEvent("acc-" + exchangeId + "-" + acceptanceStatus, exchangeId, certificateId, acceptanceStatus, withErrors);
     }
 

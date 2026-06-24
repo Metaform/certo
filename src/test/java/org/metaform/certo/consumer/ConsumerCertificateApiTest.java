@@ -1,9 +1,13 @@
 package org.metaform.certo.consumer;
 
 import org.junit.jupiter.api.Test;
+import org.metaform.certo.common.model.CertifiedLocation;
+import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.provider.model.Certificate;
-import org.metaform.certo.provider.model.CertificateVersion;
+import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.model.Document;
 import org.metaform.certo.provider.store.ProviderCertificateStore;
+import org.metaform.certo.provider.store.ProviderDocumentStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -24,9 +28,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Exercises the Certificate Consumer Notification API against a real running server, so the consumer's
- * OkHttp call out to the provider's {@code GET /certificates/{id}} (same runtime) is genuinely
- * performed. A fixed clock makes the validity/expiry evaluation deterministic.
+ * Exercises the Certificate Consumer API against a real running server, so the consumer's OkHttp pull
+ * of the provider's {@code GET /certificates/{id}} + {@code GET /documents/{id}} (same runtime) is
+ * genuinely performed. A fixed clock makes the validity/expiry evaluation deterministic.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
@@ -48,6 +52,9 @@ class ConsumerCertificateApiTest {
     @Autowired
     ProviderCertificateStore providerCertificates;
 
+    @Autowired
+    ProviderDocumentStore providerDocuments;
+
     /** Fixes "now" to 2026-06-04 so expiry checks are deterministic regardless of the real date. */
     @TestConfiguration
     static class FixedClockConfig {
@@ -60,7 +67,7 @@ class ConsumerCertificateApiTest {
 
     @Test
     void createdLifecycleEvent_retrievesValidCertificate_andAccepts() throws Exception {
-        // cert-iso14001-0001 v1 is valid (until 2027-05-31) at the fixed clock.
+        // cert-iso14001-0001 r1 is valid (until 2027-05-31) at the fixed clock.
         var post = postNotification(lifecycleCreated("exch-created-1", "cert-iso14001-0001", 1));
         assertThat(post.statusCode()).isEqualTo(204);
 
@@ -71,10 +78,9 @@ class ConsumerCertificateApiTest {
         assertThat(body.get("certificateId").asString()).isEqualTo("cert-iso14001-0001");
         assertThat(body.get("status").asString()).isEqualTo("ACCEPTED");
 
-        // The CREATED event also records the consumer's lifecycle view of the certificate.
         var known = mapper.readTree(get("/consumer/certificates/cert-iso14001-0001").body());
         assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
-        assertThat(known.get("version").asInt()).isEqualTo(1);
+        assertThat(known.get("revision").asInt()).isEqualTo(1);
     }
 
     @Test
@@ -82,7 +88,7 @@ class ConsumerCertificateApiTest {
         assertThat(postNotification(lifecycleModified("cert-mod-x", 2)).statusCode()).isEqualTo(204);
 
         var view = mapper.readTree(get("/consumer/certificates/cert-mod-x").body());
-        assertThat(view.get("version").asInt()).isEqualTo(2);
+        assertThat(view.get("revision").asInt()).isEqualTo(2);
         assertThat(view.get("lifecycleStatus").asString()).isEqualTo("MODIFIED");
     }
 
@@ -96,7 +102,7 @@ class ConsumerCertificateApiTest {
 
     @Test
     void createdLifecycleEvent_retrievesExpiredCertificate_andRejects() throws Exception {
-        // cert-expired-0001 v1 is expired (until 2020-01-01).
+        // cert-expired-0001 r1 is expired (until 2020-01-01).
         assertThat(postNotification(lifecycleCreated("exch-created-2", "cert-expired-0001", 1)).statusCode())
                 .isEqualTo(204);
 
@@ -118,27 +124,22 @@ class ConsumerCertificateApiTest {
 
     @Test
     void consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts() throws Exception {
-        // Consumer opens a request for a not-yet-held cert -> ACKNOWLEDGED.
         var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"locationBpns\":[\"BPNS-PULL-1\"]}");
+                "{\"certificateType\":\"ISO14001\",\"certifiedLocationBpns\":[\"BPNS-PULL-1\"]}");
         assertThat(initiate.statusCode()).isEqualTo(202);
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
         assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("ACKNOWLEDGED");
 
-        // No acceptance yet (still in fulfillment).
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
 
-        // Drive provider fulfillment: intermediate step (no push), then FULFILLED (pushes to consumer).
         assertThat(advanceProvider(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
         assertThat(advanceProvider(exchangeId)).isEqualTo("FULFILLED");
 
-        // The push made the consumer retrieve, evaluate, and accept.
         assertThat(mapper.readTree(get("/consumer/certificate-requests/" + exchangeId).body())
                 .get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
         assertThat(mapper.readTree(getAcceptanceStatus(exchangeId).body()).get("status").asString())
                 .isEqualTo("ACCEPTED");
-        // ...and the acceptance was reported back to the provider.
         assertThat(mapper.readTree(get("/certificate-exchanges/" + exchangeId).body())
                 .get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
     }
@@ -146,7 +147,7 @@ class ConsumerCertificateApiTest {
     @Test
     void consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance() throws Exception {
         var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"locationBpns\":[\"BPNFAIL\"]}");
+                "{\"certificateType\":\"ISO14001\",\"certifiedLocationBpns\":[\"BPNFAIL\"]}");
         var exchangeId = mapper.readTree(initiate.body()).get("exchangeId").asString();
 
         assertThat(advanceProvider(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
@@ -154,11 +155,9 @@ class ConsumerCertificateApiTest {
 
         assertThat(mapper.readTree(get("/consumer/certificate-requests/" + exchangeId).body())
                 .get("fulfillmentStatus").asString()).isEqualTo("FAILED");
-        // No retrieval/acceptance on a failed fulfillment.
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
     }
 
-    /** Advances the provider's exchange one fulfillment step and returns the new status. */
     private String advanceProvider(String exchangeId) throws Exception {
         var response = postEmpty("/certificate-requests/" + exchangeId + "/advance");
         return mapper.readTree(response.body()).get("status").asString();
@@ -166,10 +165,8 @@ class ConsumerCertificateApiTest {
 
     @Test
     void consumerInitiatedPull_heldCertificate_fulfilledImmediatelyAndAccepted() throws Exception {
-        // A held certificate covering the requested locations -> provider returns FULFILLED synchronously,
-        // so the consumer retrieves + accepts within the request itself (no advance/push needed).
         var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO9001\",\"locationBpns\":[\"BPNS00000003AYRE\"]}");
+                "{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS00000003AYRE\"]}");
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
         assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
@@ -188,28 +185,27 @@ class ConsumerCertificateApiTest {
         assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("DECLINED");
         assertThat(opened.get("errors").get(0).get("message").asString()).isNotEmpty();
 
-        // Declined -> nothing retrieved, no acceptance.
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
     }
 
     @Test
     void lifecycle_endToEnd_modifyThenWithdraw_consumerReacts() throws Exception {
-        // Seed a dedicated certificate and drive the provider's lifecycle endpoints; the consumer reacts
-        // via the real pushed lifecycle events.
-        var cert = new Certificate("cert-e2e-lc", "ds-e2e", "E2ELC", List.of());
-        cert.addVersion(new CertificateVersion(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1),
-                new byte[]{'%', 'P', 'D', 'F'}));
+        var cert = new Certificate("cert-e2e-lc", "E2ELC", "2015", "REG-e2e", "high", null,
+                List.of(new CertifiedLocation("BPNL00000001AXS", "BPNA000000000099", "BPNS0000000E2ELC", LocationRole.MAIN_LOCATION)),
+                null, null);
+        providerDocuments.save(new Document("doc-e2e-lc-r1", LocalDate.of(2024, 1, 1), "en", "application/pdf", new byte[]{'%', 'P', 'D', 'F'}));
+        cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of("doc-e2e-lc-r1")));
         providerCertificates.save(cert);
 
         postEmpty("/certificates/cert-e2e-lc/publish");   // -> consumer learns CREATED
         var created = mapper.readTree(get("/consumer/certificates/cert-e2e-lc").body());
         assertThat(created.get("lifecycleStatus").asString()).isEqualTo("CREATED");
-        assertThat(created.get("version").asInt()).isEqualTo(1);
+        assertThat(created.get("revision").asInt()).isEqualTo(1);
 
-        postEmpty("/certificates/cert-e2e-lc/modify");    // -> consumer learns MODIFIED v2
+        postEmpty("/certificates/cert-e2e-lc/modify");    // -> consumer learns MODIFIED r2
         var modified = mapper.readTree(get("/consumer/certificates/cert-e2e-lc").body());
         assertThat(modified.get("lifecycleStatus").asString()).isEqualTo("MODIFIED");
-        assertThat(modified.get("version").asInt()).isEqualTo(2);
+        assertThat(modified.get("revision").asInt()).isEqualTo(2);
 
         postEmpty("/certificates/cert-e2e-lc/withdraw");  // -> consumer learns WITHDRAWN
         var withdrawn = mapper.readTree(get("/consumer/certificates/cert-e2e-lc").body());
@@ -218,20 +214,18 @@ class ConsumerCertificateApiTest {
 
     @Test
     void duplicateLifecycleEvent_isIgnored() throws Exception {
-        // CREATED records the known certificate at v1 ...
         assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "CREATED", 1, "exch-cdup")).statusCode())
                 .isEqualTo(204);
-        // ... a second event with the SAME source+id is ignored, even though it claims MODIFIED v2.
         assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "MODIFIED", 2, null)).statusCode())
                 .isEqualTo(204);
 
         var known = mapper.readTree(get("/consumer/certificates/cert-cdup").body());
         assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
-        assertThat(known.get("version").asInt()).isEqualTo(1);
+        assertThat(known.get("revision").asInt()).isEqualTo(1);
     }
 
     /** A lifecycle event with an explicit id (so two events can share a source+id for dedup tests). */
-    private static String lifecycleEvent(String id, String certificateId, String status, int version, String exchangeId) {
+    private static String lifecycleEvent(String id, String certificateId, String status, int revision, String exchangeId) {
         var exch = exchangeId == null ? "" : "\"exchangeId\":\"" + exchangeId + "\",";
         return """
                 {
@@ -240,17 +234,15 @@ class ConsumerCertificateApiTest {
                   "source": "urn:bpn:BPNL0000000001AB",
                   "sourcebpn": "BPNL0000000001AB",
                   "id": "%s",
-                  "data": { %s"certificateId": "%s", "version": %d, "status": "%s",
-                            "datasetId": "ds", "certificateType": "ISO9001",
-                            "validFrom": "2024-06-01", "validUntil": "2028-05-31" }
+                  "data": { "status": "%s", %s"certificate": {
+                            "certificateId": "%s", "revision": %d, "certificateType": "ISO9001",
+                            "validFrom": "2024-06-01", "validUntil": "2028-05-31" } }
                 }
-                """.formatted(id, exch, certificateId, version, status);
+                """.formatted(id, status, exch, certificateId, revision);
     }
 
     @Test
     void providerInitiatedPush_closesLoopBackToProvider() throws Exception {
-        // Provider publishes a held certificate: opens an exchange, notifies the consumer, the consumer
-        // retrieves + decides, then posts acceptance back to the provider — all synchronously.
         var publish = http.send(
                 HttpRequest.newBuilder(URI.create(BASE + "/certificates/cert-iso14001-0001/publish"))
                         .POST(HttpRequest.BodyPublishers.noBody()).build(),
@@ -261,11 +253,9 @@ class ConsumerCertificateApiTest {
         var exchangeId = publication.get("exchangeId").asString();
         assertThat(publication.get("consumerNotified").asBoolean()).isTrue();
 
-        // The consumer recorded its decision locally.
         var consumerView = mapper.readTree(getAcceptanceStatus(exchangeId).body());
         assertThat(consumerView.get("status").asString()).isEqualTo("ACCEPTED");
 
-        // And the provider recorded the acceptance the consumer posted back — the loop is closed.
         var providerView = mapper.readTree(http.send(
                 HttpRequest.newBuilder(URI.create(BASE + "/certificate-exchanges/" + exchangeId)).GET().build(),
                 HttpResponse.BodyHandlers.ofString()).body());
@@ -291,12 +281,10 @@ class ConsumerCertificateApiTest {
 
     @Test
     void notificationBatch_isAtomic_oneBadEventAppliesNone() throws Exception {
-        // Batch: a valid CREATED followed by a structurally invalid CREATED (missing exchangeId) -> 400.
         var batch = "[" + lifecycleCreated("exch-atomic-1", "cert-iso14001-0001", 1)
                 + "," + lifecycleCreatedMissingExchangeId("cert-iso14001-0001") + "]";
         assertThat(postNotification(batch).statusCode()).isEqualTo(400);
 
-        // The valid event must NOT have been applied (no exchange recorded).
         assertThat(getAcceptanceStatus("exch-atomic-1").statusCode()).isEqualTo(404);
     }
 
@@ -322,8 +310,9 @@ class ConsumerCertificateApiTest {
                   "specversion": "1.0",
                   "type": "org.catena-x.ccm.SomethingElse.v1",
                   "source": "urn:bpn:BPNL0000000001AB",
+                  "sourcebpn": "BPNL0000000001AB",
                   "id": "33333333-3333-3333-3333-333333333333",
-                  "data": { "certificateId": "cert-x", "status": "CREATED" }
+                  "data": { "certificate": { "certificateId": "cert-x" }, "status": "CREATED" }
                 }
                 """;
         assertThat(postNotification(event).statusCode()).isEqualTo(400);
@@ -360,8 +349,7 @@ class ConsumerCertificateApiTest {
                 .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private static String lifecycleCreated(String exchangeId, String certificateId, int version) {
-        // CloudEvent id derived from the exchangeId so distinct events aren't treated as duplicates.
+    private static String lifecycleCreated(String exchangeId, String certificateId, int revision) {
         return """
                 {
                   "specversion": "1.0",
@@ -372,17 +360,18 @@ class ConsumerCertificateApiTest {
                   "id": "evt-%s",
                   "time": "2025-05-04T07:00:00Z",
                   "data": {
-                    "exchangeId": "%s",
-                    "certificateId": "%s",
-                    "version": %d,
                     "status": "CREATED",
-                    "datasetId": "dataset-ccm-cert-abc123",
-                    "certificateType": "ISO14001",
-                    "validFrom": "2024-06-01",
-                    "validUntil": "2027-05-31"
+                    "exchangeId": "%s",
+                    "certificate": {
+                      "certificateId": "%s",
+                      "revision": %d,
+                      "certificateType": "ISO14001",
+                      "validFrom": "2024-06-01",
+                      "validUntil": "2027-05-31"
+                    }
                   }
                 }
-                """.formatted(exchangeId, exchangeId, certificateId, version);
+                """.formatted(exchangeId, exchangeId, certificateId, revision);
     }
 
     /** A CREATED event with a valid envelope but missing the required data.exchangeId (structurally invalid). */
@@ -395,19 +384,20 @@ class ConsumerCertificateApiTest {
                   "sourcebpn": "BPNL0000000001AB",
                   "id": "evt-bad-%s",
                   "data": {
-                    "certificateId": "%s",
-                    "version": 1,
                     "status": "CREATED",
-                    "datasetId": "ds",
-                    "certificateType": "ISO14001",
-                    "validFrom": "2024-06-01",
-                    "validUntil": "2027-05-31"
+                    "certificate": {
+                      "certificateId": "%s",
+                      "revision": 1,
+                      "certificateType": "ISO14001",
+                      "validFrom": "2024-06-01",
+                      "validUntil": "2027-05-31"
+                    }
                   }
                 }
                 """.formatted(certificateId, certificateId);
     }
 
-    private static String lifecycleModified(String certificateId, int version) {
+    private static String lifecycleModified(String certificateId, int revision) {
         return """
                 {
                   "specversion": "1.0",
@@ -416,16 +406,17 @@ class ConsumerCertificateApiTest {
                   "sourcebpn": "BPNL0000000001AB",
                   "id": "evt-mod-%s",
                   "data": {
-                    "certificateId": "%s",
-                    "version": %d,
                     "status": "MODIFIED",
-                    "datasetId": "dataset-ccm-cert-abc123",
-                    "certificateType": "ISO9001",
-                    "validFrom": "2024-06-01",
-                    "validUntil": "2028-05-31"
+                    "certificate": {
+                      "certificateId": "%s",
+                      "revision": %d,
+                      "certificateType": "ISO9001",
+                      "validFrom": "2024-06-01",
+                      "validUntil": "2028-05-31"
+                    }
                   }
                 }
-                """.formatted(certificateId, certificateId, version);
+                """.formatted(certificateId, certificateId, revision);
     }
 
     private static String lifecycleWithdrawn(String certificateId) {
@@ -437,11 +428,8 @@ class ConsumerCertificateApiTest {
                   "sourcebpn": "BPNL0000000001AB",
                   "id": "evt-wd-%s",
                   "data": {
-                    "certificateId": "%s",
-                    "version": 2,
                     "status": "WITHDRAWN",
-                    "datasetId": "dataset-ccm-cert-abc123",
-                    "certificateType": "ISO9001"
+                    "certificate": { "certificateId": "%s" }
                   }
                 }
                 """.formatted(certificateId, certificateId);

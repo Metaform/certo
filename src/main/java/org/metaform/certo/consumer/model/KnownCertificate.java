@@ -1,5 +1,6 @@
 package org.metaform.certo.consumer.model;
 
+import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LifecycleStatus;
 
 import java.time.LocalDate;
@@ -7,36 +8,38 @@ import java.util.List;
 
 /**
  * The consumer's view of a certificate's lifecycle, kept in sync from {@code CertificateLifecycleStatus}
- * events (CX-0135 &sect;4.3.1) so the consumer can react to {@code MODIFIED} (a new version is available)
+ * events (CX-0135 &sect;3.2.1) so the consumer can react to {@code MODIFIED} (a new revision is available)
  * and {@code WITHDRAWN} (no longer available).
  */
 public class KnownCertificate {
 
     private final String certificateId;
-    private int version;
+    private Integer revision;
     private LifecycleStatus lifecycleStatus;
     private String certificateType;
     private LocalDate validFrom;
     private LocalDate validUntil;
-    private List<String> locationBpns;
+    private List<CertifiedLocation> certifiedLocations;
 
-    public KnownCertificate(String certificateId, int version, LifecycleStatus lifecycleStatus,
+    public KnownCertificate(String certificateId, Integer revision, LifecycleStatus lifecycleStatus,
                             String certificateType, LocalDate validFrom, LocalDate validUntil,
-                            List<String> locationBpns) {
+                            List<CertifiedLocation> certifiedLocations) {
         this.certificateId = certificateId;
-        this.version = version;
+        this.revision = revision;
         this.lifecycleStatus = lifecycleStatus;
         this.certificateType = certificateType;
         this.validFrom = validFrom;
         this.validUntil = validUntil;
-        this.locationBpns = locationBpns;
+        this.certifiedLocations = certifiedLocations;
     }
 
-    /** Applies a lifecycle update; null validity/locations are left unchanged (e.g. for WITHDRAWN). */
-    public void apply(int version, LifecycleStatus lifecycleStatus, String certificateType,
-                      LocalDate validFrom, LocalDate validUntil, List<String> locationBpns) {
-        this.version = version;
+    /** Applies a lifecycle update; null fields are left unchanged (e.g. WITHDRAWN carries id only). */
+    public void apply(Integer revision, LifecycleStatus lifecycleStatus, String certificateType,
+                      LocalDate validFrom, LocalDate validUntil, List<CertifiedLocation> certifiedLocations) {
         this.lifecycleStatus = lifecycleStatus;
+        if (revision != null) {
+            this.revision = revision;
+        }
         if (certificateType != null) {
             this.certificateType = certificateType;
         }
@@ -46,8 +49,8 @@ public class KnownCertificate {
         if (validUntil != null) {
             this.validUntil = validUntil;
         }
-        if (locationBpns != null) {
-            this.locationBpns = locationBpns;
+        if (certifiedLocations != null) {
+            this.certifiedLocations = certifiedLocations;
         }
     }
 
@@ -55,8 +58,8 @@ public class KnownCertificate {
         return certificateId;
     }
 
-    public int version() {
-        return version;
+    public Integer revision() {
+        return revision;
     }
 
     public LifecycleStatus lifecycleStatus() {
@@ -75,7 +78,7 @@ public class KnownCertificate {
         return validUntil;
     }
 
-    public List<String> locationBpns() {
-        return locationBpns;
+    public List<CertifiedLocation> certifiedLocations() {
+        return certifiedLocations;
     }
 }
