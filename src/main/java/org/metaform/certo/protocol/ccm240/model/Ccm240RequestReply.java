@@ -8,7 +8,9 @@ import java.util.List;
  * The reply body of a legacy v2.4.0 {@code /companycertificate/request}. Three shapes:
  * {@code IN_PROGRESS} (HTTP 202), {@code COMPLETED} with a {@code documentId} (200), or {@code REJECTED}
  * with errors (200). Built from a v3 {@code CertificateRequestResponse} via
- * {@link org.metaform.certo.protocol.ccm240.Ccm240Translation#toReplyStatus}.
+ * {@link org.metaform.certo.protocol.ccm240.Ccm240Translation#toReplyStatus}. Matches the v2.4.0 schema
+ * exactly: {@code COMPLETED} returns only the {@code documentId} (the consumer retrieves the certificate
+ * by that id via the dataspace — out of scope here).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record Ccm240RequestReply(

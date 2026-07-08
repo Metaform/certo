@@ -11,24 +11,24 @@ import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.protocol.ccm240.model.BusinessPartnerCertificate31;
 import org.metaform.certo.protocol.ccm240.model.Ccm240RequestStatus;
 import org.metaform.certo.protocol.ccm240.model.Ccm240StatusValue;
-import org.metaform.certo.provider.model.Document;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 
 /**
  * Stateless translation between the CX-0135 <b>v2.4.0</b> (legacy) wire protocol and certo's v3 domain
- * model. This is the pure core of the backward-compatibility adapter (Phase 1): status-vocabulary
- * mapping, identity, and the {@code BusinessPartnerCertificate} 3.1.0 &harr; v3
- * {@link CertificateRecord} (+ {@link Document}) semantic-model conversion. No I/O, no Spring, no state.
+ * model. This is the pure core of the backward-compatibility adapter: status-vocabulary mapping, identity,
+ * and the {@code BusinessPartnerCertificate} 3.1.0 &harr; v3 {@link CertificateRecord} semantic-model
+ * conversion. No I/O, no Spring, no state.
  *
- * <p>Identity note: a legacy {@code documentId} identifies the certificate as a whole and maps to the v3
- * {@code certificateId}; retrieval is always latest-revision, so no revision is carried across the
- * boundary (see the migration notes under {@code certo-spec/migration}).
+ * <p>A 3.1.0 push carries the document content inline, so up-conversion produces a <em>complete</em>
+ * canonical record (its {@code documents[].contentBase64} carried straight through) — the equivalent of a
+ * v3 embedded-document push, which the consumer accepts without a pull. Identity note: a legacy
+ * {@code documentId} maps to the v3 {@code certificateId}; retrieval is always latest-revision, so no
+ * revision is carried across the boundary.
  */
 public final class Ccm240Translation {
 
@@ -70,25 +70,19 @@ public final class Ccm240Translation {
 
     // --- semantic model 3.1.0 <-> v3 ---------------------------------------------------------------
 
-    /** The result of up-converting a 3.1.0 push: the v3 metadata record plus the split-out document binary. */
-    public record UpConverted(CertificateRecord record, Document document) {
-    }
-
     /**
-     * Up-converts an inbound 3.1.0 push certificate to the v3 model, assigning the given
-     * {@code certificateId}/{@code revision} (3.1.0 has neither) and splitting the inline document out
-     * into a separate {@link Document} referenced from {@code record.documents()}.
+     * Up-converts an inbound 3.1.0 push certificate to a complete v3 {@link CertificateRecord}, assigning
+     * the given {@code certificateId}/{@code revision} (3.1.0 has neither). The inline document is carried
+     * straight through into {@code documents[].contentBase64}, so the record is an embedded-document
+     * certificate the consumer can accept without a pull.
      */
-    public static UpConverted upConvert(BusinessPartnerCertificate31 cert, String certificateId, int revision) {
-        Document document = null;
-        List<CertificateDocument> documentRefs = null;
+    public static CertificateRecord upConvert(BusinessPartnerCertificate31 cert, String certificateId, int revision) {
+        List<CertificateDocument> documents = null;
         if (cert.document() != null) {
             var d = cert.document();
-            var content = d.contentBase64() == null ? new byte[0] : Base64.getDecoder().decode(d.contentBase64());
             var created = parseTimestamp(d.creationDate());
             var documentId = d.documentId() != null ? d.documentId() : "doc-" + certificateId + "-r" + revision;
-            document = new Document(documentId, created, null, d.contentType(), content);
-            documentRefs = List.of(new CertificateDocument(documentId, created, null, d.contentType()));
+            documents = List.of(new CertificateDocument(documentId, created, null, d.contentType(), d.contentBase64()));
         }
 
         var locations = new ArrayList<CertifiedLocation>();
@@ -105,7 +99,7 @@ public final class Ccm240Translation {
         }
 
         var type = cert.type();
-        var record = new CertificateRecord(
+        return new CertificateRecord(
                 certificateId,
                 revision,
                 type == null ? null : type.certificateType(),
@@ -118,16 +112,16 @@ public final class Ccm240Translation {
                 locations,
                 cert.issuer() == null ? null : new CertificateIssuer(cert.issuer().issuerName(), cert.issuer().issuerBpn()),
                 cert.validator() == null ? null : new CertificateValidator(cert.validator().validatorName(), cert.validator().validatorBpn()),
-                documentRefs);
-        return new UpConverted(record, document);
+                documents);
     }
 
     /**
-     * Down-converts a v3 metadata record plus one document binary into a 3.1.0 push certificate. The
-     * holder BPNL is taken from the {@code MAIN_LOCATION}; remaining locations become {@code enclosedSites}.
-     * Fields with no 3.1.0 home (revision, uploader, secondary documents) are dropped.
+     * Down-converts a complete v3 {@link CertificateRecord} into a 3.1.0 push certificate. The holder BPNL
+     * is taken from the {@code MAIN_LOCATION}; remaining locations become {@code enclosedSites}; the first
+     * document's inline content is carried through. Fields with no 3.1.0 home (revision, uploader,
+     * secondary documents) are dropped.
      */
-    public static BusinessPartnerCertificate31 downConvert(CertificateRecord record, Document document) {
+    public static BusinessPartnerCertificate31 downConvert(CertificateRecord record) {
         var locations = record.certifiedLocations() == null ? List.<CertifiedLocation>of() : record.certifiedLocations();
         var main = locations.stream()
                 .filter(l -> l.locationRole() == LocationRole.MAIN_LOCATION)
@@ -141,13 +135,14 @@ public final class Ccm240Translation {
                 .toList();
 
         BusinessPartnerCertificate31.Document doc = null;
-        if (document != null) {
+        if (record.documents() != null && !record.documents().isEmpty()) {
+            var d = record.documents().get(0);
             doc = new BusinessPartnerCertificate31.Document(
-                    document.createdDate() == null ? null
-                            : document.createdDate().atStartOfDay(ZoneOffset.UTC).toOffsetDateTime().toString(),
-                    document.documentId(),
-                    document.mediaType(),
-                    document.content() == null ? null : Base64.getEncoder().encodeToString(document.content()));
+                    d.createdDate() == null ? null
+                            : d.createdDate().atStartOfDay(ZoneOffset.UTC).toOffsetDateTime().toString(),
+                    d.documentId(),
+                    d.mediaType(),
+                    d.contentBase64());
         }
 
         return new BusinessPartnerCertificate31(

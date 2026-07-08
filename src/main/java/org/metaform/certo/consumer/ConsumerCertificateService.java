@@ -174,6 +174,17 @@ public class ConsumerCertificateService {
                 .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
     }
 
+    /**
+     * Receives a certificate pushed by an external provider through a protocol adapter (e.g. a v2.4.0
+     * push), as an embedded-document {@code CREATED}: records the lifecycle view and evaluates the inline
+     * certificate for the given exchange, reporting the acceptance back to the provider. The {@code
+     * exchangeId} is supplied by the adapter — a consumer-local surrogate, since a source protocol without
+     * an exchange concept cannot provide the provider-assigned one.
+     */
+    public void receivePushedCertificate(String exchangeId, CertificateRecord certificate) {
+        applyLifecycle(new LifecycleStatusData(LifecycleStatus.CREATED, exchangeId, certificate));
+    }
+
     private void validateLifecycle(LifecycleStatusData data) {
         if (data == null || data.status() == null || data.certificate() == null
                 || data.certificate().certificateId() == null) {

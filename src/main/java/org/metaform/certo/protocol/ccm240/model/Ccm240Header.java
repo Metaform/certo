@@ -16,7 +16,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param sentDateTime      ISO-8601 timestamp the message was sent
  * @param version           aspect-model version of the message
  * @param relatedMessageId  id of a message this one relates to, if any
- * @param senderFeedbackUrl EDC/DSP endpoint to send feedback to (push/status/available only)
+ * @param senderFeedbackUrl the sender's endpoint to send feedback to (push/status/available only). Per the
+ *                          spec this is the sender's <b>control-plane</b> DSP endpoint (e.g.
+ *                          {@code .../edc/api/v1/dsp}); the real data-plane target is resolved from it
+ *                          out-of-band (catalog + contract + transfer). This adapter treats it as a direct
+ *                          data-plane URL — see {@code Ccm240OutboundClient}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)

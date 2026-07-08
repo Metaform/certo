@@ -13,6 +13,7 @@ import org.metaform.certo.protocol.ExchangeBindingStore;
 import org.metaform.certo.protocol.ProtocolVersions;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateRequest;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateStatus;
+import org.metaform.certo.protocol.ccm240.model.Ccm240Contexts;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Error;
 import org.metaform.certo.protocol.ccm240.model.Ccm240RequestReply;
 import org.metaform.certo.provider.ProviderCertificateService;
@@ -46,14 +47,17 @@ public class Ccm240ProviderController {
 
     private final ProviderCertificateService provider;
     private final ExchangeBindingStore bindings;
+    private final Ccm240DocumentIds documentIds;
     private final CertoProperties properties;
     private final ObjectMapper mapper;
     private final Clock clock;
 
     public Ccm240ProviderController(ProviderCertificateService provider, ExchangeBindingStore bindings,
-                                    CertoProperties properties, ObjectMapper mapper, Clock clock) {
+                                    Ccm240DocumentIds documentIds, CertoProperties properties,
+                                    ObjectMapper mapper, Clock clock) {
         this.provider = provider;
         this.bindings = bindings;
+        this.documentIds = documentIds;
         this.properties = properties;
         this.mapper = mapper;
         this.clock = clock;
@@ -63,23 +67,26 @@ public class Ccm240ProviderController {
     @PostMapping(path = "/companycertificate/request",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Ccm240RequestReply> request(@RequestBody Ccm240CertificateRequest message) {
+        Ccm240Envelope.validate(message.header(), Ccm240Contexts.REQUEST);
         var content = message.content();
         if (content == null || content.certificateType() == null) {
             throw ApiException.badRequest("v2.4.0 request is missing content.certificateType");
         }
+        Ccm240Envelope.requireBpnl("certifiedBpn", content.certifiedBpn());
+        Ccm240Envelope.validateLocationBpns(content.locationBpns());
         var response = provider.requestCertificate(
                 new CertificateRequest(content.certificateType(), content.locationBpns()));
 
         var senderBpn = message.header() == null ? null : message.header().senderBpn();
         var messageId = message.header() == null ? null : message.header().messageId();
-        // Record the protocol binding: the counterparty is a v2.4.0 consumer. The v2.4.0 request carries no
-        // callback URL, so async fulfillment cannot be pushed to it (an inherent v2.4.0 limitation).
+        // The counterparty is a v2.4.0 consumer. The v2.4.0 request carries no callback URL, so the binding
+        // records none; the consumer retrieves the certificate by documentId via the dataspace (out of scope).
         bindings.record(new ExchangeBinding(response.exchangeId(), response.certificateId(),
                 ProtocolVersions.CCM_2_4_0, CounterpartyRole.CONSUMER, senderBpn, messageId, null));
 
         return switch (Ccm240Translation.toReplyStatus(response.status())) {
             case IN_PROGRESS -> ResponseEntity.accepted().body(Ccm240RequestReply.inProgress());
-            case COMPLETED -> ResponseEntity.ok(Ccm240RequestReply.completed(response.certificateId()));
+            case COMPLETED -> ResponseEntity.ok(Ccm240RequestReply.completed(documentIds.documentIdFor(response.certificateId())));
             case REJECTED -> ResponseEntity.ok(Ccm240RequestReply.rejected(toCcm240Errors(response.errors())));
         };
     }
@@ -87,18 +94,23 @@ public class Ccm240ProviderController {
     /** {@code POST /companycertificate/status} — acceptance feedback on a certificate (consumer &rarr; provider). */
     @PostMapping(path = "/companycertificate/status", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> status(@RequestBody Ccm240CertificateStatus message) {
+        Ccm240Envelope.validate(message.header(), Ccm240Contexts.STATUS);
         var content = message.content();
-        if (content == null || content.documentId() == null || content.certificateStatus() == null) {
-            throw ApiException.badRequest("v2.4.0 status is missing content.documentId or content.certificateStatus");
+        if (content == null || content.certificateStatus() == null) {
+            throw ApiException.badRequest("v2.4.0 status is missing content.certificateStatus");
         }
+        Ccm240Envelope.requireUuid("documentId", content.documentId());
+        Ccm240Envelope.validateLocationBpns(content.locationBpns());
         var senderBpn = message.header() == null ? null : message.header().senderBpn();
-        var exchangeId = bindings.exchangeFor(content.documentId(), senderBpn)
+        var certificateId = documentIds.certificateIdFor(content.documentId())
+                .orElseThrow(() -> ApiException.notFound("Unknown documentId: " + content.documentId()));
+        var exchangeId = bindings.exchangeFor(certificateId, senderBpn)
                 .orElseThrow(() -> ApiException.notFound(
                         "No exchange for documentId " + content.documentId() + " from " + senderBpn));
 
         var status = Ccm240Translation.toAcceptanceStatus(content.certificateStatus());
         var errors = toStatusErrors(content);
-        provider.recordAcceptance(acceptanceEvent(exchangeId, content.documentId(), status, errors, message));
+        provider.recordAcceptance(acceptanceEvent(exchangeId, certificateId, status, errors, message));
         LOG.info("Translated v2.4.0 status {} (documentId {}) -> acceptance {} for exchange {}",
                 content.certificateStatus(), content.documentId(), status, exchangeId);
         return ResponseEntity.ok().build();
@@ -157,13 +169,13 @@ public class Ccm240ProviderController {
         return errors.isEmpty() ? null : errors;
     }
 
-    private byte[] acceptanceEvent(String exchangeId, String documentId, AcceptanceStatus status,
+    private byte[] acceptanceEvent(String exchangeId, String certificateId, AcceptanceStatus status,
                                    List<StatusError> errors, Ccm240CertificateStatus message) {
         var header = message.header();
         var senderBpn = header == null ? properties.consumer().bpn() : header.senderBpn();
         var receiverBpn = header == null ? properties.provider().bpn() : header.receiverBpn();
         var messageId = header == null || header.messageId() == null ? UUID.randomUUID().toString() : header.messageId();
-        var data = new AcceptanceStatusData(exchangeId, documentId, status, errors);
+        var data = new AcceptanceStatusData(exchangeId, certificateId, status, errors);
         var event = new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
                 CcmEvents.TYPE_ACCEPTANCE_STATUS,

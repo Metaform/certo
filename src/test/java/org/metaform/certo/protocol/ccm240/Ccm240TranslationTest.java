@@ -60,8 +60,7 @@ class Ccm240TranslationTest {
                 new BusinessPartnerCertificate31.Document("2024-08-23T13:19:00.280+02:00",
                         "urn:uuid:doc-1", "application/pdf", Base64.getEncoder().encodeToString(pdf)));
 
-        var up = Ccm240Translation.upConvert(cert, "cert-x", 1);
-        var record = up.record();
+        var record = Ccm240Translation.upConvert(cert, "cert-x", 1);
 
         assertThat(record.certificateId()).isEqualTo("cert-x");
         assertThat(record.revision()).isEqualTo(1);
@@ -83,13 +82,13 @@ class Ccm240TranslationTest {
         assertThat(enclosed.locationRole()).isEqualTo(LocationRole.ENCLOSED_LOCATION);
         assertThat(enclosed.bpns()).isEqualTo("BPNS0000000ABS01");
 
-        // document is split out of the inline content into a separate binary + a reference
-        assertThat(up.document().documentId()).isEqualTo("urn:uuid:doc-1");
-        assertThat(up.document().mediaType()).isEqualTo("application/pdf");
-        assertThat(up.document().content()).isEqualTo(pdf);
-        assertThat(up.document().createdDate()).isEqualTo(LocalDate.of(2024, 8, 23));
-        assertThat(record.documents()).singleElement()
-                .satisfies(ref -> assertThat(ref.documentId()).isEqualTo("urn:uuid:doc-1"));
+        // the inline document content is carried straight through into the record (embedded), not split out
+        assertThat(record.documents()).singleElement().satisfies(doc -> {
+            assertThat(doc.documentId()).isEqualTo("urn:uuid:doc-1");
+            assertThat(doc.mediaType()).isEqualTo("application/pdf");
+            assertThat(doc.createdDate()).isEqualTo(LocalDate.of(2024, 8, 23));
+            assertThat(Base64.getDecoder().decode(doc.contentBase64())).isEqualTo(pdf);
+        });
     }
 
     @Test
@@ -110,8 +109,8 @@ class Ccm240TranslationTest {
                 new BusinessPartnerCertificate31.Document("2024-08-23T13:19:00.280+02:00",
                         "urn:uuid:doc-1", "application/pdf", Base64.getEncoder().encodeToString(pdf)));
 
-        var up = Ccm240Translation.upConvert(original, "cert-x", 1);
-        var back = Ccm240Translation.downConvert(up.record(), up.document());
+        var record = Ccm240Translation.upConvert(original, "cert-x", 1);
+        var back = Ccm240Translation.downConvert(record);
 
         assertThat(back.businessPartnerNumber()).isEqualTo("BPNL000000000AAA");
         assertThat(back.type().certificateType()).isEqualTo("iso9001");

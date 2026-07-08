@@ -14,7 +14,9 @@ package org.metaform.certo.protocol;
  * @param role          whether the counterparty is a consumer or a provider
  * @param peerBpn       the counterparty's BPN
  * @param messageId     the originating message id, if any (for idempotency)
- * @param callbackUrl   the exact URL to deliver outbound messages to the counterparty (may be null)
+ * @param callbackUrl   the counterparty's <b>data-plane</b> endpoint to deliver outbound messages to (may
+ *                      be null). Assumed to be the data-plane URL directly; in production it is resolved
+ *                      out-of-band from the peer's DSP control-plane endpoint (see {@code Ccm240OutboundClient})
  */
 public record ExchangeBinding(String exchangeId, String certificateId, String version,
                               CounterpartyRole role, String peerBpn, String messageId, String callbackUrl) {

@@ -18,7 +18,7 @@ public class ExchangeBindingStore {
 
     private final ConcurrentMap<String, ExchangeBinding> byExchangeId = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ExchangeBinding> byCertificateId = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, String> exchangeByDocumentAndPeer = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> exchangeByCertificateAndPeer = new ConcurrentHashMap<>();
 
     public void record(ExchangeBinding binding) {
         if (binding.exchangeId() != null) {
@@ -27,7 +27,7 @@ public class ExchangeBindingStore {
         if (binding.certificateId() != null) {
             byCertificateId.put(binding.certificateId(), binding);
             if (binding.peerBpn() != null && binding.exchangeId() != null) {
-                exchangeByDocumentAndPeer.put(key(binding.certificateId(), binding.peerBpn()), binding.exchangeId());
+                exchangeByCertificateAndPeer.put(key(binding.certificateId(), binding.peerBpn()), binding.exchangeId());
             }
         }
     }
@@ -50,12 +50,12 @@ public class ExchangeBindingStore {
         return binding != null && binding.role() == role ? Optional.of(binding) : Optional.empty();
     }
 
-    /** Resolves the v3 {@code exchangeId} for a legacy {@code documentId} reported by the given peer. */
-    public Optional<String> exchangeFor(String documentId, String peerBpn) {
-        return Optional.ofNullable(exchangeByDocumentAndPeer.get(key(documentId, peerBpn)));
+    /** Resolves the v3 {@code exchangeId} for a {@code certificateId} reported by the given peer. */
+    public Optional<String> exchangeFor(String certificateId, String peerBpn) {
+        return Optional.ofNullable(exchangeByCertificateAndPeer.get(key(certificateId, peerBpn)));
     }
 
-    private static String key(String documentId, String peerBpn) {
-        return documentId + "|" + peerBpn;
+    private static String key(String certificateId, String peerBpn) {
+        return certificateId + "|" + peerBpn;
     }
 }

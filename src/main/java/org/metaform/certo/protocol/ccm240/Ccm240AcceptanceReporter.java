@@ -31,11 +31,14 @@ public class Ccm240AcceptanceReporter implements ProtocolAcceptanceReporter {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm240AcceptanceReporter.class);
 
     private final Ccm240OutboundClient outbound;
+    private final Ccm240DocumentIds documentIds;
     private final CertoProperties properties;
     private final Clock clock;
 
-    public Ccm240AcceptanceReporter(Ccm240OutboundClient outbound, CertoProperties properties, Clock clock) {
+    public Ccm240AcceptanceReporter(Ccm240OutboundClient outbound, Ccm240DocumentIds documentIds,
+                                    CertoProperties properties, Clock clock) {
         this.outbound = outbound;
+        this.documentIds = documentIds;
         this.properties = properties;
         this.clock = clock;
     }
@@ -54,7 +57,7 @@ public class Ccm240AcceptanceReporter implements ProtocolAcceptanceReporter {
         }
         var legacyStatus = Ccm240Translation.toCcm240StatusValue(status);
         var content = new Ccm240CertificateStatus.Content(
-                certificateId, legacyStatus, toCcm240Errors(errors), null, null);
+                documentIds.documentIdFor(certificateId), legacyStatus, toCcm240Errors(errors), null, null);
         var header = new Ccm240Header(Ccm240Contexts.STATUS, UUID.randomUUID().toString(),
                 properties.consumer().bpn(), binding.peerBpn(), OffsetDateTime.now(clock).toString(),
                 "3.1.0", binding.messageId(), null);

@@ -33,11 +33,14 @@ public class Ccm240ConsumerNotifier implements ProtocolNotifier {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm240ConsumerNotifier.class);
 
     private final Ccm240OutboundClient outbound;
+    private final Ccm240DocumentIds documentIds;
     private final CertoProperties properties;
     private final Clock clock;
 
-    public Ccm240ConsumerNotifier(Ccm240OutboundClient outbound, CertoProperties properties, Clock clock) {
+    public Ccm240ConsumerNotifier(Ccm240OutboundClient outbound, Ccm240DocumentIds documentIds,
+                                  CertoProperties properties, Clock clock) {
         this.outbound = outbound;
+        this.documentIds = documentIds;
         this.properties = properties;
         this.clock = clock;
     }
@@ -59,23 +62,27 @@ public class Ccm240ConsumerNotifier implements ProtocolNotifier {
         }
         var cert = data.certificate();
         var content = new Ccm240CertificateAvailable.Content(
-                cert.certificateId(), cert.certificateType(), locationBpns(cert.certifiedLocations()));
-        var message = new Ccm240CertificateAvailable(header(binding.peerBpn()), content);
+                documentIds.documentIdFor(cert.certificateId()), cert.certificateType(), locationBpns(cert.certifiedLocations()));
+        var message = new Ccm240CertificateAvailable(header(Ccm240Contexts.AVAILABLE, binding.peerBpn()), content);
         var delivered = outbound.post(binding.callbackUrl(), message);
         LOG.info("Sent v2.4.0 'available' for {} to {} (delivered: {})", cert.certificateId(), binding.peerBpn(), delivered);
         return delivered;
     }
 
+    /**
+     * v2.4.0 has no fulfillment-status endpoint, so fulfillment pushes to a v2.4.0 consumer are suppressed.
+     * A consumer that requested a not-yet-available certificate retrieves it by {@code documentId} through
+     * the dataspace once fulfilled (out of scope here), as in the v2.4.0 pull mechanism.
+     */
     @Override
     public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data) {
-        var peer = binding == null ? null : binding.peerBpn();
-        LOG.info("Suppressing fulfillment status {} to v2.4.0 consumer {} (no legacy fulfillment endpoint)",
-                data.status(), peer);
+        LOG.info("Suppressing fulfillment status {} to v2.4.0 consumer {} (no v2.4.0 fulfillment endpoint)",
+                data.status(), binding == null ? null : binding.peerBpn());
         return true;
     }
 
-    private Ccm240Header header(String receiverBpn) {
-        return new Ccm240Header(Ccm240Contexts.AVAILABLE, UUID.randomUUID().toString(), properties.provider().bpn(),
+    private Ccm240Header header(String context, String receiverBpn) {
+        return new Ccm240Header(context, UUID.randomUUID().toString(), properties.provider().bpn(),
                 receiverBpn, OffsetDateTime.now(clock).toString(), "3.1.0", null, null);
     }
 

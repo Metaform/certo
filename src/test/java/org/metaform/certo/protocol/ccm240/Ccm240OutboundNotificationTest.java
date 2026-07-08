@@ -70,7 +70,8 @@ class Ccm240OutboundNotificationTest {
         var body = mapper.readTree(available.getBody().readUtf8());
         assertThat(body.get("header").get("context").asString())
                 .isEqualTo("CompanyCertificateManagement-CCMAPI-Available:1.0.0");
-        assertThat(body.get("content").get("documentId").asString()).isEqualTo("cert-iso9001-0001");
+        assertThat(body.get("content").get("documentId").asString())
+                .matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"); // a UUID asset id
         assertThat(body.get("content").get("certificateType").asString()).isEqualTo("ISO9001");
     }
 

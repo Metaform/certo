@@ -343,28 +343,6 @@ public class ProviderCertificateService {
     }
 
     /**
-     * Ingests a certificate obtained from an external source (e.g. a legacy v2.4.0 push) into the
-     * provider data plane so it becomes retrievable via {@code GET /certificates/{id}} and can be
-     * published to a consumer. Stores the document binary and a single-revision certificate.
-     *
-     * @return the {@code certificateId} of the ingested certificate
-     */
-    public String ingestExternalCertificate(CertificateRecord record, Document document) {
-        if (document != null) {
-            documents.save(document);
-        }
-        var certificate = new Certificate(record.certificateId(), record.certificateType(),
-                record.certificateTypeVersion(), record.registrationNumber(), record.trustLevel(),
-                record.areaOfApplication(), record.certifiedLocations(), record.issuer(), record.validator());
-        var documentIds = document != null ? List.of(document.documentId()) : List.<String>of();
-        var revision = record.revision() != null ? record.revision() : 1;
-        certificate.addRevision(new CertificateRevision(revision, record.validFrom(), record.validUntil(), documentIds));
-        certificates.save(certificate);
-        LOG.info("Ingested external certificate {} (revision {})", record.certificateId(), revision);
-        return record.certificateId();
-    }
-
-    /**
      * Records acceptance feedback delivered as one or more {@code CertificateAcceptanceStatus}
      * CloudEvents (CX-0135 &sect;3.3.5). Acceptance MUST reference an existing exchange; an unknown
      * {@code exchangeId} is rejected with 404. The batch is atomic and duplicate events are ignored.

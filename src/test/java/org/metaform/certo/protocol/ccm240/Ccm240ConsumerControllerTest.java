@@ -63,7 +63,7 @@ class Ccm240ConsumerControllerTest {
         var pdf = Base64.getEncoder().encodeToString("PDF-CONTENT".getBytes(StandardCharsets.UTF_8));
         var push = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Push:1.0.0",
-                              "messageId": "leg-push-1", "senderBpn": "BPNL0000000001AB",
+                              "messageId": "66666666-6666-6666-6666-666666666666", "senderBpn": "BPNL0000000001AB",
                               "receiverBpn": "BPNL0000000002CD", "sentDateTime": "2025-05-04T07:00:00Z",
                               "version": "3.1.0", "senderFeedbackUrl": "%s" },
                   "content": {
@@ -98,7 +98,8 @@ class Ccm240ConsumerControllerTest {
         assertThat(status.getPath()).isEqualTo("/companycertificate/status");
         var body = mapper.readTree(status.getBody().readUtf8());
         assertThat(body.get("header").get("context").asString()).isEqualTo("CompanyCertificateManagement-CCMAPI-Status:1.0.0");
-        assertThat(body.get("content").get("documentId").asString()).isEqualTo(certificateId);
+        assertThat(body.get("content").get("documentId").asString())
+                .matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"); // a UUID asset id
         assertThat(body.get("content").get("certificateStatus").asString()).isEqualTo("ACCEPTED");
     }
 
