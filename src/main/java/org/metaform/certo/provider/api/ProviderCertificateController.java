@@ -67,8 +67,9 @@ public class ProviderCertificateController {
      */
     @PostMapping(path = "/certificates/{id}/publish", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CertificatePublication> publish(@PathVariable("id") String certificateId,
-                                                          @RequestParam(value = "revision", required = false) Integer revision) {
-        return ResponseEntity.accepted().body(service.publish(certificateId, revision));
+                                                          @RequestParam(value = "revision", required = false) Integer revision,
+                                                          @RequestParam(value = "embedded", defaultValue = "false") boolean embedded) {
+        return ResponseEntity.accepted().body(service.publish(certificateId, revision, embedded));
     }
 
     /** {@code POST /certificates/{id}/modify} — publish a new revision and notify (demo trigger; CX-0135 &sect;2.2). */

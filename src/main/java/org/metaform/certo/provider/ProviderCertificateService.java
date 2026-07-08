@@ -212,6 +212,16 @@ public class ProviderCertificateService {
      * consumer pulls the full record + documents — push-pull).
      */
     public CertificatePublication publish(String certificateId, Integer revision) {
+        return publish(certificateId, revision, false);
+    }
+
+    /**
+     * As {@link #publish(String, Integer)}, but when {@code embedded} is true the notification carries the
+     * full certificate record with each document's binary inline as {@code contentBase64}
+     * (embedded-document push, CX-0135 &sect;3.2.1) — the consumer accepts without a follow-up pull.
+     * Otherwise the light-triage subset is sent and the consumer pulls (push-pull).
+     */
+    public CertificatePublication publish(String certificateId, Integer revision, boolean embedded) {
         var certificate = requireActive(certificateId);
         var rev = resolveRevision(certificate, revision);
 
@@ -220,12 +230,14 @@ public class ProviderCertificateService {
                 exchangeId, certificateId, rev.revision(), properties.consumer().bpn(), FulfillmentStatus.FULFILLED);
         exchanges.save(exchange);
 
-        var data = new LifecycleStatusData(LifecycleStatus.CREATED, exchangeId,
-                CertificateRecord.lightTriage(certificateId, rev.revision(), certificate.certificateType(),
-                        rev.validFrom(), rev.validUntil()));
+        var certData = embedded
+                ? toRecordWithContent(certificate, rev)
+                : CertificateRecord.lightTriage(certificateId, rev.revision(), certificate.certificateType(),
+                        rev.validFrom(), rev.validUntil());
+        var data = new LifecycleStatusData(LifecycleStatus.CREATED, exchangeId, certData);
         var notified = consumerNotifications.notifyLifecycle(data);
-        LOG.info("Published certificate {} r{} as exchange {} (consumer notified: {})",
-                certificateId, rev.revision(), exchangeId, notified);
+        LOG.info("Published certificate {} r{} as exchange {} ({}, consumer notified: {})",
+                certificateId, rev.revision(), exchangeId, embedded ? "embedded" : "push-pull", notified);
         return new CertificatePublication(exchangeId, certificateId, rev.revision(), notified);
     }
 
@@ -471,10 +483,20 @@ public class ProviderCertificateService {
 
     /** Builds the full §4 certificate record for a given revision (no document {@code contentBase64}). */
     private CertificateRecord toRecord(Certificate c, CertificateRevision rev) {
+        return toRecord(c, rev, false);
+    }
+
+    /** Builds the full §4 certificate record, optionally inlining each document's binary as {@code contentBase64}. */
+    private CertificateRecord toRecordWithContent(Certificate c, CertificateRevision rev) {
+        return toRecord(c, rev, true);
+    }
+
+    private CertificateRecord toRecord(Certificate c, CertificateRevision rev, boolean withContent) {
         var docRefs = rev.documentIds().stream()
                 .map(documents::find)
                 .filter(Optional::isPresent).map(Optional::get)
-                .map(d -> new CertificateDocument(d.documentId(), d.createdDate(), d.language(), d.mediaType()))
+                .map(d -> new CertificateDocument(d.documentId(), d.createdDate(), d.language(), d.mediaType(),
+                        withContent ? Base64.getEncoder().encodeToString(d.content()) : null))
                 .toList();
         return new CertificateRecord(
                 c.certificateId(),

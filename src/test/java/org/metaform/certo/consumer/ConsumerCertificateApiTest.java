@@ -23,6 +23,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -120,6 +121,32 @@ class ConsumerCertificateApiTest {
         var body = mapper.readTree(getAcceptanceStatus("exch-created-3").body());
         assertThat(body.get("status").asString()).isEqualTo("ERRORED");
         assertThat(body.get("errors").get(0).get("message").asString()).isNotEmpty();
+    }
+
+    @Test
+    void embeddedDocumentPush_acceptsFromInlineContent_withoutPull() throws Exception {
+        // The certificate is NOT held by the provider, so a pull would 404 -> ERRORED. Accepting from the
+        // inline content proves the embedded-document push path was used (no pull).
+        var pdf = Base64.getEncoder().encodeToString("EMBEDDED-PDF".getBytes());
+        assertThat(postNotification(lifecycleCreatedEmbedded("exch-emb-1", "cert-embedded-only", pdf)).statusCode())
+                .isEqualTo(204);
+
+        var body = mapper.readTree(getAcceptanceStatus("exch-emb-1").body());
+        assertThat(body.get("status").asString()).isEqualTo("ACCEPTED");
+        assertThat(body.get("certificateId").asString()).isEqualTo("cert-embedded-only");
+    }
+
+    @Test
+    void providerEmbeddedPublish_consumerAcceptsFromInlineContent() throws Exception {
+        var publish = http.send(
+                HttpRequest.newBuilder(URI.create(BASE + "/certificates/cert-iso14001-0001/publish?embedded=true"))
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(publish.statusCode()).isEqualTo(202);
+        var exchangeId = mapper.readTree(publish.body()).get("exchangeId").asString();
+
+        assertThat(mapper.readTree(getAcceptanceStatus(exchangeId).body()).get("status").asString())
+                .isEqualTo("ACCEPTED");
     }
 
     @Test
@@ -372,6 +399,35 @@ class ConsumerCertificateApiTest {
                   }
                 }
                 """.formatted(exchangeId, exchangeId, certificateId, revision);
+    }
+
+    /** A CREATED event carrying the full certificate with its document content inline (embedded-document push). */
+    private static String lifecycleCreatedEmbedded(String exchangeId, String certificateId, String contentBase64) {
+        return """
+                {
+                  "specversion": "1.0",
+                  "type": "org.catena-x.ccm.CertificateLifecycleStatus.v1",
+                  "source": "urn:bpn:BPNL0000000001AB",
+                  "sourcebpn": "BPNL0000000001AB",
+                  "subject": "BPNL0000000002CD",
+                  "id": "evt-emb-%s",
+                  "time": "2025-05-04T07:00:00Z",
+                  "data": {
+                    "status": "CREATED",
+                    "exchangeId": "%s",
+                    "certificate": {
+                      "certificateId": "%s",
+                      "revision": 1,
+                      "certificateType": "ISO9001",
+                      "validFrom": "2024-06-01",
+                      "validUntil": "2027-05-31",
+                      "documents": [
+                        { "documentId": "doc-emb-1", "mediaType": "application/pdf", "contentBase64": "%s" }
+                      ]
+                    }
+                  }
+                }
+                """.formatted(exchangeId, exchangeId, certificateId, contentBase64);
     }
 
     /** A CREATED event with a valid envelope but missing the required data.exchangeId (structurally invalid). */

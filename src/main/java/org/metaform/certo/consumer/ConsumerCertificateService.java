@@ -17,6 +17,7 @@ import org.metaform.certo.consumer.client.ProviderCertificateClient;
 import org.metaform.certo.consumer.client.ProviderRequestClient;
 import org.metaform.certo.consumer.client.ProviderRequestResult;
 import org.metaform.certo.consumer.client.RetrievedCertificate;
+import org.metaform.certo.consumer.client.RetrievedDocument;
 import org.metaform.certo.consumer.model.ConsumerCertificateExchange;
 import org.metaform.certo.consumer.model.KnownCertificate;
 import org.metaform.certo.consumer.store.ConsumerCertificateStore;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
 /**
@@ -190,9 +192,29 @@ public class ConsumerCertificateService {
             LOG.info("{} certificate {} (no exchange opened)", data.status(), data.certificate().certificateId());
             return;
         }
-        // Provider-initiated push: pull the full certificate + documents, evaluate, and report.
         var cert = data.certificate();
-        retrieveEvaluateAndReport(data.exchangeId(), cert.certificateId(), cert.revision());
+        if (hasEmbeddedContent(cert)) {
+            // Embedded-document push: the full certificate + document content arrived inline; no pull needed.
+            evaluateEmbeddedAndReport(data.exchangeId(), cert);
+        } else {
+            // Push-pull: the notification carried only a reference; pull the certificate + documents.
+            retrieveEvaluateAndReport(data.exchangeId(), cert.certificateId(), cert.revision());
+        }
+    }
+
+    private static boolean hasEmbeddedContent(CertificateRecord cert) {
+        return cert.documents() != null && cert.documents().stream().anyMatch(d -> d.contentBase64() != null);
+    }
+
+    /** Evaluates an embedded-document push directly from its inline content and reports the outcome. */
+    private void evaluateEmbeddedAndReport(String exchangeId, CertificateRecord cert) {
+        var documents = cert.documents().stream()
+                .map(d -> new RetrievedDocument(d.documentId(), d.mediaType(),
+                        d.contentBase64() == null ? new byte[0] : Base64.getDecoder().decode(d.contentBase64())))
+                .toList();
+        var decision = evaluateRetrieved(new RetrievedCertificate(cert, documents));
+        recordAndReport(exchangeId, cert.certificateId(), cert.revision(), decision.status(), decision.errors());
+        LOG.info("Exchange {} (embedded certificate {}) concluded {}", exchangeId, cert.certificateId(), decision.status());
     }
 
     /** Creates or updates the consumer's lifecycle view of the certificate from a lifecycle event. */

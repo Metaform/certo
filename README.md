@@ -16,10 +16,13 @@ participant):
 > catalog, contract negotiation and the token-refresh authorization of CX-0000 §4 — is **out of
 > scope**. Storage is in-memory and resets on restart.
 >
-> **v3 exception.** Certo follows the **push-pull** mechanism (v2→v3 migration Option 2): a push
-> notification carries only the certificate id/light-triage subset and the consumer pulls the rest. The
-> **embedded-document** push option (`…ConsumerEmbeddedDocumentApi`, `documents[].contentBase64` inline)
-> is intentionally **not** implemented.
+> **Push variants.** Certo supports **both** push mechanisms. By default a lifecycle `CREATED`
+> notification carries only the certificate id/light-triage subset and the consumer **pulls** the rest
+> (push-pull). With **embedded-document** push (`…ConsumerEmbeddedDocumentApi`,
+> `documents[].contentBase64` inline) the notification carries the full certificate and its document
+> content, and the consumer accepts **without a pull** — trigger it with
+> `POST /certificates/{id}/publish?embedded=true`. Metadata retrieval (`GET /certificates/{id}`) never
+> includes `contentBase64` (CX-0135 §3.3.2).
 
 The spec this implements is vendored under [`docs/ccm/`](docs/ccm). For a walkthrough of every supported interaction
 with sequence diagrams, see [`docs/FLOWS.md`](docs/FLOWS.md).
