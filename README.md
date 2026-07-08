@@ -47,7 +47,10 @@ To run the jar directly, use a Java 25 runtime:
 java -jar build/libs/certo-0.1.0.jar     # requires java 25+ on PATH
 ```
 
-On startup the provider seeds demo certificates (each revision references one PDF document):
+Certificate seeding is **off by default**. Enable it with `certo.seed-demo-data=true` (e.g.
+`./gradlew bootRun --args='--certo.seed-demo-data=true'`) to populate the search/retrieval endpoints for
+the demo; the test suite enables it automatically. When enabled, the provider seeds these demo
+certificates on startup (each revision references one generated PDF document):
 
 | certificateId        | type      | revisions                 | validUntil (latest)  |
 |----------------------|-----------|---------------------------|----------------------|

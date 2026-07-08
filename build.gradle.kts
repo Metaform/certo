@@ -39,4 +39,6 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // The demo certificate seeding is off by default; the tests rely on the seeded certificates.
+    systemProperty("certo.seed-demo-data", "true")
 }

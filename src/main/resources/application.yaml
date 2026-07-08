@@ -11,6 +11,9 @@ certo:
   # Storage backend for all stores (ports with swappable adapters). 'memory' (default) selects the
   # in-memory adapters; a future 'postgres' would select JDBC adapters registered under that value.
   persistence: memory
+  # Seed a few demo certificates (with generated PDFs) at startup. Off by default; set true to populate
+  # the search/retrieval endpoints for the demo (the test suite enables it via the Gradle test task).
+  seed-demo-data: false
   provider:
     # BPN of the Certificate Provider (this runtime, when acting as a provider).
     bpn: BPNL0000000001AB

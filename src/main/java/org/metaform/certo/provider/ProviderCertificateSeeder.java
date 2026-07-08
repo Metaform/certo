@@ -14,16 +14,19 @@ import org.metaform.certo.provider.store.ProviderDocumentStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Seeds a few certificates (and their document binaries) with stable identifiers at startup so the
- * search and retrieval endpoints return data on a fresh run. Demo only.
+ * Seeds a few certificates (and their document binaries, incl. generated PDFs) with stable identifiers at
+ * startup so the search and retrieval endpoints return data on a fresh run. Demo only, and <b>off by
+ * default</b> — enable with {@code certo.seed-demo-data=true} (the test suite sets it).
  */
 @Component
+@ConditionalOnProperty(prefix = "certo", name = "seed-demo-data", havingValue = "true")
 public class ProviderCertificateSeeder implements CommandLineRunner {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProviderCertificateSeeder.class);
