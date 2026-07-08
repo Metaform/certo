@@ -37,10 +37,10 @@ public class ProviderRequestClient {
     }
 
     /** Opens a certificate request and returns the opened exchange's identity and fulfillment status. */
-    public ProviderRequestResult request(String certificateType, List<String> certifiedLocationBpns) throws IOException {
-        var payload = (certifiedLocationBpns == null || certifiedLocationBpns.isEmpty())
+    public ProviderRequestResult request(String certificateType, List<String> certifiedLocations) throws IOException {
+        var payload = (certifiedLocations == null || certifiedLocations.isEmpty())
                 ? Map.<String, Object>of("certificateType", certificateType)
-                : Map.<String, Object>of("certificateType", certificateType, "certifiedLocationBpns", certifiedLocationBpns);
+                : Map.<String, Object>of("certificateType", certificateType, "certifiedLocations", certifiedLocations);
         var body = RequestBody.create(mapper.writeValueAsString(payload), JSON);
         var request = new Request.Builder()
                 .url(url("certificate-requests"))

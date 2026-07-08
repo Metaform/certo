@@ -58,7 +58,7 @@ class ProviderAcceptanceClientTest {
     void reportsAcceptedAsCloudEvent() throws Exception {
         provider.enqueue(new MockResponse().setResponseCode(204));
 
-        client.report("exch-1", "cert-1", AcceptanceStatus.ACCEPTED, null);
+        client.report(null, "exch-1", "cert-1", AcceptanceStatus.ACCEPTED, null);
 
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
@@ -84,7 +84,7 @@ class ProviderAcceptanceClientTest {
     void reportsRejectedWithErrors() throws Exception {
         provider.enqueue(new MockResponse().setResponseCode(204));
 
-        client.report("exch-2", "cert-2", AcceptanceStatus.REJECTED,
+        client.report(null, "exch-2", "cert-2", AcceptanceStatus.REJECTED,
                 List.of(new StatusError("Certificate has expired")));
 
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
@@ -99,7 +99,7 @@ class ProviderAcceptanceClientTest {
         // Provider responds 404 (unknown exchange) — the callback is best-effort and must not throw.
         provider.enqueue(new MockResponse().setResponseCode(404));
 
-        client.report("exch-unknown", "cert-3", AcceptanceStatus.ACCEPTED, null);
+        client.report(null, "exch-unknown", "cert-3", AcceptanceStatus.ACCEPTED, null);
 
         assertThat(provider.takeRequest(5, TimeUnit.SECONDS)).isNotNull();
     }

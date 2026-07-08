@@ -12,7 +12,7 @@ import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.api.dto.CertificateAcceptanceStatusResponse;
-import org.metaform.certo.consumer.client.ProviderAcceptanceClient;
+import org.metaform.certo.consumer.client.AcceptanceReporter;
 import org.metaform.certo.consumer.client.ProviderCertificateClient;
 import org.metaform.certo.consumer.client.ProviderRequestClient;
 import org.metaform.certo.consumer.client.ProviderRequestResult;
@@ -57,13 +57,13 @@ public class ConsumerCertificateService {
     private final ProcessedEventStore processedEvents;
     private final ProviderCertificateClient providerClient;
     private final ProviderRequestClient requestClient;
-    private final ProviderAcceptanceClient acceptanceClient;
+    private final AcceptanceReporter acceptanceClient;
     private final Clock clock;
 
     public ConsumerCertificateService(ConsumerCertificateExchangeStore exchanges, ConsumerCertificateStore knownCertificates,
                                       CloudEventCodec codec, ProcessedEventStore processedEvents,
                                       ProviderCertificateClient providerClient, ProviderRequestClient requestClient,
-                                      ProviderAcceptanceClient acceptanceClient, Clock clock) {
+                                      AcceptanceReporter acceptanceClient, Clock clock) {
         this.exchanges = exchanges;
         this.knownCertificates = knownCertificates;
         this.codec = codec;
@@ -79,10 +79,10 @@ public class ConsumerCertificateService {
      * the resulting exchange, and — if the provider already returned {@code FULFILLED} — retrieves and
      * accepts immediately. Otherwise the consumer waits for a fulfillment push (or a poll).
      */
-    public ConsumerCertificateExchange initiateRequest(String certificateType, List<String> certifiedLocationBpns) {
+    public ConsumerCertificateExchange initiateRequest(String certificateType, List<String> certifiedLocations) {
         ProviderRequestResult result;
         try {
-            result = requestClient.request(certificateType, certifiedLocationBpns);
+            result = requestClient.request(certificateType, certifiedLocations);
         } catch (IOException e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Provider request failed: " + e.getMessage());
         }
@@ -161,6 +161,7 @@ public class ConsumerCertificateService {
         return new CertificateAcceptanceStatusResponse(
                 exchange.exchangeId(),
                 exchange.certificateId(),
+                exchange.revision(),
                 exchange.acceptanceStatus(),
                 exchange.acceptanceErrors());
     }
@@ -245,7 +246,8 @@ public class ConsumerCertificateService {
     private void retrieveEvaluateAndReport(String exchangeId, String certificateId, Integer revision) {
         RetrievedCertificate certificate;
         try {
-            certificate = providerClient.fetch(certificateId, revision);
+            // Retrieval is always latest-revision (CX-0135 §3.3.2); the exchange's revision is informational.
+            certificate = providerClient.fetch(certificateId);
         } catch (IOException e) {
             LOG.warn("Could not retrieve certificate {} r{}: {}", certificateId, revision, e.getMessage());
             recordAndReport(exchangeId, certificateId, revision, AcceptanceStatus.ERRORED,

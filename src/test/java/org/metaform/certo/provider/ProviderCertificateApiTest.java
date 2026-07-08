@@ -47,7 +47,7 @@ class ProviderCertificateApiTest {
     void requestOfferedType_fulfilledImmediately_andPollable() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS00000003AYRE\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS00000003AYRE\"]}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
                 .andExpect(jsonPath("$.certificateId").value("cert-iso9001-0001"))
@@ -119,13 +119,6 @@ class ProviderCertificateApiTest {
     @Test
     void retrieveDocument_unknown_notFound() throws Exception {
         mvc.perform(get("/documents/{id}", "doc-nope")).andExpect(status().isNotFound());
-    }
-
-    @Test
-    void retrieveCertificate_specificRevision() throws Exception {
-        mvc.perform(get("/certificates/{id}", "cert-iso9001-0001").param("revision", "1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision").value(1));
     }
 
     @Test
@@ -246,7 +239,7 @@ class ProviderCertificateApiTest {
     void request_notHeld_acknowledgesThenFulfillsAsynchronously() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"IATF16949\",\"certifiedLocationBpns\":[\"BPNS-NEW-SITE\"]}"))
+                        .content("{\"certificateType\":\"IATF16949\",\"certifiedLocations\":[\"BPNS-NEW-SITE\"]}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("ACKNOWLEDGED"))
                 .andReturn();
@@ -267,7 +260,7 @@ class ProviderCertificateApiTest {
     void request_failTrigger_endsInFailed() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNFAIL\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNFAIL\"]}"))
                 .andExpect(jsonPath("$.status").value("ACKNOWLEDGED"))
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
@@ -283,7 +276,7 @@ class ProviderCertificateApiTest {
     void acceptance_beforeFulfilled_isConflict() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS-NEW-SITE\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS-NEW-SITE\"]}"))
                 .andReturn();
         var body = mapper.readTree(result.getResponse().getContentAsString());
         var exchangeId = body.get("exchangeId").asString(); // ACKNOWLEDGED, not yet FULFILLED
@@ -450,7 +443,7 @@ class ProviderCertificateApiTest {
     private String openExchange() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS00000003AYRE\"]}"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS00000003AYRE\"]}"))
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
                 .andReturn();
         return mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();

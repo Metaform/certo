@@ -40,25 +40,21 @@ public class ProviderCertificateClient {
     }
 
     /**
-     * Fetches a certificate's metadata and all its referenced document binaries.
+     * Fetches a certificate's (latest-revision) metadata and all its referenced document binaries.
+     * {@code GET /certificates/{id}} always returns the latest revision (CX-0135 &sect;3.3.2).
      *
      * @param certificateId the certificate to retrieve
-     * @param revision      the specific revision to retrieve, or {@code null} for the latest
      * @throws IOException on transport failure or a non-2xx response
      */
-    public RetrievedCertificate fetch(String certificateId, Integer revision) throws IOException {
+    public RetrievedCertificate fetch(String certificateId) throws IOException {
         var base = HttpUrl.parse(providerBaseUrl);
         if (base == null) {
             throw new IOException("Invalid provider base URL: " + providerBaseUrl);
         }
-        var urlBuilder = base.newBuilder().addPathSegment("certificates").addPathSegment(certificateId);
-        if (revision != null) {
-            urlBuilder.addQueryParameter("revision", Integer.toString(revision));
-        }
-        var url = urlBuilder.build();
+        var url = base.newBuilder().addPathSegment("certificates").addPathSegment(certificateId).build();
 
         var request = new Request.Builder().url(url).header("Accept", "application/json").get().build();
-        LOG.info("Retrieving certificate {} (revision {}) from {}", certificateId, revision, url);
+        LOG.info("Retrieving certificate {} from {}", certificateId, url);
 
         CertificateRecord metadata;
         try (var response = http.newCall(request).execute()) {

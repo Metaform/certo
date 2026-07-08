@@ -11,6 +11,9 @@ import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.protocol.ExchangeBinding;
+import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
+import org.metaform.certo.protocol.ProtocolVersions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,7 +36,7 @@ import static java.util.UUID.randomUUID;
  * recorded its decision locally.
  */
 @Component
-public class ProviderAcceptanceClient {
+public class ProviderAcceptanceClient implements ProtocolAcceptanceReporter {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProviderAcceptanceClient.class);
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
@@ -49,8 +52,15 @@ public class ProviderAcceptanceClient {
         this.clock = clock;
     }
 
+    @Override
+    public String version() {
+        return ProtocolVersions.CCM_3_0_0;
+    }
+
     /** Sends an acceptance status event for the given exchange to the provider (best-effort). */
-    public void report(String exchangeId, String certificateId, AcceptanceStatus status, List<StatusError> errors) {
+    @Override
+    public void report(ExchangeBinding binding, String exchangeId, String certificateId,
+                       AcceptanceStatus status, List<StatusError> errors) {
         var data = new AcceptanceStatusData(exchangeId, certificateId, status, errors);
         var event = new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,

@@ -9,7 +9,7 @@ import java.util.List;
  * pushed by a provider to a consumer as the push counterpart of fulfillment-status polling.
  *
  * @param exchangeId    identifier of the exchange whose fulfillment status is reported (mandatory)
- * @param certificateId the certificate the exchange concerns (mandatory)
+ * @param certificateId the certificate the exchange concerns (optional; absent e.g. on DECLINED/FAILED)
  * @param status        the fulfillment status (mandatory)
  * @param errors        error details; MUST be present and non-empty when status is DECLINED or FAILED
  */

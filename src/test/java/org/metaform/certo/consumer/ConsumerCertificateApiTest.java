@@ -125,7 +125,7 @@ class ConsumerCertificateApiTest {
     @Test
     void consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts() throws Exception {
         var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"certifiedLocationBpns\":[\"BPNS-PULL-1\"]}");
+                "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-PULL-1\"]}");
         assertThat(initiate.statusCode()).isEqualTo(202);
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
@@ -147,7 +147,7 @@ class ConsumerCertificateApiTest {
     @Test
     void consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance() throws Exception {
         var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"certifiedLocationBpns\":[\"BPNFAIL\"]}");
+                "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNFAIL\"]}");
         var exchangeId = mapper.readTree(initiate.body()).get("exchangeId").asString();
 
         assertThat(advanceProvider(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
@@ -166,7 +166,7 @@ class ConsumerCertificateApiTest {
     @Test
     void consumerInitiatedPull_heldCertificate_fulfilledImmediatelyAndAccepted() throws Exception {
         var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO9001\",\"certifiedLocationBpns\":[\"BPNS00000003AYRE\"]}");
+                "{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS00000003AYRE\"]}");
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
         assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");

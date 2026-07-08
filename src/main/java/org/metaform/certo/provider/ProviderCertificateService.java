@@ -26,7 +26,7 @@ import org.metaform.certo.provider.api.dto.CertificateRequestResponse;
 import org.metaform.certo.provider.api.dto.CertificateRequestStatus;
 import org.metaform.certo.provider.api.dto.ExchangeView;
 import org.metaform.certo.provider.api.dto.WithdrawnCertificate;
-import org.metaform.certo.provider.client.ConsumerNotificationClient;
+import org.metaform.certo.provider.client.ConsumerNotifier;
 import org.metaform.certo.provider.model.Certificate;
 import org.metaform.certo.provider.model.CertificateRevision;
 import org.metaform.certo.provider.model.Document;
@@ -83,14 +83,14 @@ public class ProviderCertificateService {
     private final ProviderCertificateExchangeStore exchanges;
     private final CloudEventCodec codec;
     private final ProcessedEventStore processedEvents;
-    private final ConsumerNotificationClient consumerNotifications;
+    private final ConsumerNotifier consumerNotifications;
     private final CertoProperties properties;
     private final Clock clock;
 
     public ProviderCertificateService(ProviderCertificateStore certificates, ProviderDocumentStore documents,
                                       ProviderCertificateExchangeStore exchanges,
                                       CloudEventCodec codec, ProcessedEventStore processedEvents,
-                                      ConsumerNotificationClient consumerNotifications,
+                                      ConsumerNotifier consumerNotifications,
                                       CertoProperties properties, Clock clock) {
         this.certificates = certificates;
         this.documents = documents;
@@ -111,7 +111,7 @@ public class ProviderCertificateService {
     public CertificateRequestResponse requestCertificate(CertificateRequest request) {
         var exchangeId = newExchangeId();
         var counterparty = properties.consumer().bpn();
-        var requestedLocations = request.certifiedLocationBpns() == null ? List.<String>of() : request.certifiedLocationBpns();
+        var requestedLocations = request.certifiedLocations() == null ? List.<String>of() : request.certifiedLocations();
 
         if (!OFFERED_TYPES.contains(request.certificateType())) {
             var certificateId = newCertificateId();
@@ -121,7 +121,8 @@ public class ProviderCertificateService {
             exchange.markConsumerInitiated();
             exchanges.save(exchange);
             LOG.info("Declined request for type {} (exchange {})", request.certificateType(), exchangeId);
-            return new CertificateRequestResponse(exchangeId, certificateId, 1, FulfillmentStatus.DECLINED, errors);
+            // A DECLINED request never yields a certificate, so certificateId/revision are omitted (CX-0135 §4.4.1).
+            return new CertificateRequestResponse(exchangeId, null, null, FulfillmentStatus.DECLINED, errors);
         }
 
         var held = findHeldCertificate(request.certificateType(), requestedLocations);
@@ -295,26 +296,29 @@ public class ProviderCertificateService {
     }
 
     private static CertificateRequestStatus toRequestStatus(ProviderCertificateExchange exchange) {
+        // DECLINED/FAILED never yield a certificate, so certificateId/revision are omitted (CX-0135 §4.4.1/§4.4.2).
+        var yieldsCertificate = exchange.fulfillmentStatus() != FulfillmentStatus.DECLINED
+                && exchange.fulfillmentStatus() != FulfillmentStatus.FAILED;
         return new CertificateRequestStatus(
                 exchange.exchangeId(),
-                exchange.certificateId(),
-                exchange.revision(),
+                yieldsCertificate ? exchange.certificateId() : null,
+                yieldsCertificate ? exchange.revision() : null,
                 exchange.fulfillmentStatus(),
                 exchange.fulfillmentErrors());
     }
 
     /**
-     * Retrieves certificate metadata as JSON (CX-0135 &sect;3.3.2). Returns a full {@link CertificateRecord}
-     * for an active certificate (latest revision, or the one named by {@code revision}); for a withdrawn
-     * certificate returns the minimal {@link WithdrawnCertificate} status body instead. Unknown ids 404.
+     * Retrieves certificate metadata as JSON (CX-0135 &sect;3.3.2). Always returns the latest revision as a
+     * full {@link CertificateRecord} for an active certificate; for a withdrawn certificate returns the
+     * minimal {@link WithdrawnCertificate} status body instead. Unknown ids 404.
      */
-    public Object getCertificate(String certificateId, Integer revision) {
+    public Object getCertificate(String certificateId) {
         var certificate = certificates.find(certificateId)
                 .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
         if (certificate.lifecycleStatus() == LifecycleStatus.WITHDRAWN) {
             return WithdrawnCertificate.of(certificateId);
         }
-        return toRecord(certificate, resolveRevision(certificate, revision));
+        return toRecord(certificate, certificate.latestRevision());
     }
 
     /**
@@ -324,6 +328,28 @@ public class ProviderCertificateService {
     public Document getDocument(String documentId) {
         return documents.find(documentId)
                 .orElseThrow(() -> ApiException.notFound("Unknown documentId: " + documentId));
+    }
+
+    /**
+     * Ingests a certificate obtained from an external source (e.g. a legacy v2.4.0 push) into the
+     * provider data plane so it becomes retrievable via {@code GET /certificates/{id}} and can be
+     * published to a consumer. Stores the document binary and a single-revision certificate.
+     *
+     * @return the {@code certificateId} of the ingested certificate
+     */
+    public String ingestExternalCertificate(CertificateRecord record, Document document) {
+        if (document != null) {
+            documents.save(document);
+        }
+        var certificate = new Certificate(record.certificateId(), record.certificateType(),
+                record.certificateTypeVersion(), record.registrationNumber(), record.trustLevel(),
+                record.areaOfApplication(), record.certifiedLocations(), record.issuer(), record.validator());
+        var documentIds = document != null ? List.of(document.documentId()) : List.<String>of();
+        var revision = record.revision() != null ? record.revision() : 1;
+        certificate.addRevision(new CertificateRevision(revision, record.validFrom(), record.validUntil(), documentIds));
+        certificates.save(certificate);
+        LOG.info("Ingested external certificate {} (revision {})", record.certificateId(), revision);
+        return record.certificateId();
     }
 
     /**

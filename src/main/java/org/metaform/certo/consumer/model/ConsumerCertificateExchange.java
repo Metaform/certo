@@ -21,7 +21,7 @@ public class ConsumerCertificateExchange {
 
     private final String exchangeId;
     private final String certificateId;
-    private final int revision;
+    private final Integer revision;
     private final boolean consumerInitiated;
 
     private FulfillmentStatus fulfillmentStatus;
@@ -30,7 +30,7 @@ public class ConsumerCertificateExchange {
     private AcceptanceStatus acceptanceStatus;
     private List<StatusError> acceptanceErrors;
 
-    public ConsumerCertificateExchange(String exchangeId, String certificateId, int revision, boolean consumerInitiated,
+    public ConsumerCertificateExchange(String exchangeId, String certificateId, Integer revision, boolean consumerInitiated,
                             FulfillmentStatus fulfillmentStatus, List<StatusError> fulfillmentErrors) {
         this.exchangeId = exchangeId;
         this.certificateId = certificateId;
@@ -68,7 +68,7 @@ public class ConsumerCertificateExchange {
         return certificateId;
     }
 
-    public int revision() {
+    public Integer revision() {
         return revision;
     }
 

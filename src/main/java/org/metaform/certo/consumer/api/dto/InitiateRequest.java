@@ -10,5 +10,5 @@ import java.util.List;
  */
 public record InitiateRequest(
         @NotBlank String certificateType,
-        List<String> certifiedLocationBpns) {
+        List<String> certifiedLocations) {
 }

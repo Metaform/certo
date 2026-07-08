@@ -12,7 +12,7 @@ import java.util.List;
 public record ConsumerRequestView(
         String exchangeId,
         String certificateId,
-        int revision,
+        Integer revision,
         FulfillmentStatus fulfillmentStatus,
         List<StatusError> errors) {
 

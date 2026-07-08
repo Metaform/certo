@@ -10,6 +10,9 @@ import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
+import org.metaform.certo.protocol.ExchangeBinding;
+import org.metaform.certo.protocol.ProtocolNotifier;
+import org.metaform.certo.protocol.ProtocolVersions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,7 +32,7 @@ import java.util.UUID;
  * no DSP catalog lookup (out of scope).
  */
 @Component
-public class ConsumerNotificationClient {
+public class ConsumerNotificationClient implements ProtocolNotifier {
 
     private static final Logger LOG = LoggerFactory.getLogger(ConsumerNotificationClient.class);
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
@@ -50,7 +53,13 @@ public class ConsumerNotificationClient {
      *
      * @return {@code true} if the consumer accepted the event (2xx), {@code false} otherwise
      */
-    public boolean notifyLifecycle(LifecycleStatusData data) {
+    @Override
+    public String version() {
+        return ProtocolVersions.CCM_3_0_0;
+    }
+
+    @Override
+    public boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data) {
         var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, data);
         var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
         return post(event, data.exchangeId(), data.status() + " certificate " + certificateId);
@@ -62,7 +71,8 @@ public class ConsumerNotificationClient {
      *
      * @return {@code true} if the consumer accepted the event (2xx), {@code false} otherwise
      */
-    public boolean notifyFulfillment(FulfillmentStatusData data) {
+    @Override
+    public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data) {
         var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data);
         return post(event, data.exchangeId(), "fulfillment " + data.status());
     }

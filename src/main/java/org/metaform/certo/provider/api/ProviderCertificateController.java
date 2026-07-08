@@ -93,15 +93,14 @@ public class ProviderCertificateController {
     }
 
     /**
-     * {@code GET /certificates/{id}} — retrieve certificate metadata as JSON (CX-0135 &sect;3.3.2). Returns
-     * the full record for an active certificate, or the minimal withdrawn-status body for a withdrawn one.
-     * Document binaries are not included; each is referenced in {@code documents[]} and fetched via
-     * {@code GET /documents/{id}}.
+     * {@code GET /certificates/{id}} — retrieve certificate metadata as JSON (CX-0135 &sect;3.3.2). Always
+     * returns the latest revision as the full record for an active certificate, or the minimal
+     * withdrawn-status body for a withdrawn one. Document binaries are not included; each is referenced in
+     * {@code documents[]} and fetched via {@code GET /documents/{id}}.
      */
     @GetMapping(path = "/certificates/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Object getCertificate(@PathVariable("id") String certificateId,
-                                 @RequestParam(value = "revision", required = false) Integer revision) {
-        return service.getCertificate(certificateId, revision);
+    public Object getCertificate(@PathVariable("id") String certificateId) {
+        return service.getCertificate(certificateId);
     }
 
     /**

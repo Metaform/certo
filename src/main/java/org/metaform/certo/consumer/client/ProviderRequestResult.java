@@ -14,7 +14,7 @@ import java.util.List;
 public record ProviderRequestResult(
         String exchangeId,
         String certificateId,
-        int revision,
+        Integer revision,
         FulfillmentStatus status,
         List<StatusError> errors) {
 }
