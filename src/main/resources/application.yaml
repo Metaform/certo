@@ -8,6 +8,9 @@ server:
 # Identity used when this runtime produces CloudEvents (CX-0000 §2.1).
 # These are demo values; in a real deployment they would derive from the participant's DID/BPN.
 certo:
+  # Storage backend for all stores (ports with swappable adapters). 'memory' (default) selects the
+  # in-memory adapters; a future 'postgres' would select JDBC adapters registered under that value.
+  persistence: memory
   provider:
     # BPN of the Certificate Provider (this runtime, when acting as a provider).
     bpn: BPNL0000000001AB

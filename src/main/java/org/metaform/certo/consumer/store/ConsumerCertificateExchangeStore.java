@@ -1,23 +1,16 @@
 package org.metaform.certo.consumer.store;
 
 import org.metaform.certo.consumer.model.ConsumerCertificateExchange;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
-/** In-memory store of consumer-side exchange records and their acceptance decisions (demo only). */
-@Component
-public class ConsumerCertificateExchangeStore {
+/**
+ * Store of the consumer's {@code Certificate Exchange}es. The port; {@code InMemoryConsumerCertificateExchangeStore}
+ * is the default (in-memory) adapter, selectable via {@code certo.persistence}.
+ */
+public interface ConsumerCertificateExchangeStore {
 
-    private final ConcurrentMap<String, ConsumerCertificateExchange> exchanges = new ConcurrentHashMap<>();
+    void save(ConsumerCertificateExchange exchange);
 
-    public void save(ConsumerCertificateExchange exchange) {
-        exchanges.put(exchange.exchangeId(), exchange);
-    }
-
-    public Optional<ConsumerCertificateExchange> find(String exchangeId) {
-        return Optional.ofNullable(exchanges.get(exchangeId));
-    }
+    Optional<ConsumerCertificateExchange> find(String exchangeId);
 }

@@ -1,27 +1,16 @@
 package org.metaform.certo.provider.store;
 
 import org.metaform.certo.provider.model.Document;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
- * In-memory store of certificate document binaries held by the provider (demo only), keyed by the
- * opaque, revision-independent {@code documentId}. Backs {@code GET /documents/{id}} and lets a single
- * document be shared across certificate revisions.
+ * Store of certificate document binaries held by the provider. The port; {@code InMemoryProviderDocumentStore}
+ * is the default (in-memory) adapter, selectable via {@code certo.persistence}.
  */
-@Component
-public class ProviderDocumentStore {
+public interface ProviderDocumentStore {
 
-    private final ConcurrentMap<String, Document> documents = new ConcurrentHashMap<>();
+    void save(Document document);
 
-    public void save(Document document) {
-        documents.put(document.documentId(), document);
-    }
-
-    public Optional<Document> find(String documentId) {
-        return Optional.ofNullable(documents.get(documentId));
-    }
+    Optional<Document> find(String documentId);
 }

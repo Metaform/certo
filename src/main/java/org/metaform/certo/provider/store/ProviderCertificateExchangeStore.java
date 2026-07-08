@@ -1,23 +1,16 @@
 package org.metaform.certo.provider.store;
 
 import org.metaform.certo.provider.model.ProviderCertificateExchange;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
-/** In-memory store of provider-side {@code Certificate Exchange} records (demo only). */
-@Component
-public class ProviderCertificateExchangeStore {
+/**
+ * Store of the provider's {@code Certificate Exchange}es. The port; {@code InMemoryProviderCertificateExchangeStore}
+ * is the default (in-memory) adapter, selectable via {@code certo.persistence}.
+ */
+public interface ProviderCertificateExchangeStore {
 
-    private final ConcurrentMap<String, ProviderCertificateExchange> exchanges = new ConcurrentHashMap<>();
+    void save(ProviderCertificateExchange exchange);
 
-    public void save(ProviderCertificateExchange exchange) {
-        exchanges.put(exchange.exchangeId(), exchange);
-    }
-
-    public Optional<ProviderCertificateExchange> find(String exchangeId) {
-        return Optional.ofNullable(exchanges.get(exchangeId));
-    }
+    Optional<ProviderCertificateExchange> find(String exchangeId);
 }

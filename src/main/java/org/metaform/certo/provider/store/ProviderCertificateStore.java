@@ -1,28 +1,20 @@
 package org.metaform.certo.provider.store;
 
 import org.metaform.certo.provider.model.Certificate;
-import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
-/** In-memory store of certificate artifacts held by the provider (demo only). */
-@Component
-public class ProviderCertificateStore {
+/**
+ * Store of certificate artifacts held by the provider. The port; {@code InMemoryProviderCertificateStore}
+ * is the default (in-memory) adapter, selectable via {@code certo.persistence} so a JDBC/Postgres adapter
+ * can replace it.
+ */
+public interface ProviderCertificateStore {
 
-    private final ConcurrentMap<String, Certificate> certificates = new ConcurrentHashMap<>();
+    void save(Certificate certificate);
 
-    public void save(Certificate certificate) {
-        certificates.put(certificate.certificateId(), certificate);
-    }
+    Optional<Certificate> find(String certificateId);
 
-    public Optional<Certificate> find(String certificateId) {
-        return Optional.ofNullable(certificates.get(certificateId));
-    }
-
-    public Collection<Certificate> all() {
-        return certificates.values();
-    }
+    Collection<Certificate> all();
 }

@@ -1,23 +1,17 @@
 package org.metaform.certo.consumer.store;
 
 import org.metaform.certo.consumer.model.KnownCertificate;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
-/** In-memory store of the certificate lifecycle state the consumer has learned about (demo only). */
-@Component
-public class ConsumerCertificateStore {
+/**
+ * Store of the consumer's lifecycle view of certificates it has learned about. The port;
+ * {@code InMemoryConsumerCertificateStore} is the default (in-memory) adapter, selectable via
+ * {@code certo.persistence}.
+ */
+public interface ConsumerCertificateStore {
 
-    private final ConcurrentMap<String, KnownCertificate> certificates = new ConcurrentHashMap<>();
+    void save(KnownCertificate certificate);
 
-    public void save(KnownCertificate certificate) {
-        certificates.put(certificate.certificateId(), certificate);
-    }
-
-    public Optional<KnownCertificate> find(String certificateId) {
-        return Optional.ofNullable(certificates.get(certificateId));
-    }
+    Optional<KnownCertificate> find(String certificateId);
 }

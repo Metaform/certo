@@ -66,8 +66,13 @@ No catalog, no contract negotiation, no CX-0000 token-refresh authorization. `pr
 *Impact: neither API is production/certification-compliant; the pull's transport/authorization layer is
 absent.*
 
-### 3.2 In-memory storage — **By design**
-All stores are in-memory and reset on restart. Demo only.
+### 3.2 In-memory storage — **By design (abstracted for Postgres)**
+Every store is now a **port** (interface) with a swappable adapter. The default adapters are in-memory
+(`InMemory*`), active via `certo.persistence=memory` (the default) and reset on restart. A JDBC/Postgres
+adapter can be added per store — a new `Postgres*` class registered under `certo.persistence=postgres` —
+with **no change to the services**, which depend only on the port. Ports: `ProviderCertificateStore`,
+`ProviderDocumentStore`, `ProviderCertificateExchangeStore`, `ConsumerCertificateStore`,
+`ConsumerCertificateExchangeStore`, `ProcessedEventStore`, `ExchangeBindingStore`, `Ccm240DocumentIds`.
 
 ---
 
