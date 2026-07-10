@@ -2,7 +2,7 @@ package org.metaform.certo.protocol;
 
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
-import org.metaform.certo.provider.client.ConsumerNotifier;
+import org.metaform.certo.provider.spi.ConsumerNotifier;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 

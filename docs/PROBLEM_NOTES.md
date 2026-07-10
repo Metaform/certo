@@ -89,7 +89,7 @@ returns only the `documentId`. In v2.4.0 the consumer then retrieves the certifi
 via the **dataspace / EDC per-asset pull**, which is out of scope here (the same DSP boundary as §3.1 and
 §4.1). So a v2.4.0 consumer can request and get a `documentId`, but the actual content retrieval is not
 performed in this demo. *(An earlier build returned the certificate inline in the reply / pushed it to a
-request-supplied URL; both were dropped as non-spec deviations in favour of compliance.)* To deliver a
+request-supplied URL; both were dropped as non-spec deviations in favor of compliance.)* To deliver a
 certificate to a legacy consumer without the dataspace, use the provider-initiated push (§4.5), which
 emits a compliant `/companycertificate/available` (or `/push`) to a caller-specified endpoint.
 
@@ -129,12 +129,39 @@ surrogate exchangeId up front.)
 
 ## 5. Architectural caveats
 
-### 5.1 The canonical model is 4.0.0-shaped, not version-neutral — **Open**
-Protocol *versions* plug in cleanly (registry of `ProtocolNotifier` / `ProtocolAcceptanceReporter` by
-version), but the canonical **certificate** model is tied to one aspect-model version: 3.1.0 is an
-adapter, yet 4.0.0 is the hub. If the certificate model versions again, the canonical shape and every
-adapter's `upConvert`/`downConvert` must move. The data-model axis is not as pluggable as the protocol
-axis.
+### 5.1 Version-neutral certificate model — **In progress (Phases 1–2 done)**
+Making the certificate data-model axis as pluggable as the protocol axis, so v3/4.0.0 is an adapter (not
+the hub) over a neutral core. **Phase 1 (done):** `CertificateRecord` is the version-neutral domain model;
+a v3 wire type (`Ccm300Certificate`) + `Ccm300CertificateCodec` were introduced and applied at the
+**retrieval/search/pull** surface (`GET /certificates/{id}`, `POST /certificates/search`, the consumer's
+pull). **Phase 2 (done):** the **lifecycle-event** certificate now also goes through the codec — the v3
+notify adapter (`Ccm300Notifier`) renders a wire `Ccm300LifecycleStatus` (cert via
+`toWire`) on send, and the consumer decodes it and maps back via `toDomain` on receive (covers the
+embedded-document push too). **Net:** every certificate wire boundary now crosses the codec, so a BPC
+4.0.0 reshape lands in `Ccm300Certificate`/`Ccm300LifecycleStatus` + the codec, not the core (today the
+shapes coincide, so the codec is near-identity — the seam is in place). **Residual coupling:** the consumer
+service still imports the ccm300 codec/wire type inline (it parses v3 CloudEvents directly). The fully
+clean form extracts CloudEvent parsing/dispatch into a ccm300 consumer adapter, leaving the service with
+domain-level methods — a further refactor, not required for the data-model decoupling. **Phase 3 (done):**
+both protocol versions are now symmetric adapter packages over a version-neutral core.
+- `protocol/ccm240` split by role — `ccm240/provider` (`Ccm240ProviderController`, `Ccm240Notifier`),
+  `ccm240/consumer` (`Ccm240ConsumerController`, `Ccm240Reporter`), `ccm240/model`, and shared
+  translation/envelope/outbound/documentIds at the root.
+- `protocol/ccm300` now holds the v3 HTTP surface — `ccm300/provider` (`Ccm300ProviderController`,
+  `Ccm300Notifier`), `ccm300/consumer` (`Ccm300ConsumerController`, `Ccm300Retriever`,
+  `Ccm300Requester`, `Ccm300Reporter`), and the wire types/codec in `ccm300` / `ccm300/model`.
+- The **core** (`provider`/`consumer`) keeps only services, domain `model`, `store`, the application `dto`
+  (formerly `api/dto`), and the outbound **ports** in `spi` — `provider/spi/ConsumerNotifier`,
+  `consumer/spi/{AcceptanceReporter, CertificateRetriever, CertificateRequester}` plus their value types
+  (`RetrievedCertificate`, `RetrievedDocument`, `ProviderRequestResult`). Two new ports were introduced so
+  the consumer service depends on interfaces, not the concrete HTTP clients (which now live in `ccm300`).
+
+Dependency direction is inward: the ccm300/ccm240 adapters depend on the core ports/DTOs; the **only**
+core→adapter edge is the documented Phase-2 residual (`ConsumerCertificateService` importing the ccm300
+codec/wire type to parse v3 CloudEvents inline). DTOs stay in core rather than being duplicated into a
+`ccm300/model` wire set + identity codecs: v3's wire shape equals the domain shape today, so a wire/domain
+split is only worth adding per-DTO **when** a real divergence appears (as with the certificate for BPC 4.0.0)
+— the same lazy-split discipline applied consistently.
 
 ### 5.2 `certificateTypeVersion` is inert passenger data — **By design**
 The edition of the certificate type (e.g. ISO 9001:2015) is carried and translated (3.1.0

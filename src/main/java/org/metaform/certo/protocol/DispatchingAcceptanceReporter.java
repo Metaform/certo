@@ -2,7 +2,7 @@ package org.metaform.certo.protocol;
 
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.consumer.client.AcceptanceReporter;
+import org.metaform.certo.consumer.spi.AcceptanceReporter;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 

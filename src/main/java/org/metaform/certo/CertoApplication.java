@@ -14,8 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  *   <li>the {@code Certificate Consumer Notification API} (CX-0135 &sect;4.3).</li>
  * </ul>
  *
- * <p>The Dataspace Protocol (DSP) control plane — catalog, contract negotiation and token-refresh
- * authorization — is out of scope. Storage is in-memory.
+ * <p>Storage is in-memory.
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan

@@ -11,15 +11,17 @@ import org.metaform.certo.common.model.LifecycleStatus;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.web.ApiException;
-import org.metaform.certo.consumer.api.dto.CertificateAcceptanceStatusResponse;
-import org.metaform.certo.consumer.client.AcceptanceReporter;
-import org.metaform.certo.consumer.client.ProviderCertificateClient;
-import org.metaform.certo.consumer.client.ProviderRequestClient;
-import org.metaform.certo.consumer.client.ProviderRequestResult;
-import org.metaform.certo.consumer.client.RetrievedCertificate;
-import org.metaform.certo.consumer.client.RetrievedDocument;
+import org.metaform.certo.consumer.dto.CertificateAcceptanceStatusResponse;
+import org.metaform.certo.consumer.spi.AcceptanceReporter;
+import org.metaform.certo.consumer.spi.CertificateRetriever;
+import org.metaform.certo.consumer.spi.CertificateRequester;
+import org.metaform.certo.consumer.spi.ProviderRequestResult;
+import org.metaform.certo.consumer.spi.RetrievedCertificate;
+import org.metaform.certo.consumer.spi.RetrievedDocument;
 import org.metaform.certo.consumer.model.ConsumerCertificateExchange;
 import org.metaform.certo.consumer.model.KnownCertificate;
+import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
+import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
 import org.metaform.certo.consumer.store.ConsumerCertificateStore;
 import org.metaform.certo.consumer.store.ConsumerCertificateExchangeStore;
 import org.slf4j.Logger;
@@ -35,14 +37,14 @@ import java.util.Base64;
 import java.util.List;
 
 /**
- * Implements the Certificate Consumer API behaviour (CX-0135 v3, &sect;3.2): receiving lifecycle and
+ * Implements the Certificate Consumer API behavior (CX-0135 v3, &sect;3.2): receiving lifecycle and
  * fulfillment CloudEvents from providers, and exposing the consumer's acceptance decision for an
  * exchange.
  *
  * <p>This consumer uses the push-pull mechanism (Option 2 of the v2&rarr;v3 migration): a lifecycle
  * {@code CREATED} notification carries only the light-triage certificate subset, and the consumer then
  * pulls the full metadata and each document binary from the provider data plane via
- * {@link ProviderCertificateClient} (no embedded {@code contentBase64}). It evaluates the certificate —
+ * the {@link CertificateRetriever} port (no embedded {@code contentBase64}). It evaluates the certificate —
  * {@code ACCEPTED} if a document is present and the certificate is within its validity window,
  * {@code REJECTED} if expired, {@code ERRORED} if it cannot be retrieved or has no document — and
  * reports the terminal outcome back to the provider, closing the exchange loop. Reporting {@code RETRIEVED}
@@ -57,14 +59,14 @@ public class ConsumerCertificateService {
     private final ConsumerCertificateStore knownCertificates;
     private final CloudEventCodec codec;
     private final ProcessedEventStore processedEvents;
-    private final ProviderCertificateClient providerClient;
-    private final ProviderRequestClient requestClient;
+    private final CertificateRetriever providerClient;
+    private final CertificateRequester requestClient;
     private final AcceptanceReporter acceptanceClient;
     private final Clock clock;
 
     public ConsumerCertificateService(ConsumerCertificateExchangeStore exchanges, ConsumerCertificateStore knownCertificates,
                                       CloudEventCodec codec, ProcessedEventStore processedEvents,
-                                      ProviderCertificateClient providerClient, ProviderRequestClient requestClient,
+                                      CertificateRetriever providerClient, CertificateRequester requestClient,
                                       AcceptanceReporter acceptanceClient, Clock clock) {
         this.exchanges = exchanges;
         this.knownCertificates = knownCertificates;
@@ -91,8 +93,6 @@ public class ConsumerCertificateService {
         var exchange = new ConsumerCertificateExchange(result.exchangeId(), result.certificateId(), result.revision(),
                 true, result.status(), result.errors());
         exchanges.save(exchange);
-        LOG.info("Opened request -> exchange {} ({} r{}), fulfillment {}",
-                result.exchangeId(), result.certificateId(), result.revision(), result.status());
         onFulfillmentStatus(exchange);
         return exchange;
     }
@@ -131,9 +131,11 @@ public class ConsumerCertificateService {
             var type = codec.typeOf(node);
             switch (type) {
                 case CcmEvents.TYPE_LIFECYCLE_STATUS -> {
-                    var event = codec.decode(node, LifecycleStatusData.class);
-                    validateLifecycle(event.data());
-                    pending.add(new PendingEvent(codec.dedupKey(event), () -> applyLifecycle(event.data())));
+                    // Decode the v3 wire payload and map the certificate back to the neutral domain.
+                    var event = codec.decode(node, Ccm300LifecycleStatus.class);
+                    var data = toDomainLifecycle(event.data());
+                    validateLifecycle(data);
+                    pending.add(new PendingEvent(codec.dedupKey(event), () -> applyLifecycle(data)));
                 }
                 case CcmEvents.TYPE_FULFILLMENT_STATUS -> {
                     var event = codec.decode(node, FulfillmentStatusData.class);
@@ -146,8 +148,6 @@ public class ConsumerCertificateService {
         for (var event : pending) {
             if (processedEvents.firstSeen(event.dedupKey())) {
                 event.apply().run();
-            } else {
-                LOG.info("Ignoring duplicate event {}", event.dedupKey());
             }
         }
     }
@@ -185,6 +185,10 @@ public class ConsumerCertificateService {
         applyLifecycle(new LifecycleStatusData(LifecycleStatus.CREATED, exchangeId, certificate));
     }
 
+    private static LifecycleStatusData toDomainLifecycle(Ccm300LifecycleStatus wire) {
+        return new LifecycleStatusData(wire.status(), wire.exchangeId(), Ccm300CertificateCodec.toDomain(wire.certificate()));
+    }
+
     private void validateLifecycle(LifecycleStatusData data) {
         if (data == null || data.status() == null || data.certificate() == null
                 || data.certificate().certificateId() == null) {
@@ -200,7 +204,6 @@ public class ConsumerCertificateService {
         recordKnownCertificate(data);
 
         if (data.status() != LifecycleStatus.CREATED) {
-            LOG.info("{} certificate {} (no exchange opened)", data.status(), data.certificate().certificateId());
             return;
         }
         var cert = data.certificate();
@@ -225,7 +228,6 @@ public class ConsumerCertificateService {
                 .toList();
         var decision = evaluateRetrieved(new RetrievedCertificate(cert, documents));
         recordAndReport(exchangeId, cert.certificateId(), cert.revision(), decision.status(), decision.errors());
-        LOG.info("Exchange {} (embedded certificate {}) concluded {}", exchangeId, cert.certificateId(), decision.status());
     }
 
     /** Creates or updates the consumer's lifecycle view of the certificate from a lifecycle event. */
@@ -260,7 +262,6 @@ public class ConsumerCertificateService {
             return;
         }
         exchange.updateFulfillment(data.status(), data.errors());
-        LOG.info("Fulfillment status {} pushed for exchange {}", data.status(), data.exchangeId());
         onFulfillmentStatus(exchange);
     }
 
@@ -289,7 +290,6 @@ public class ConsumerCertificateService {
         }
         var decision = evaluateRetrieved(certificate);
         recordAndReport(exchangeId, certificateId, revision, decision.status(), decision.errors());
-        LOG.info("Exchange {} (certificate {}) concluded {}", exchangeId, certificateId, decision.status());
     }
 
     /**
@@ -306,7 +306,6 @@ public class ConsumerCertificateService {
             return created;
         });
         exchange.transitionAcceptance(status, errors);
-        LOG.info("Exchange {} (certificate {}) -> {}", exchangeId, certificateId, status);
         acceptanceClient.report(exchangeId, certificateId, status, errors);
         return exchange;
     }

@@ -12,7 +12,7 @@ for the vendored spec.
 | **[provider]** | `ProviderCertificateApiTest` | provider endpoints via MockMvc |
 | **[consumer]** | `ConsumerCertificateApiTest` | consumer end-to-end vs a real server (port 18080) |
 | **[poll]** | `ConsumerPollFlowTest` | consumer poll path, unreachable push (port 18081) |
-| **[callback]** | `ProviderAcceptanceClientTest` | acceptance-callback shape via MockWebServer |
+| **[callback]** | `Ccm300ReporterTest` | acceptance-callback shape via MockWebServer |
 
 ## The model
 
@@ -93,7 +93,7 @@ sequenceDiagram
         P-->>C: 202 status FULFILLED
     else otherwise provider must produce it
         P-->>C: 202 status ACKNOWLEDGED
-        Note over P: fulfilment advances, demo advance trigger, publishes cert
+        Note over P: fulfillment advances, demo advance trigger, publishes cert
         alt A2 consumer learns via push
             P->>C: POST /certificate-notifications, CertificateFulfillmentStatus FULFILLED
         else A3 consumer learns via poll
@@ -126,10 +126,10 @@ sequenceDiagram
 | # | Variant | Tests |
 |---|---------|-------|
 | **A1** | Held cert → immediate `FULFILLED` → accepted | `consumerInitiatedPull_heldCertificate_fulfilledImmediatelyAndAccepted` **[consumer]**; `requestOfferedType_fulfilledImmediately_andPollable` **[provider]** |
-| **A2** | Async fulfilment learned via **push** | `consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts`, `fulfillmentNotification_accepted` **[consumer]**; `request_notHeld_acknowledgesThenFulfillsAsynchronously` **[provider]** |
-| **A3** | Async fulfilment learned via **poll** | `consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts` **[poll]** |
+| **A2** | Async fulfillment learned via **push** | `consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts`, `fulfillmentNotification_accepted` **[consumer]**; `request_notHeld_acknowledgesThenFulfillsAsynchronously` **[provider]** |
+| **A3** | Async fulfillment learned via **poll** | `consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts` **[poll]** |
 | **A4** | Unoffered type → `DECLINED` | `consumerInitiatedPull_unofferedType_declined` **[consumer]**; `requestUnofferedType_declinedWithErrors`, `requestMissingType_badRequest` **[provider]** |
-| **A5** | Fulfilment `FAILED` (sentinel `BPNFAIL`) | `consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance` **[consumer]**; `request_failTrigger_endsInFailed` **[provider]** |
+| **A5** | Fulfillment `FAILED` (sentinel `BPNFAIL`) | `consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance` **[consumer]**; `request_failTrigger_endsInFailed` **[provider]** |
 
 Provider-endpoint coverage for the steps: poll/`404` `requestStatus_unknownExchange_notFound` **[provider]**;
 retrieve `retrieveCertificate_returnsJsonMetadataWithDocumentReferences`, `retrieveCertificate_specificRevision`,
@@ -308,7 +308,7 @@ Every flow/variant ↔ its tests (legend above). All 50 tests are accounted for.
 ## Demo simplifications (not protocol limitations)
 
 - A held certificate covering the requested locations fulfils **immediately**; otherwise the request
-  is `ACKNOWLEDGED` and the provider's asynchronous fulfilment
+  is `ACKNOWLEDGED` and the provider's asynchronous fulfillment
   (`ACKNOWLEDGED → CERTIFICATION_REQUESTED → FULFILLED`, or `FAILED`) is driven by an explicit
   `POST /certificate-requests/{id}/advance` trigger rather than a timer (locations including `BPNFAIL`
   end in `FAILED`).

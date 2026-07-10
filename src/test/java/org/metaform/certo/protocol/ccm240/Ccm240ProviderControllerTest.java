@@ -74,8 +74,7 @@ class Ccm240ProviderControllerTest {
 
     @Test
     void legacyRequest_completedReturnsOnlyDocumentId() throws Exception {
-        // v2.4.0-compliant: a COMPLETED reply carries only the documentId (the consumer retrieves the
-        // certificate by that id via the dataspace — out of scope here), never the certificate inline.
+        // v2.4.0-compliant: a COMPLETED reply carries only the documentId, never the certificate inline.
         var request = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Request:1.0.0",
                               "messageId": "33333333-3333-3333-3333-333333333333", "senderBpn": "%s", "receiverBpn": "BPNL0000000001AB",

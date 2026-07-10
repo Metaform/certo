@@ -17,16 +17,16 @@ import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.pdf.PdfGenerator;
 import org.metaform.certo.common.web.ApiException;
-import org.metaform.certo.provider.api.dto.CertificateLifecycleResult;
-import org.metaform.certo.provider.api.dto.CertificatePage;
-import org.metaform.certo.provider.api.dto.CertificatePublication;
-import org.metaform.certo.provider.api.dto.CertificateQuery;
-import org.metaform.certo.provider.api.dto.CertificateRequest;
-import org.metaform.certo.provider.api.dto.CertificateRequestResponse;
-import org.metaform.certo.provider.api.dto.CertificateRequestStatus;
-import org.metaform.certo.provider.api.dto.ExchangeView;
-import org.metaform.certo.provider.api.dto.WithdrawnCertificate;
-import org.metaform.certo.provider.client.ConsumerNotifier;
+import org.metaform.certo.provider.dto.CertificateLifecycleResult;
+import org.metaform.certo.provider.dto.CertificatePage;
+import org.metaform.certo.provider.dto.CertificatePublication;
+import org.metaform.certo.provider.dto.CertificateQuery;
+import org.metaform.certo.provider.dto.CertificateRequest;
+import org.metaform.certo.provider.dto.CertificateRequestResponse;
+import org.metaform.certo.provider.dto.CertificateRequestStatus;
+import org.metaform.certo.provider.dto.ExchangeView;
+import org.metaform.certo.provider.dto.WithdrawnCertificate;
+import org.metaform.certo.provider.spi.ConsumerNotifier;
 import org.metaform.certo.provider.model.Certificate;
 import org.metaform.certo.provider.model.CertificateRevision;
 import org.metaform.certo.provider.model.Document;
@@ -51,7 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Implements the Certificate Provider API behaviour (CX-0135 v3): opening exchanges on request,
+ * Implements the Certificate Provider API behavior (CX-0135 v3): opening exchanges on request,
  * reporting fulfillment status, serving certificate metadata and document binaries, recording
  * acceptance feedback, and answering searches. State is held in-memory (demo only).
  */
@@ -120,7 +120,6 @@ public class ProviderCertificateService {
                     exchangeId, certificateId, 1, counterparty, FulfillmentStatus.DECLINED, errors);
             exchange.markConsumerInitiated();
             exchanges.save(exchange);
-            LOG.info("Declined request for type {} (exchange {})", request.certificateType(), exchangeId);
             // A DECLINED request never yields a certificate, so certificateId/revision are omitted (CX-0135 §4.4.1).
             return new CertificateRequestResponse(exchangeId, null, null, FulfillmentStatus.DECLINED, errors);
         }
@@ -133,8 +132,6 @@ public class ProviderCertificateService {
                     exchangeId, certificate.certificateId(), revision, counterparty, FulfillmentStatus.FULFILLED);
             exchange.markConsumerInitiated();
             exchanges.save(exchange);
-            LOG.info("Fulfilled request for type {} -> held certificate {} r{} (exchange {})",
-                    request.certificateType(), certificate.certificateId(), revision, exchangeId);
             return new CertificateRequestResponse(
                     exchangeId, certificate.certificateId(), revision, FulfillmentStatus.FULFILLED, null);
         }
@@ -150,8 +147,6 @@ public class ProviderCertificateService {
             exchange.markWillFail();
         }
         exchanges.save(exchange);
-        LOG.info("Acknowledged request for type {} -> certificate {} (exchange {}, async fulfillment)",
-                request.certificateType(), certificateId, exchangeId);
         return new CertificateRequestResponse(
                 exchangeId, certificateId, 1, FulfillmentStatus.ACKNOWLEDGED, null);
     }
@@ -179,10 +174,8 @@ public class ProviderCertificateService {
                 certificates.save(published); // publication (lifecycle CREATED)
             }
             exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
-            LOG.info("Fulfilled exchange {} -> published certificate {}", exchangeId, exchange.certificateId());
         } else {
             exchange.transitionFulfillment(next, null);
-            LOG.info("Advanced exchange {} to {}", exchangeId, next);
         }
         pushFulfillmentStatus(exchange);
         return toRequestStatus(exchange);
@@ -236,8 +229,6 @@ public class ProviderCertificateService {
                         rev.validFrom(), rev.validUntil());
         var data = new LifecycleStatusData(LifecycleStatus.CREATED, exchangeId, certData);
         var notified = consumerNotifications.notifyLifecycle(data);
-        LOG.info("Published certificate {} r{} as exchange {} ({}, consumer notified: {})",
-                certificateId, rev.revision(), exchangeId, embedded ? "embedded" : "push-pull", notified);
         return new CertificatePublication(exchangeId, certificateId, rev.revision(), notified);
     }
 
@@ -261,7 +252,6 @@ public class ProviderCertificateService {
         var data = new LifecycleStatusData(LifecycleStatus.MODIFIED, null,
                 CertificateRecord.lightTriage(certificateId, revision, certificate.certificateType(), today, validUntil));
         var notified = consumerNotifications.notifyLifecycle(data);
-        LOG.info("Modified certificate {} -> revision {} (consumer notified: {})", certificateId, revision, notified);
         return new CertificateLifecycleResult(certificateId, revision, LifecycleStatus.MODIFIED, notified);
     }
 
@@ -282,7 +272,6 @@ public class ProviderCertificateService {
 
         var data = new LifecycleStatusData(LifecycleStatus.WITHDRAWN, null, CertificateRecord.idOnly(certificateId));
         var notified = consumerNotifications.notifyLifecycle(data);
-        LOG.info("Withdrew certificate {} (consumer notified: {})", certificateId, notified);
         return new CertificateLifecycleResult(certificateId, revision, LifecycleStatus.WITHDRAWN, notified);
     }
 
@@ -372,7 +361,6 @@ public class ProviderCertificateService {
 
             pending.add(new PendingEvent(codec.dedupKey(event), () -> {
                 exchange.recordAcceptance(data.status(), data.errors());
-                LOG.info("Recorded acceptance {} for exchange {}", data.status(), data.exchangeId());
             }));
         }
         applyOnce(pending);
@@ -382,8 +370,6 @@ public class ProviderCertificateService {
         for (var event : pending) {
             if (processedEvents.firstSeen(event.dedupKey())) {
                 event.apply().run();
-            } else {
-                LOG.info("Ignoring duplicate event {}", event.dedupKey());
             }
         }
     }

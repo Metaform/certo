@@ -7,9 +7,8 @@ import java.util.List;
 
 /**
  * A legacy v2.4.0 {@code POST /companycertificate/available} message (provider &rarr; consumer): the
- * provider notifies that a certificate is available, by reference only (no inline content). Retrieving
- * the content required the legacy per-asset EDC pull, which is out of scope for this adapter — old
- * providers should use {@code /push} instead.
+ * provider notifies that a certificate is available, by reference only (no inline content). This adapter
+ * only acknowledges the notice — old providers should use {@code /push} instead.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)

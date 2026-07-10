@@ -250,15 +250,15 @@ src/main/java/org/metaform/certo
 │   └── web/                # error handling, application/cloudevents+json media type
 ├── provider/               # Certificate Provider API (§3.3)
 │   ├── api/                # controller + DTOs (CertificateQuery grammar, WithdrawnCertificate, …)
-│   ├── client/             # ConsumerNotificationClient (OkHttp push to the consumer)
+│   ├── client/             # Ccm300Notifier (OkHttp push to the consumer)
 │   ├── model/ store/       # Certificate, CertificateRevision, Document, ProviderCertificateExchange,
 │   │                       #   ProviderCertificateStore, ProviderDocumentStore, ProviderCertificateExchangeStore
 │   ├── ProviderCertificateService.java
 │   └── ProviderCertificateSeeder.java
 └── consumer/               # Certificate Consumer API (§3.2)
     ├── api/                # controller + DTOs
-    ├── client/             # OkHttp clients: ProviderRequestClient (pull), ProviderCertificateClient
-    │                       #   (metadata + documents), ProviderAcceptanceClient (callback)
+    ├── client/             # OkHttp clients: Ccm300Requester (pull), Ccm300Retriever
+    │                       #   (metadata + documents), Ccm300Reporter (callback)
     ├── model/ store/       # ConsumerCertificateExchange (both phases), KnownCertificate (lifecycle view)
     └── ConsumerCertificateService.java
 ```
@@ -269,7 +269,7 @@ Naming: side-specific stateful classes carry a `Provider*` / `Consumer*` prefix 
 package, the CloudEvents types, the status enums, the shared certificate records). `Certificate` /
 `CertificateRevision` / `Document` keep bare names — they're the provider's domain entities (the consumer's lifecycle
 analog is the differently-named `KnownCertificate`). The OkHttp client names are **directional** (a consumer's
-`ProviderCertificateClient` calls the provider), so they're left as-is.
+`Ccm300Retriever` calls the provider), so they're left as-is.
 
 ## Tests
 

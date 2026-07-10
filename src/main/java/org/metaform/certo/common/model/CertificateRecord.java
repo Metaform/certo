@@ -8,9 +8,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * The CX-0135 &sect;4 certificate record — the single wire representation of a certificate, shared by
- * {@code GET /certificates/{id}}, {@code POST /certificates/search}, and the {@code data.certificate}
- * member of a lifecycle notification (CX-0135 &sect;3.2.1 / &sect;3.3.2).
+ * The <b>version-neutral</b> domain representation of a certificate — the internal model the core works
+ * in, independent of any wire protocol version. Each protocol adapter maps it to/from its wire shape:
+ * v3 via {@code Ccm300CertificateCodec} (&harr; {@code Ccm300Certificate}), v2.4.0 via
+ * {@code Ccm240Translation} (&harr; {@code BusinessPartnerCertificate31}). Every certificate wire boundary
+ * crosses a codec — retrieval, search, the consumer pull, and the lifecycle notification (the last via
+ * {@code Ccm300LifecycleStatus}) — so this type never serializes to the wire directly.
  *
  * <p>Which fields are populated depends on context. On retrieval and search the full record is present
  * (but never document {@code contentBase64}). In a lifecycle push under the baseline consumer subject
