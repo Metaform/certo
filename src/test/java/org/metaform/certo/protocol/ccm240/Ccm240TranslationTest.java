@@ -15,7 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Unit tests for the pure legacy &harr; v3 translation core (Phase 1 of the backward-compat adapter). */
+/** Unit tests for the pure v2.4.0 &harr; v3 translation core (Phase 1 of the backward-compat adapter). */
 class Ccm240TranslationTest {
 
     @Test
@@ -28,7 +28,7 @@ class Ccm240TranslationTest {
     }
 
     @Test
-    void legacyStatus_mapsToV3AcceptanceStatus() {
+    void v240Status_mapsToV3AcceptanceStatus() {
         assertThat(Ccm240Translation.toAcceptanceStatus(Ccm240StatusValue.RECEIVED)).isEqualTo(AcceptanceStatus.RETRIEVED);
         assertThat(Ccm240Translation.toAcceptanceStatus(Ccm240StatusValue.ACCEPTED)).isEqualTo(AcceptanceStatus.ACCEPTED);
         assertThat(Ccm240Translation.toAcceptanceStatus(Ccm240StatusValue.REJECTED)).isEqualTo(AcceptanceStatus.REJECTED);

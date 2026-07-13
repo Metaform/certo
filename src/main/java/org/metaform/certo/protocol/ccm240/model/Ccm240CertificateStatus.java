@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * A legacy v2.4.0 {@code POST /companycertificate/status} message (consumer &rarr; provider): feedback on
+ * A v2.4.0 {@code POST /companycertificate/status} message (consumer &rarr; provider): feedback on
  * a consumed certificate. Maps to a v3 {@code CertificateAcceptanceStatus} CloudEvent on
  * {@code POST /certificate-acceptance-notifications}, correlated by the {@code documentId}.
  */
@@ -15,7 +15,7 @@ import java.util.List;
 public record Ccm240CertificateStatus(Ccm240Header header, Content content) {
 
     /**
-     * @param documentId        the certificate (== v3 {@code certificateId}) the status applies to
+     * @param documentId        the v2.4.0 asset {@code documentId} (a UUID) mapped to the v3 {@code certificateId}
      * @param certificateStatus the acceptance outcome
      * @param certificateErrors certificate-level errors (present for {@code REJECTED})
      * @param locationBpns       locations the status applies to

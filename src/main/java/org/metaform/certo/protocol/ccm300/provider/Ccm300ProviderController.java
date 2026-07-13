@@ -5,14 +5,11 @@ import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.provider.ProviderCertificateService;
-import org.metaform.certo.provider.dto.CertificateLifecycleResult;
 import org.metaform.certo.provider.dto.CertificatePage;
-import org.metaform.certo.provider.dto.CertificatePublication;
 import org.metaform.certo.provider.dto.CertificateQuery;
 import org.metaform.certo.provider.dto.CertificateRequest;
 import org.metaform.certo.provider.dto.CertificateRequestResponse;
 import org.metaform.certo.provider.dto.CertificateRequestStatus;
-import org.metaform.certo.provider.dto.ExchangeView;
 import org.metaform.certo.provider.model.Document;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -51,47 +48,6 @@ public class Ccm300ProviderController {
     @GetMapping(path = "/certificate-requests/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus getRequestStatus(@PathVariable("id") String exchangeId) {
         return service.getRequestStatus(exchangeId);
-    }
-
-    /**
-     * {@code POST /certificate-requests/{id}/advance} — demo trigger that advances an in-progress
-     * exchange one Fulfillment step (not part of CX-0135; a real fulfillment backend would drive this).
-     */
-    @PostMapping(path = "/certificate-requests/{id}/advance", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CertificateRequestStatus advanceRequest(@PathVariable("id") String exchangeId) {
-        return service.advance(exchangeId);
-    }
-
-    /**
-     * {@code POST /certificates/{id}/publish} — provider-initiated push (demo trigger): open an
-     * exchange for a held certificate and notify the consumer with a lifecycle CREATED event.
-     */
-    @PostMapping(path = "/certificates/{id}/publish", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<CertificatePublication> publish(@PathVariable("id") String certificateId,
-                                                          @RequestParam(value = "revision", required = false) Integer revision,
-                                                          @RequestParam(value = "embedded", defaultValue = "false") boolean embedded) {
-        return ResponseEntity.accepted().body(service.publish(certificateId, revision, embedded));
-    }
-
-    /** {@code POST /certificates/{id}/modify} — publish a new revision and notify (demo trigger; CX-0135 &sect;2.2). */
-    @PostMapping(path = "/certificates/{id}/modify", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<CertificateLifecycleResult> modify(@PathVariable("id") String certificateId) {
-        return ResponseEntity.accepted().body(service.modify(certificateId));
-    }
-
-    /** {@code POST /certificates/{id}/withdraw} — withdraw a certificate and notify (demo trigger; CX-0135 &sect;2.2). */
-    @PostMapping(path = "/certificates/{id}/withdraw", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CertificateLifecycleResult withdraw(@PathVariable("id") String certificateId) {
-        return service.withdraw(certificateId);
-    }
-
-    /**
-     * {@code GET /certificate-exchanges/{id}} — the provider's full view of an exchange, both phases
-     * (demo/inspection; not part of CX-0135).
-     */
-    @GetMapping(path = "/certificate-exchanges/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ExchangeView getExchange(@PathVariable("id") String exchangeId) {
-        return service.getExchangeView(exchangeId);
     }
 
     /**

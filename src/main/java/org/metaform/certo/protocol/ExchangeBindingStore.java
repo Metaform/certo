@@ -13,13 +13,11 @@ public interface ExchangeBindingStore {
 
     Optional<ExchangeBinding> byExchangeId(String exchangeId);
 
-    Optional<ExchangeBinding> byCertificateId(String certificateId);
-
     /**
-     * Resolves the binding for an exchange whose counterparty plays the given role, by {@code exchangeId}
-     * then {@code certificateId}. A binding for the other role is ignored.
+     * Resolves the binding for an exchange whose counterparty plays the given role, by {@code exchangeId}.
+     * A binding for the other role is ignored (an exchange has one counterparty per direction).
      */
-    Optional<ExchangeBinding> resolve(String exchangeId, String certificateId, CounterpartyRole role);
+    Optional<ExchangeBinding> resolve(String exchangeId, CounterpartyRole role);
 
     /** Resolves the v3 {@code exchangeId} for a {@code certificateId} reported by the given peer. */
     Optional<String> exchangeFor(String certificateId, String peerBpn);

@@ -1,4 +1,6 @@
-package org.metaform.certo.common.cloudevent;
+package org.metaform.certo.common.cloudevent.memory;
+
+import org.metaform.certo.common.cloudevent.ProcessedEventStore;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

@@ -2,6 +2,7 @@ package org.metaform.certo.provider.store;
 
 import org.metaform.certo.provider.model.ProviderCertificateExchange;
 
+import java.util.Collection;
 import java.util.Optional;
 
 /**
@@ -13,4 +14,7 @@ public interface ProviderCertificateExchangeStore {
     void save(ProviderCertificateExchange exchange);
 
     Optional<ProviderCertificateExchange> find(String exchangeId);
+
+    /** All recorded exchanges (used to fan a new issuance out to every exchange waiting for it). */
+    Collection<ProviderCertificateExchange> all();
 }

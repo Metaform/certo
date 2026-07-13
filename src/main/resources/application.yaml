@@ -6,14 +6,14 @@ server:
   port: 8080
 
 # Identity used when this runtime produces CloudEvents (CX-0000 §2.1).
-# These are demo values; in a real deployment they would derive from the participant's DID/BPN.
+# Placeholder identity values; a real deployment derives these from the participant's DID/BPN.
 certo:
   # Storage backend for all stores (ports with swappable adapters). 'memory' (default) selects the
   # in-memory adapters; a future 'postgres' would select JDBC adapters registered under that value.
   persistence: memory
-  # Seed a few demo certificates (with generated PDFs) at startup. Off by default; set true to populate
-  # the search/retrieval endpoints for the demo (the test suite enables it via the Gradle test task).
-  seed-demo-data: false
+  # Seed a few sample certificates (with generated PDFs) at startup so the search/retrieval endpoints
+  # return data on a fresh run. Off by default; the test suite enables it via the Gradle test task.
+  seed-sample-data: false
   provider:
     # BPN of the Certificate Provider (this runtime, when acting as a provider).
     bpn: BPNL0000000001AB
@@ -23,7 +23,7 @@ certo:
     bpn: BPNL0000000002CD
     source: urn:bpn:BPNL0000000002CD
   # Base URL of the Certificate Provider data plane the consumer retrieves certificates from
-  # and reports acceptance to. Hardcoded (no DSP catalog/negotiation); same runtime by default.
+  # and reports acceptance to. Hardcoded here; same runtime by default.
   provider-base-url: http://localhost:8080
   # Base URL of the Certificate Consumer notification API the provider pushes lifecycle events to.
   consumer-base-url: http://localhost:8080

@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
  * Validates the CX-0135 <b>v2.4.0</b> message {@code Header} against the spec schema: the required fields
  * ({@code context}, {@code messageId}, {@code senderBpn}, {@code receiverBpn}, {@code sentDateTime},
  * {@code version}), their patterns (BPNL / UUID / SemVer / date-time), and the {@code context} expected
- * for the endpoint. A malformed envelope is rejected with {@code 400} so the adapter honours the wire
+ * for the endpoint. A malformed envelope is rejected with {@code 400} so the adapter honors the wire
  * contract rather than silently accepting anything.
  */
 public final class Ccm240Envelope {

@@ -21,10 +21,10 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Drives the legacy v2.4.0 consumer-facing adapter ({@code /companycertificate/push}) against a real
+ * Drives the v2.4.0 consumer-facing adapter ({@code /companycertificate/push}) against a real
  * running server: an inbound 3.1.0 push is up-converted, ingested, and published, driving the v3
  * consumer to pull, evaluate and accept the certificate — then the adapter reports the acceptance back
- * to the (legacy) provider's feedback URL as a {@code /companycertificate/status} message (Phases 3+4).
+ * to the provider's feedback URL as a {@code /companycertificate/status} message (Phases 3+4).
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
@@ -42,24 +42,24 @@ class Ccm240ConsumerControllerTest {
     @Autowired
     ObjectMapper mapper;
 
-    private MockWebServer legacyProvider;
+    private MockWebServer v240Provider;
 
     @BeforeEach
     void setUp() throws Exception {
-        legacyProvider = new MockWebServer();
-        legacyProvider.start();
+        v240Provider = new MockWebServer();
+        v240Provider.start();
     }
 
     @AfterEach
     void tearDown() throws Exception {
-        legacyProvider.shutdown();
+        v240Provider.shutdown();
     }
 
     @Test
-    void legacyPush_ingestsUpConvertsAcceptsAndReportsStatusBack() throws Exception {
-        legacyProvider.enqueue(new MockResponse().setResponseCode(200)); // the /status callback
+    void v240Push_ingestsUpConvertsAcceptsAndReportsStatusBack() throws Exception {
+        v240Provider.enqueue(new MockResponse().setResponseCode(200)); // the /status callback
 
-        var feedbackUrl = legacyProvider.url("/companycertificate/status").toString();
+        var feedbackUrl = v240Provider.url("/").toString();   // base URL; the reporter appends /companycertificate/status
         var pdf = Base64.getEncoder().encodeToString("PDF-CONTENT".getBytes(StandardCharsets.UTF_8));
         var push = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Push:1.0.0",
@@ -85,15 +85,15 @@ class Ccm240ConsumerControllerTest {
         var exchangeId = ack.get("exchangeId").asString();
 
         // The consumer learned the certificate (lifecycle CREATED) by pulling the ingested metadata...
-        var known = mapper.readTree(get("/consumer/certificates/" + certificateId).body());
+        var known = mapper.readTree(get("/management/v1/consumer/certificates/" + certificateId).body());
         assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
 
         // ...evaluated it as ACCEPTED (valid, retrievable document)...
         var acceptance = mapper.readTree(get("/certificate-acceptance-status/" + exchangeId).body());
         assertThat(acceptance.get("status").asString()).isEqualTo("ACCEPTED");
 
-        // ...and reported that back to the legacy provider as a v2.4.0 /status message (down-mapped).
-        RecordedRequest status = legacyProvider.takeRequest(5, TimeUnit.SECONDS);
+        // ...and reported that back to the v2.4.0 provider as a v2.4.0 /status message (down-mapped).
+        RecordedRequest status = v240Provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(status).isNotNull();
         assertThat(status.getPath()).isEqualTo("/companycertificate/status");
         var body = mapper.readTree(status.getBody().readUtf8());

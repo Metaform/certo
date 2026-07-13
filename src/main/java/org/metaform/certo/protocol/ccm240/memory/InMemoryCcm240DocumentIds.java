@@ -1,4 +1,6 @@
-package org.metaform.certo.protocol.ccm240;
+package org.metaform.certo.protocol.ccm240.memory;
+
+import org.metaform.certo.protocol.ccm240.Ccm240DocumentIds;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

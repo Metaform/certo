@@ -14,7 +14,7 @@ import java.util.List;
  * type, kept separate from the version-neutral domain model ({@link org.metaform.certo.common.model.CertificateRecord});
  * {@link org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec} maps between them. When BPC 4.0.0
  * publishes and its shape diverges from the domain (nested {@code type}, {@code issuerBpnl}, {@code uploader},
- * per-location {@code areaOfApplication}, …), those changes land here and in the codec — not in the core.
+ * …), those changes land here and in the codec — not in the core.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)

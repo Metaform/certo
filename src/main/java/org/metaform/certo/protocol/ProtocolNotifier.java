@@ -12,8 +12,8 @@ import org.metaform.certo.common.model.LifecycleStatusData;
  */
 public interface ProtocolNotifier {
 
-    /** The protocol version this adapter speaks (see {@link ProtocolVersions}). */
-    String version();
+    /** The protocol version this adapter speaks (see {@link ProtocolVersion}). */
+    ProtocolVersion version();
 
     /**
      * Delivers a lifecycle notification to the consumer. {@code binding} is null for the native version.

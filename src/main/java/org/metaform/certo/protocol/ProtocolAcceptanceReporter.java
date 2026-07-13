@@ -14,8 +14,8 @@ import java.util.List;
  */
 public interface ProtocolAcceptanceReporter {
 
-    /** The protocol version this adapter speaks (see {@link ProtocolVersions}). */
-    String version();
+    /** The protocol version this adapter speaks (see {@link ProtocolVersion}). */
+    ProtocolVersion version();
 
     /** Reports the acceptance outcome to the provider. {@code binding} is null for the native version. */
     void report(ExchangeBinding binding, String exchangeId, String certificateId,

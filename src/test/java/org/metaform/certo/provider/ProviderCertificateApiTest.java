@@ -64,11 +64,19 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void requestUnofferedType_declinedWithErrors() throws Exception {
-        mvc.perform(post("/certificate-requests")
+    void declineRequest_endsInDeclined() throws Exception {
+        // Any type is accepted; a not-held request waits for the backend, which may decline it.
+        var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"UNKNOWN-CERT\"}"))
-                .andExpect(status().isAccepted())
+                        .content("{\"certificateType\":\"ISO50001\",\"certifiedLocations\":[\"BPNS-DECLINE\"]}"))
+                .andExpect(jsonPath("$.status").value("CERTIFICATION_REQUESTED"))
+                .andReturn();
+        var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
+
+        mvc.perform(post("/management/v1/certificate-requests/{id}/decline", exchangeId).param("reason", "not a customer"))
+                .andExpect(jsonPath("$.status").value("DECLINED"));
+
+        mvc.perform(get("/certificate-requests/{id}", exchangeId))
                 .andExpect(jsonPath("$.status").value("DECLINED"))
                 .andExpect(jsonPath("$.errors[0].message").isNotEmpty());
     }
@@ -236,37 +244,36 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void request_notHeld_acknowledgesThenFulfillsAsynchronously() throws Exception {
+    void request_notHeld_waitsThenFulfillsWhenCertificateAdded() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"certificateType\":\"IATF16949\",\"certifiedLocations\":[\"BPNS-NEW-SITE\"]}"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("ACKNOWLEDGED"))
+                .andExpect(jsonPath("$.status").value("CERTIFICATION_REQUESTED"))
                 .andReturn();
-        var body = mapper.readTree(result.getResponse().getContentAsString());
-        var exchangeId = body.get("exchangeId").asString();
-        var certificateId = body.get("certificateId").asString();
+        var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
-        mvc.perform(get("/certificates/{id}", certificateId)).andExpect(status().isNotFound());
+        // The backend issues the certificate: it is added and every waiting exchange it covers is fulfilled.
+        var added = addCertificate("IATF16949", "BPNS-NEW-SITE");
+        var certificateId = added.get("certificateId").asString();
+        assertThat(added.get("fulfilledExchanges").toString()).contains(exchangeId);
 
-        assertThat(advance(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
-        assertThat(advance(exchangeId)).isEqualTo("FULFILLED");
         assertThat(requestStatus(exchangeId)).isEqualTo("FULFILLED");
-
         mvc.perform(get("/certificates/{id}", certificateId)).andExpect(status().isOk());
     }
 
     @Test
-    void request_failTrigger_endsInFailed() throws Exception {
+    void request_backendFailure_endsInFailed() throws Exception {
         var result = mvc.perform(post("/certificate-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNFAIL\"]}"))
-                .andExpect(jsonPath("$.status").value("ACKNOWLEDGED"))
+                        .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS-NEW-SITE\"]}"))
+                .andExpect(jsonPath("$.status").value("CERTIFICATION_REQUESTED"))
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
-        assertThat(advance(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
-        assertThat(advance(exchangeId)).isEqualTo("FAILED");
+        mvc.perform(post("/management/v1/certificate-requests/{id}/fail", exchangeId).param("reason", "authority rejected"))
+                .andExpect(jsonPath("$.status").value("FAILED"));
+
         mvc.perform(get("/certificate-requests/{id}", exchangeId))
                 .andExpect(jsonPath("$.status").value("FAILED"))
                 .andExpect(jsonPath("$.errors[0].message").isNotEmpty());
@@ -278,12 +285,11 @@ class ProviderCertificateApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS-NEW-SITE\"]}"))
                 .andReturn();
-        var body = mapper.readTree(result.getResponse().getContentAsString());
-        var exchangeId = body.get("exchangeId").asString(); // ACKNOWLEDGED, not yet FULFILLED
-        var certificateId = body.get("certificateId").asString();
+        // CERTIFICATION_REQUESTED — not yet FULFILLED, and no certificate assigned yet.
+        var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
         mvc.perform(post("/certificate-acceptance-notifications").contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "cert-not-yet-issued", "ACCEPTED", false)))
                 .andExpect(status().isConflict());
     }
 
@@ -309,11 +315,17 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void modify_publishesNewRevision_servedAndSearchable() throws Exception {
+    void revise_appendsNewRevision_servedAndSearchable() throws Exception {
         seedCertificate("cert-mod-test", "MODTEST");
+        var docResult = mvc.perform(post("/management/v1/documents").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}"))
+                .andExpect(status().isCreated()).andReturn();
+        var documentId = mapper.readTree(docResult.getResponse().getContentAsString()).get("documentId").asString();
 
-        mvc.perform(post("/certificates/{id}/modify", "cert-mod-test"))
-                .andExpect(status().isAccepted())
+        mvc.perform(post("/management/v1/certificates/{id}/revisions", "cert-mod-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"validFrom\":\"2026-01-01\",\"validUntil\":\"2029-01-01\",\"documentIds\":[\"" + documentId + "\"]}"))
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.revision").value(2))
                 .andExpect(jsonPath("$.lifecycleStatus").value("MODIFIED"));
 
@@ -330,7 +342,7 @@ class ProviderCertificateApiTest {
         seedCertificate("cert-wd-test", "WDTEST");
         mvc.perform(get("/certificates/{id}", "cert-wd-test")).andExpect(status().isOk());
 
-        mvc.perform(post("/certificates/{id}/withdraw", "cert-wd-test"))
+        mvc.perform(post("/management/v1/certificates/{id}/withdraw", "cert-wd-test"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lifecycleStatus").value("WITHDRAWN"));
 
@@ -344,7 +356,7 @@ class ProviderCertificateApiTest {
                         .content(searchByType("WDTEST")))
                 .andExpect(jsonPath("$.length()").value(0));
 
-        mvc.perform(post("/certificates/{id}/withdraw", "cert-wd-test")).andExpect(status().isConflict());
+        mvc.perform(post("/management/v1/certificates/{id}/withdraw", "cert-wd-test")).andExpect(status().isConflict());
     }
 
     private void seedCertificate(String certificateId, String type) {
@@ -454,13 +466,30 @@ class ProviderCertificateApiTest {
         return mapper.readTree(result.getResponse().getContentAsString()).get("status").asString();
     }
 
-    private String advance(String exchangeId) throws Exception {
-        var result = mvc.perform(post("/certificate-requests/{id}/advance", exchangeId)).andReturn();
-        return mapper.readTree(result.getResponse().getContentAsString()).get("status").asString();
+    /** Backend uploads a document, then issues a certificate referencing it; returns the add-certificate response. */
+    private JsonNode addCertificate(String type, String location) throws Exception {
+        var docResult = mvc.perform(post("/management/v1/documents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        var documentId = mapper.readTree(docResult.getResponse().getContentAsString()).get("documentId").asString();
+
+        var body = """
+                {"certificateType":"%s","certificateTypeVersion":"2016","registrationNumber":"DE-CERT-0001",
+                 "validFrom":"2020-01-01","validUntil":"2035-01-01","trustLevel":"high",
+                 "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"%s","locationRole":"MAIN_LOCATION"}],
+                 "issuer":{"issuerName":"TUV","issuerBpn":"BPNL000000ISSUER"},
+                 "documentIds":["%s"]}""".formatted(type, location, documentId);
+        var result = mvc.perform(post("/management/v1/certificates")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return mapper.readTree(result.getResponse().getContentAsString());
     }
 
     private JsonNode exchangeView(String exchangeId) throws Exception {
-        var result = mvc.perform(get("/certificate-exchanges/{id}", exchangeId)).andReturn();
+        var result = mvc.perform(get("/management/v1/certificate-exchanges/{id}", exchangeId)).andReturn();
         return mapper.readTree(result.getResponse().getContentAsString());
     }
 

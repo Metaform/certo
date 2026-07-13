@@ -10,7 +10,7 @@ import java.util.List;
  * {@code org.metaform.certo.protocol.DispatchingAcceptanceReporter}, which routes by protocol version to a
  * per-version {@code ProtocolAcceptanceReporter} bean: v3 ({@code org.metaform.certo.protocol.ccm300.consumer.Ccm300Reporter})
  * sends a v3 CloudEvent, v2.4.0 ({@code org.metaform.certo.protocol.ccm240.consumer.Ccm240Reporter})
- * posts to the legacy {@code /companycertificate/status}.
+ * posts to the v2.4.0 {@code /companycertificate/status}.
  */
 public interface AcceptanceReporter {
 

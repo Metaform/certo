@@ -9,7 +9,7 @@ import org.metaform.certo.consumer.ConsumerCertificateService;
 import org.metaform.certo.protocol.CounterpartyRole;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ExchangeBindingStore;
-import org.metaform.certo.protocol.ProtocolVersions;
+import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateAvailable;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificatePush;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Contexts;
@@ -51,7 +51,7 @@ public class Ccm240ConsumerController {
         this.bindings = bindings;
     }
 
-    /** A small ack body carrying the assigned v3 identifiers (a demo convenience; legacy clients ignore it). */
+    /** A small ack body carrying the assigned v3 identifiers (a convenience; v2.4.0 clients ignore it). */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Ccm240PushAck(String certificateId, String exchangeId) {
     }
@@ -64,14 +64,14 @@ public class Ccm240ConsumerController {
         if (message.content() == null) {
             throw ApiException.badRequest("v2.4.0 push is missing the certificate content");
         }
-        var certificateId = "cert-legacy-" + UUID.randomUUID();
+        var certificateId = "cert-v240-" + UUID.randomUUID();
         // A v2.4.0 provider assigns no exchangeId; mint a consumer-local surrogate so we can drive and
         // correlate the exchange internally.
-        var exchangeId = "exch-legacy-" + UUID.randomUUID();
+        var exchangeId = "exch-v240-" + UUID.randomUUID();
         var certificate = Ccm240Translation.upConvert(message.content(), certificateId, 1);
 
         var header = message.header();
-        bindings.record(new ExchangeBinding(exchangeId, certificateId, ProtocolVersions.CCM_2_4_0,
+        bindings.record(new ExchangeBinding(exchangeId, certificateId, ProtocolVersion.CCM_2_4_0,
                 CounterpartyRole.PROVIDER,
                 header == null ? null : header.senderBpn(),
                 header == null ? null : header.messageId(),
@@ -93,7 +93,7 @@ public class Ccm240ConsumerController {
             Ccm240Envelope.validateLocationBpns(message.content().locationBpns());
         }
         var documentId = message.content() == null ? null : message.content().documentId();
-        LOG.info("v2.4.0 'available' for documentId {} acknowledged; this adapter does not perform the legacy "
+        LOG.info("v2.4.0 'available' for documentId {} acknowledged; this adapter does not perform the v2.4.0 "
                 + "asset-pull for the content (old providers should use /companycertificate/push)", documentId);
         return ResponseEntity.ok().build();
     }

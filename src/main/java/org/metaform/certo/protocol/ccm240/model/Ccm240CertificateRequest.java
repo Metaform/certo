@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * A legacy v2.4.0 {@code POST /companycertificate/request} message (consumer &rarr; provider). Maps to a
+ * A v2.4.0 {@code POST /companycertificate/request} message (consumer &rarr; provider). Maps to a
  * v3 {@code CertificateRequest} on {@code POST /certificate-requests}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)

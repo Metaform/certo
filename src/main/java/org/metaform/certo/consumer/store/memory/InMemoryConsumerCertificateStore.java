@@ -1,4 +1,6 @@
-package org.metaform.certo.consumer.store;
+package org.metaform.certo.consumer.store.memory;
+
+import org.metaform.certo.consumer.store.ConsumerCertificateStore;
 
 import org.metaform.certo.consumer.model.KnownCertificate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -8,7 +10,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/** In-memory store of the certificate lifecycle state the consumer has learned about (demo only). */
+/** In-memory store of the certificate lifecycle state the consumer has learned about (non-persistent). */
 @Component
 @ConditionalOnProperty(name = "certo.persistence", havingValue = "memory", matchIfMissing = true)
 public class InMemoryConsumerCertificateStore implements ConsumerCertificateStore {

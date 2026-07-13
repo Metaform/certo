@@ -1,4 +1,6 @@
-package org.metaform.certo.consumer.store;
+package org.metaform.certo.consumer.store.memory;
+
+import org.metaform.certo.consumer.store.ConsumerCertificateExchangeStore;
 
 import org.metaform.certo.consumer.model.ConsumerCertificateExchange;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -8,7 +10,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/** In-memory store of consumer-side exchange records and their acceptance decisions (demo only). */
+/** In-memory store of consumer-side exchange records and their acceptance decisions (non-persistent). */
 @Component
 @ConditionalOnProperty(name = "certo.persistence", havingValue = "memory", matchIfMissing = true)
 public class InMemoryConsumerCertificateExchangeStore implements ConsumerCertificateExchangeStore {

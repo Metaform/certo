@@ -13,7 +13,7 @@ import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
-import org.metaform.certo.protocol.ProtocolVersions;
+import org.metaform.certo.protocol.ProtocolVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -54,8 +54,8 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
     }
 
     @Override
-    public String version() {
-        return ProtocolVersions.CCM_3_0_0;
+    public ProtocolVersion version() {
+        return ProtocolVersion.CCM_3_0_0;
     }
 
     /**

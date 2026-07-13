@@ -19,14 +19,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Stateless translation between the CX-0135 <b>v2.4.0</b> (legacy) wire protocol and certo's v3 domain
+ * Stateless translation between the CX-0135 <b>v2.4.0</b> wire protocol and certo's v3 domain
  * model. This is the pure core of the backward-compatibility adapter: status-vocabulary mapping, identity,
  * and the {@code BusinessPartnerCertificate} 3.1.0 &harr; v3 {@link CertificateRecord} semantic-model
  * conversion. No I/O, no Spring, no state.
  *
  * <p>A 3.1.0 push carries the document content inline, so up-conversion produces a <em>complete</em>
  * canonical record (its {@code documents[].contentBase64} carried straight through) — the equivalent of a
- * v3 embedded-document push, which the consumer accepts without a pull. Identity note: a legacy
+ * v3 embedded-document push, which the consumer accepts without a pull. Identity note: a v2.4.0
  * {@code documentId} maps to the v3 {@code certificateId}; retrieval is always latest-revision, so no
  * revision is carried across the boundary.
  */
@@ -37,7 +37,7 @@ public final class Ccm240Translation {
 
     // --- status vocabulary -------------------------------------------------------------------------
 
-    /** Maps a v3 Fulfillment status onto the legacy {@code /request} reply status. */
+    /** Maps a v3 Fulfillment status onto the v2.4.0 {@code /request} reply status. */
     public static Ccm240RequestStatus toReplyStatus(FulfillmentStatus status) {
         return switch (status) {
             case FULFILLED -> Ccm240RequestStatus.COMPLETED;
@@ -46,7 +46,7 @@ public final class Ccm240Translation {
         };
     }
 
-    /** Maps an inbound legacy {@code certificateStatus} onto a v3 Acceptance status. */
+    /** Maps an inbound v2.4.0 {@code certificateStatus} onto a v3 Acceptance status. */
     public static AcceptanceStatus toAcceptanceStatus(Ccm240StatusValue value) {
         return switch (value) {
             case RECEIVED -> AcceptanceStatus.RETRIEVED;
@@ -56,8 +56,8 @@ public final class Ccm240Translation {
     }
 
     /**
-     * Maps a v3 Acceptance status onto the legacy {@code certificateStatus}. The v3-only {@code ERRORED}
-     * has no legacy equivalent and down-maps to {@code REJECTED} (the error detail is preserved in the
+     * Maps a v3 Acceptance status onto the v2.4.0 {@code certificateStatus}. The v3-only {@code ERRORED}
+     * has no v2.4.0 equivalent and down-maps to {@code REJECTED} (the error detail is preserved in the
      * message's {@code certificateErrors}).
      */
     public static Ccm240StatusValue toCcm240StatusValue(AcceptanceStatus status) {

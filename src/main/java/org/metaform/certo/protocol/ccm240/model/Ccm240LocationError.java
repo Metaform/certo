@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * Per-location error detail in a legacy v2.4.0 message: the location {@code bpn} and the errors scoped
+ * Per-location error detail in a v2.4.0 message: the location {@code bpn} and the errors scoped
  * to it. The v3 equivalent is a {@link org.metaform.certo.common.model.StatusError} carrying the
  * {@code bpn} as its {@code specifier}.
  */

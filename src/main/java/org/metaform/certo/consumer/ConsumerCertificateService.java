@@ -102,7 +102,7 @@ public class ConsumerCertificateService {
         var exchange = findConsumerRequest(exchangeId);
         try {
             var result = requestClient.pollStatus(exchangeId);
-            exchange.updateFulfillment(result.status(), result.errors());
+            exchange.updateFulfillment(result.status(), result.certificateId(), result.errors());
         } catch (IOException e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Provider poll failed: " + e.getMessage());
         }
@@ -168,7 +168,7 @@ public class ConsumerCertificateService {
                 exchange.acceptanceErrors());
     }
 
-    /** Returns the consumer's lifecycle view of a certificate it has learned about (demo/inspection). */
+    /** Returns the consumer's lifecycle view of a certificate it has learned about (management/inspection). */
     public KnownCertificate getKnownCertificate(String certificateId) {
         return knownCertificates.find(certificateId)
                 .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
@@ -261,7 +261,7 @@ public class ConsumerCertificateService {
             LOG.info("Fulfillment status {} for unknown exchange {} — ignored", data.status(), data.exchangeId());
             return;
         }
-        exchange.updateFulfillment(data.status(), data.errors());
+        exchange.updateFulfillment(data.status(), data.certificateId(), data.errors());
         onFulfillmentStatus(exchange);
     }
 

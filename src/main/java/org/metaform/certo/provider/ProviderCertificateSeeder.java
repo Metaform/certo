@@ -21,12 +21,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Seeds a few certificates (and their document binaries, incl. generated PDFs) with stable identifiers at
- * startup so the search and retrieval endpoints return data on a fresh run. Demo only, and <b>off by
- * default</b> — enable with {@code certo.seed-demo-data=true} (the test suite sets it).
+ * Seeds a few sample certificates (and their document binaries, incl. generated PDFs) with stable
+ * identifiers at startup so the search and retrieval endpoints return data on a fresh run. <b>Off by
+ * default</b> — enable with {@code certo.seed-sample-data=true} (the test suite sets it).
  */
 @Component
-@ConditionalOnProperty(prefix = "certo", name = "seed-demo-data", havingValue = "true")
+@ConditionalOnProperty(prefix = "certo", name = "seed-sample-data", havingValue = "true")
 public class ProviderCertificateSeeder implements CommandLineRunner {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProviderCertificateSeeder.class);
@@ -72,7 +72,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
         expired.addRevision(revision(expired, 1, LocalDate.of(2018, 1, 1), LocalDate.of(2020, 1, 1)));
         certificates.save(expired);
 
-        LOG.info("Seeded {} demo certificates", certificates.all().size());
+        LOG.info("Seeded {} sample certificates", certificates.all().size());
     }
 
     private CertificateRevision revision(Certificate cert, int revision, LocalDate from, LocalDate until) {

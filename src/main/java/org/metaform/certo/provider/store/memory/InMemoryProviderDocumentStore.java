@@ -1,4 +1,6 @@
-package org.metaform.certo.provider.store;
+package org.metaform.certo.provider.store.memory;
+
+import org.metaform.certo.provider.store.ProviderDocumentStore;
 
 import org.metaform.certo.provider.model.Document;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * In-memory store of certificate document binaries held by the provider (demo only), keyed by the
+ * In-memory store of certificate document binaries held by the provider (non-persistent), keyed by the
  * opaque, revision-independent {@code documentId}. Backs {@code GET /documents/{id}} and lets a single
  * document be shared across certificate revisions.
  */

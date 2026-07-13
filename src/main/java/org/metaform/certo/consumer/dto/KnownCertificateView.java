@@ -9,7 +9,7 @@ import org.metaform.certo.consumer.model.KnownCertificate;
 import java.time.LocalDate;
 import java.util.List;
 
-/** The consumer's lifecycle view of a certificate it has learned about (demo/inspection). */
+/** The consumer's lifecycle view of a certificate it has learned about (management/inspection). */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record KnownCertificateView(
         String certificateId,

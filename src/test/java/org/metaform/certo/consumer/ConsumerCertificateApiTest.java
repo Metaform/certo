@@ -44,6 +44,8 @@ class ConsumerCertificateApiTest {
 
     private static final String BASE = "http://localhost:18080";
     private static final String CE = "application/cloudevents+json";
+    // The publish target: this same runtime acting as the consumer (a publish must name where to deliver).
+    private static final String SELF_TARGET = "\"consumerBpn\":\"BPNL0000000002CD\",\"consumerUrl\":\"" + BASE + "\"";
 
     private final HttpClient http = HttpClient.newHttpClient();
 
@@ -79,7 +81,7 @@ class ConsumerCertificateApiTest {
         assertThat(body.get("certificateId").asString()).isEqualTo("cert-iso14001-0001");
         assertThat(body.get("status").asString()).isEqualTo("ACCEPTED");
 
-        var known = mapper.readTree(get("/consumer/certificates/cert-iso14001-0001").body());
+        var known = mapper.readTree(get("/management/v1/consumer/certificates/cert-iso14001-0001").body());
         assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
         assertThat(known.get("revision").asInt()).isEqualTo(1);
     }
@@ -88,7 +90,7 @@ class ConsumerCertificateApiTest {
     void lifecycleModified_updatesConsumerKnownCertificate() throws Exception {
         assertThat(postNotification(lifecycleModified("cert-mod-x", 2)).statusCode()).isEqualTo(204);
 
-        var view = mapper.readTree(get("/consumer/certificates/cert-mod-x").body());
+        var view = mapper.readTree(get("/management/v1/consumer/certificates/cert-mod-x").body());
         assertThat(view.get("revision").asInt()).isEqualTo(2);
         assertThat(view.get("lifecycleStatus").asString()).isEqualTo("MODIFIED");
     }
@@ -97,7 +99,7 @@ class ConsumerCertificateApiTest {
     void lifecycleWithdrawn_marksConsumerKnownCertificateUnavailable() throws Exception {
         assertThat(postNotification(lifecycleWithdrawn("cert-wd-x")).statusCode()).isEqualTo(204);
 
-        var view = mapper.readTree(get("/consumer/certificates/cert-wd-x").body());
+        var view = mapper.readTree(get("/management/v1/consumer/certificates/cert-wd-x").body());
         assertThat(view.get("lifecycleStatus").asString()).isEqualTo("WITHDRAWN");
     }
 
@@ -139,8 +141,9 @@ class ConsumerCertificateApiTest {
     @Test
     void providerEmbeddedPublish_consumerAcceptsFromInlineContent() throws Exception {
         var publish = http.send(
-                HttpRequest.newBuilder(URI.create(BASE + "/certificates/cert-iso14001-0001/publish?embedded=true"))
-                        .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                HttpRequest.newBuilder(URI.create(BASE + "/management/v1/certificates/cert-iso14001-0001/publish"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"embedded\":true," + SELF_TARGET + "}")).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(publish.statusCode()).isEqualTo(202);
         var exchangeId = mapper.readTree(publish.body()).get("exchangeId").asString();
@@ -151,48 +154,56 @@ class ConsumerCertificateApiTest {
 
     @Test
     void consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts() throws Exception {
-        var initiate = postJson("/consumer/certificate-requests",
+        var initiate = postJson("/management/v1/consumer/certificate-requests",
                 "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-PULL-1\"]}");
         assertThat(initiate.statusCode()).isEqualTo(202);
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
-        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("ACKNOWLEDGED");
+        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("CERTIFICATION_REQUESTED");
 
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
 
-        assertThat(advanceProvider(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
-        assertThat(advanceProvider(exchangeId)).isEqualTo("FULFILLED");
+        // The backend issues the certificate; the provider fulfills the exchange and pushes FULFILLED to the
+        // consumer, which retrieves and accepts inline (no poll needed).
+        addCertificate("ISO14001", "BPNS-PULL-1");
 
-        assertThat(mapper.readTree(get("/consumer/certificate-requests/" + exchangeId).body())
+        assertThat(mapper.readTree(get("/management/v1/consumer/certificate-requests/" + exchangeId).body())
                 .get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
         assertThat(mapper.readTree(getAcceptanceStatus(exchangeId).body()).get("status").asString())
                 .isEqualTo("ACCEPTED");
-        assertThat(mapper.readTree(get("/certificate-exchanges/" + exchangeId).body())
+        assertThat(mapper.readTree(get("/management/v1/certificate-exchanges/" + exchangeId).body())
                 .get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
     }
 
     @Test
-    void consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance() throws Exception {
-        var initiate = postJson("/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNFAIL\"]}");
+    void consumerInitiatedPull_backendFailure_recordsFailedNoAcceptance() throws Exception {
+        var initiate = postJson("/management/v1/consumer/certificate-requests",
+                "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-FAIL-1\"]}");
         var exchangeId = mapper.readTree(initiate.body()).get("exchangeId").asString();
 
-        assertThat(advanceProvider(exchangeId)).isEqualTo("CERTIFICATION_REQUESTED");
-        assertThat(advanceProvider(exchangeId)).isEqualTo("FAILED");
+        // The backend cannot issue the certificate: the provider fails the exchange and pushes FAILED.
+        postEmpty("/management/v1/certificate-requests/" + exchangeId + "/fail");
 
-        assertThat(mapper.readTree(get("/consumer/certificate-requests/" + exchangeId).body())
+        assertThat(mapper.readTree(get("/management/v1/consumer/certificate-requests/" + exchangeId).body())
                 .get("fulfillmentStatus").asString()).isEqualTo("FAILED");
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
     }
 
-    private String advanceProvider(String exchangeId) throws Exception {
-        var response = postEmpty("/certificate-requests/" + exchangeId + "/advance");
-        return mapper.readTree(response.body()).get("status").asString();
+    private void addCertificate(String type, String location) throws Exception {
+        var docResp = postJson("/management/v1/documents",
+                "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}");
+        var documentId = mapper.readTree(docResp.body()).get("documentId").asString();
+        var body = """
+                {"certificateType":"%s","certificateTypeVersion":"2016","registrationNumber":"DE-CERT-0001",
+                 "validFrom":"2020-01-01","validUntil":"2035-01-01","trustLevel":"high",
+                 "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"%s","locationRole":"MAIN_LOCATION"}],
+                 "documentIds":["%s"]}""".formatted(type, location, documentId);
+        postJson("/management/v1/certificates", body);
     }
 
     @Test
     void consumerInitiatedPull_heldCertificate_fulfilledImmediatelyAndAccepted() throws Exception {
-        var initiate = postJson("/consumer/certificate-requests",
+        var initiate = postJson("/management/v1/consumer/certificate-requests",
                 "{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS00000003AYRE\"]}");
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
@@ -200,18 +211,21 @@ class ConsumerCertificateApiTest {
 
         assertThat(mapper.readTree(getAcceptanceStatus(exchangeId).body()).get("status").asString())
                 .isEqualTo("ACCEPTED");
-        assertThat(mapper.readTree(get("/certificate-exchanges/" + exchangeId).body())
+        assertThat(mapper.readTree(get("/management/v1/certificate-exchanges/" + exchangeId).body())
                 .get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
     }
 
     @Test
-    void consumerInitiatedPull_unofferedType_declined() throws Exception {
-        var initiate = postJson("/consumer/certificate-requests", "{\"certificateType\":\"NOT-OFFERED\"}");
-        var opened = mapper.readTree(initiate.body());
-        var exchangeId = opened.get("exchangeId").asString();
-        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("DECLINED");
-        assertThat(opened.get("errors").get(0).get("message").asString()).isNotEmpty();
+    void consumerInitiatedPull_backendDecline_recordsDeclinedNoAcceptance() throws Exception {
+        var initiate = postJson("/management/v1/consumer/certificate-requests",
+                "{\"certificateType\":\"ISO50001\",\"certifiedLocations\":[\"BPNS-DECLINE-1\"]}");
+        var exchangeId = mapper.readTree(initiate.body()).get("exchangeId").asString();
 
+        // The provider declines the request (a business decision); DECLINED is pushed to the consumer.
+        postEmpty("/management/v1/certificate-requests/" + exchangeId + "/decline");
+
+        assertThat(mapper.readTree(get("/management/v1/consumer/certificate-requests/" + exchangeId).body())
+                .get("fulfillmentStatus").asString()).isEqualTo("DECLINED");
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
     }
 
@@ -224,18 +238,28 @@ class ConsumerCertificateApiTest {
         cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of("doc-e2e-lc-r1")));
         providerCertificates.save(cert);
 
-        postEmpty("/certificates/cert-e2e-lc/publish");   // -> consumer learns CREATED
-        var created = mapper.readTree(get("/consumer/certificates/cert-e2e-lc").body());
+        // Notify the (native) consumer of the CREATED cert.
+        postJson("/management/v1/certificates/cert-e2e-lc/publish", "{" + SELF_TARGET + "}");
+        var created = mapper.readTree(get("/management/v1/consumer/certificates/cert-e2e-lc").body());
         assertThat(created.get("lifecycleStatus").asString()).isEqualTo("CREATED");
         assertThat(created.get("revision").asInt()).isEqualTo(1);
 
-        postEmpty("/certificates/cert-e2e-lc/modify");    // -> consumer learns MODIFIED r2
-        var modified = mapper.readTree(get("/consumer/certificates/cert-e2e-lc").body());
+        // State change: create a new version (upload its document, then add the revision), then publish MODIFIED.
+        var docId = mapper.readTree(postJson("/management/v1/documents",
+                "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}").body()).get("documentId").asString();
+        postJson("/management/v1/certificates/cert-e2e-lc/revisions",
+                "{\"validFrom\":\"2026-01-01\",\"validUntil\":\"2029-01-01\",\"documentIds\":[\"" + docId + "\"]}");
+        postJson("/management/v1/certificates/cert-e2e-lc/publish",
+                "{\"lifecycleStatus\":\"MODIFIED\"," + SELF_TARGET + "}");
+        var modified = mapper.readTree(get("/management/v1/consumer/certificates/cert-e2e-lc").body());
         assertThat(modified.get("lifecycleStatus").asString()).isEqualTo("MODIFIED");
         assertThat(modified.get("revision").asInt()).isEqualTo(2);
 
-        postEmpty("/certificates/cert-e2e-lc/withdraw");  // -> consumer learns WITHDRAWN
-        var withdrawn = mapper.readTree(get("/consumer/certificates/cert-e2e-lc").body());
+        // State change (withdraw), then a separate targeted publish of the WITHDRAWN event.
+        postEmpty("/management/v1/certificates/cert-e2e-lc/withdraw");
+        postJson("/management/v1/certificates/cert-e2e-lc/publish",
+                "{\"lifecycleStatus\":\"WITHDRAWN\"," + SELF_TARGET + "}");
+        var withdrawn = mapper.readTree(get("/management/v1/consumer/certificates/cert-e2e-lc").body());
         assertThat(withdrawn.get("lifecycleStatus").asString()).isEqualTo("WITHDRAWN");
     }
 
@@ -246,7 +270,7 @@ class ConsumerCertificateApiTest {
         assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "MODIFIED", 2, null)).statusCode())
                 .isEqualTo(204);
 
-        var known = mapper.readTree(get("/consumer/certificates/cert-cdup").body());
+        var known = mapper.readTree(get("/management/v1/consumer/certificates/cert-cdup").body());
         assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
         assertThat(known.get("revision").asInt()).isEqualTo(1);
     }
@@ -271,8 +295,9 @@ class ConsumerCertificateApiTest {
     @Test
     void providerInitiatedPush_closesLoopBackToProvider() throws Exception {
         var publish = http.send(
-                HttpRequest.newBuilder(URI.create(BASE + "/certificates/cert-iso14001-0001/publish"))
-                        .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                HttpRequest.newBuilder(URI.create(BASE + "/management/v1/certificates/cert-iso14001-0001/publish"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString("{" + SELF_TARGET + "}")).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(publish.statusCode()).isEqualTo(202);
 
@@ -284,7 +309,7 @@ class ConsumerCertificateApiTest {
         assertThat(consumerView.get("status").asString()).isEqualTo("ACCEPTED");
 
         var providerView = mapper.readTree(http.send(
-                HttpRequest.newBuilder(URI.create(BASE + "/certificate-exchanges/" + exchangeId)).GET().build(),
+                HttpRequest.newBuilder(URI.create(BASE + "/management/v1/certificate-exchanges/" + exchangeId)).GET().build(),
                 HttpResponse.BodyHandlers.ofString()).body());
         assertThat(providerView.get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
         assertThat(providerView.get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");

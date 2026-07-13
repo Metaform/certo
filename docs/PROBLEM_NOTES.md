@@ -1,6 +1,6 @@
 # Problem Notes
 
-Known problems, gaps, deliberate divergences, and caveats in this demo — the things a reader should
+Known problems, gaps, deliberate divergences, and caveats in this implementation — the things a reader should
 not mistake for "done" just because the build is green. Grouped by kind. See also the migration
 analysis under `certo-spec/migration/` (`certo-conformance-gaps.md`, `adapter-architecture.md`).
 
@@ -80,7 +80,7 @@ with **no change to the services**, which depend only on the port. Ports: `Provi
 
 ### 4.1 `/companycertificate/available` is ack-only — **By design (out of scope)**
 A real v2.4.0 provider using `/available` expects the consumer to then pull the certificate via the
-legacy per-asset EDC mechanism, which is out of scope. We only log and `200`. Old providers should use
+v2.4.0 per-asset EDC mechanism, which is out of scope. We only log and `200`. Old providers should use
 `/push` (which delivers the full certificate inline).
 
 ### 4.2 v2.4.0 pull retrieval is out of scope — **By design (out of scope)**
@@ -88,10 +88,12 @@ The `/companycertificate/request` message and its reply are v2.4.0-**compliant**
 returns only the `documentId`. In v2.4.0 the consumer then retrieves the certificate by that `documentId`
 via the **dataspace / EDC per-asset pull**, which is out of scope here (the same DSP boundary as §3.1 and
 §4.1). So a v2.4.0 consumer can request and get a `documentId`, but the actual content retrieval is not
-performed in this demo. *(An earlier build returned the certificate inline in the reply / pushed it to a
+performed in this build. *(An earlier build returned the certificate inline in the reply / pushed it to a
 request-supplied URL; both were dropped as non-spec deviations in favor of compliance.)* To deliver a
-certificate to a legacy consumer without the dataspace, use the provider-initiated push (§4.5), which
-emits a compliant `/companycertificate/available` (or `/push`) to a caller-specified endpoint.
+certificate to a v2.4.0 consumer without the dataspace, use the provider-initiated push (§4.5): an
+**embedded** publish emits `/companycertificate/push` with the full certificate inline, which the consumer
+ingests directly (fully operational, no pull); a by-reference publish emits `/companycertificate/available`,
+which still relies on the out-of-scope asset-pull.
 
 ### 4.3 Feedback identity is per-certificate, not per-interaction — **By design (protocol limit)**
 v2.4.0 `/status` references only a `documentId` (= `certificateId`), so feedback is correlated by
@@ -107,10 +109,11 @@ required on a request), `documentId` (UUID, on status/available), and `locationB
 `BPN[AS]…`). A malformed header or content is rejected with `400`. (`@JsonIgnoreProperties(ignoreUnknown =
 true)` still tolerates *extra* fields, which is lenient-but-safe.)
 
-### 4.5 Non-spec demo triggers — **By design**
-`POST /legacy/certificates/{id}/publish` (provider-initiated v2.4.0 push) is our own trigger, not part
-of v2.4.0. It is how the caller specifies a legacy consumer target (there is no inbound request to derive
-it from).
+### 4.5 Non-spec management triggers — **By design**
+`POST /management/v1/certificates/{id}/publish` (provider-initiated push) is our own trigger, not part of
+v2.4.0. Its body selects the `protocolVersion` and, for a non-native (`2.4.0`) target, the consumer's BPN +
+base URL — this is how a v2.4.0 consumer is named (there is no inbound request to derive it from). Recording
+that as a v2.4.0 `ExchangeBinding` is what routes the notification to the v2.4.0 adapter.
 
 ### 4.7 `documentId` is a UUID mapped from `certificateId` — **Resolved**
 v2.4.0 `documentId` is "the UUID of the asset under which the certificate is available." v3 certificate
@@ -119,11 +122,15 @@ ids are opaque non-UUID strings, so `Ccm240DocumentIds` derives a stable UUID `d
 adapter emits (`COMPLETED` reply, outbound `/available`, outbound `/status`) is now a valid UUID; the
 internal `certificateId` never appears on the wire.
 
-### 4.6 `certificateId` fallback remains for the legacy-publish trigger — **By design**
-The provider-initiated `publish()` mints the `exchangeId` mid-call, before the exchangeId-keyed binding
-can be recorded, so the notifier resolves the binding by `certificateId` for that window. This is a
-timing bridge, not a role error. (The push-in path no longer needs it — it mints a consumer-local
-surrogate exchangeId up front.)
+### 4.6 Outbound routing bindings are keyed by `exchangeId` — **Resolved**
+`publish()` now mints the `exchangeId` first and records the (non-native) `ExchangeBinding` against it
+before notifying, so the dispatcher resolves it directly by `exchangeId` — no `certificateId`-fallback
+timing window (the earlier two-step `publish-to-consumer` needed one because it recorded the binding
+before the exchangeId existed). The push-in path likewise mints a consumer-local surrogate exchangeId up
+front. Binding *resolution* is now purely by `exchangeId` (the `certificateId`-keyed binding map was
+removed); the inbound v2.4.0 `/status` path still correlates a `documentId` (= `certificateId`) + peer back
+to an exchangeId through a separate index. Lifecycle notifications no longer resolve a binding at all — the
+`publish` caller names the target explicitly (§4.5).
 
 ---
 

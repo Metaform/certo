@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Generates a minimal, self-contained single-page PDF document so the demo can serve a real
+ * Generates a minimal, self-contained single-page PDF document so the app can serve a real
  * {@code application/pdf} body for the certificate binary. Not a general-purpose PDF library — it
  * emits just enough valid PDF structure (catalog, pages, one page, Helvetica font, a text stream
  * with correct cross-reference offsets) to render a few lines of text.

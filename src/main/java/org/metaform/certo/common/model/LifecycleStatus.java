@@ -5,9 +5,9 @@ package org.metaform.certo.common.model;
  * certificate as an artifact, independent of the {@code Certificate Exchange}.
  */
 public enum LifecycleStatus {
-    /** First published under a new {@code certificateId}, establishing its initial {@code version}. */
+    /** First published under a new {@code certificateId}, establishing its initial {@code revision}. */
     CREATED(false),
-    /** A new {@code version} was published under the same {@code certificateId}. May recur. */
+    /** A new {@code revision} was published under the same {@code certificateId}. May recur. */
     MODIFIED(false),
     /** The provider withdrew the certificate; it is no longer available. Terminal. */
     WITHDRAWN(true);

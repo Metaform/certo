@@ -12,7 +12,7 @@ import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolNotifier;
-import org.metaform.certo.protocol.ProtocolVersions;
+import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
 import org.slf4j.Logger;
@@ -30,7 +30,11 @@ import java.util.UUID;
  * ({@code POST /certificate-notifications}, CX-0135 &sect;4.3.1) using OkHttp. Used by the provider's
  * publish action to notify a consumer that a certificate is available.
  *
- * <p>The consumer base URL is hardcoded via configuration ({@code certo.consumer-base-url}).
+ * <p>The target consumer is taken from the exchange's {@link ExchangeBinding} — its BPN is the event
+ * subject and its {@code callbackUrl} the endpoint — exactly as the v2.4.0 notifier routes. The
+ * configured {@code certo.consumer.*} values are this runtime's own consumer identity, never the push
+ * target. (A consumer-initiated fulfillment push has no per-exchange target in the current protocol, so
+ * that path alone falls back to the configured consumer endpoint.)
  */
 @Component
 public class Ccm300Notifier implements ProtocolNotifier {
@@ -51,8 +55,8 @@ public class Ccm300Notifier implements ProtocolNotifier {
     }
 
     @Override
-    public String version() {
-        return ProtocolVersions.CCM_3_0_0;
+    public ProtocolVersion version() {
+        return ProtocolVersion.CCM_3_0_0;
     }
 
     /**
@@ -62,12 +66,16 @@ public class Ccm300Notifier implements ProtocolNotifier {
      */
     @Override
     public boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data) {
+        if (binding == null || binding.callbackUrl() == null) {
+            LOG.warn("No consumer callback URL for the target; cannot deliver {}", data.status());
+            return false;
+        }
         // Render the neutral domain event to the v3 wire payload (the certificate goes through the codec).
         var wire = new Ccm300LifecycleStatus(data.status(), data.exchangeId(),
                 Ccm300CertificateCodec.toWire(data.certificate()));
-        var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, wire);
+        var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, wire, binding.peerBpn());
         var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
-        return post(event, data.exchangeId(), data.status() + " certificate " + certificateId);
+        return post(event, binding.callbackUrl(), data.exchangeId(), data.status() + " certificate " + certificateId);
     }
 
     /**
@@ -78,16 +86,20 @@ public class Ccm300Notifier implements ProtocolNotifier {
      */
     @Override
     public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data) {
-        var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data);
-        return post(event, data.exchangeId(), "fulfillment " + data.status());
+        // A consumer-initiated pull records no binding (the CX-0135 §3.3.1 request carries no callback), so the
+        // target falls back to the configured consumer endpoint; an explicit binding, when present, wins.
+        var subject = binding != null && binding.peerBpn() != null ? binding.peerBpn() : properties.consumer().bpn();
+        var base = binding != null && binding.callbackUrl() != null ? binding.callbackUrl() : properties.consumerBaseUrl();
+        var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data, subject);
+        return post(event, base, data.exchangeId(), "fulfillment " + data.status());
     }
 
-    private <T> CloudEvent<T> event(String type, String dataSchema, T data) {
+    private <T> CloudEvent<T> event(String type, String dataSchema, T data, String subjectBpn) {
         return new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
                 type,
                 properties.provider().source(),
-                properties.consumer().bpn(),
+                subjectBpn,
                 UUID.randomUUID().toString(),
                 OffsetDateTime.now(clock),
                 CloudEvent.CONTENT_TYPE_JSON,
@@ -96,7 +108,7 @@ public class Ccm300Notifier implements ProtocolNotifier {
                 data);
     }
 
-    private boolean post(CloudEvent<?> event, String exchangeId, String description) {
+    private boolean post(CloudEvent<?> event, String baseUrl, String exchangeId, String description) {
         String json;
         try {
             json = mapper.writeValueAsString(event);
@@ -105,9 +117,9 @@ public class Ccm300Notifier implements ProtocolNotifier {
             return false;
         }
 
-        var base = HttpUrl.parse(properties.consumerBaseUrl());
+        var base = HttpUrl.parse(baseUrl);
         if (base == null) {
-            LOG.warn("Invalid consumer base URL '{}'; not notifying", properties.consumerBaseUrl());
+            LOG.warn("Invalid consumer callback URL '{}'; not notifying", baseUrl);
             return false;
         }
         var url = base.newBuilder().addPathSegment("certificate-notifications").build();

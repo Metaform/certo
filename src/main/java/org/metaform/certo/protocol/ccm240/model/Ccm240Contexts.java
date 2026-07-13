@@ -2,7 +2,7 @@ package org.metaform.certo.protocol.ccm240.model;
 
 /**
  * The {@code header.context} discriminator values of the CX-0135 <b>v2.4.0</b> Company Certificate
- * Notification API (the legacy wire protocol this adapter bridges). Each identifies one legacy message
+ * Notification API (the v2.4.0 wire protocol this adapter bridges). Each identifies one v2.4.0 message
  * type; the adapter maps them to/from CX-0135 v3 CloudEvents.
  */
 public final class Ccm240Contexts {

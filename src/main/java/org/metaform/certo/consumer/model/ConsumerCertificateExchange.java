@@ -20,7 +20,7 @@ import java.util.List;
 public class ConsumerCertificateExchange {
 
     private final String exchangeId;
-    private final String certificateId;
+    private String certificateId;
     private final Integer revision;
     private final boolean consumerInitiated;
 
@@ -40,10 +40,17 @@ public class ConsumerCertificateExchange {
         this.fulfillmentErrors = fulfillmentErrors;
     }
 
-    /** Mirrors a provider-reported Fulfillment status (from a poll or a pushed notification). */
-    public void updateFulfillment(FulfillmentStatus status, List<StatusError> errors) {
+    /**
+     * Mirrors a provider-reported Fulfillment status (from a poll or a pushed notification). The
+     * {@code certificateId} may be unknown when a request is first opened (the provider assigns it only
+     * once the backend issues the certificate); it is adopted here when the provider reports one.
+     */
+    public void updateFulfillment(FulfillmentStatus status, String certificateId, List<StatusError> errors) {
         this.fulfillmentStatus = status;
         this.fulfillmentErrors = errors;
+        if (certificateId != null) {
+            this.certificateId = certificateId;
+        }
     }
 
     /**

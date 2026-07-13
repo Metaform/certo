@@ -14,7 +14,7 @@ import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.protocol.CounterpartyRole;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ExchangeBindingStore;
-import org.metaform.certo.protocol.ProtocolVersions;
+import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateRequest;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateStatus;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Contexts;
@@ -26,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -86,7 +85,7 @@ public class Ccm240ProviderController {
         // The counterparty is a v2.4.0 consumer. The v2.4.0 request carries no callback URL, so the binding
         // records none.
         bindings.record(new ExchangeBinding(response.exchangeId(), response.certificateId(),
-                ProtocolVersions.CCM_2_4_0, CounterpartyRole.CONSUMER, senderBpn, messageId, null));
+                ProtocolVersion.CCM_2_4_0, CounterpartyRole.CONSUMER, senderBpn, messageId, null));
 
         return switch (Ccm240Translation.toReplyStatus(response.status())) {
             case IN_PROGRESS -> ResponseEntity.accepted().body(Ccm240RequestReply.inProgress());
@@ -116,35 +115,6 @@ public class Ccm240ProviderController {
         var errors = toStatusErrors(content);
         provider.recordAcceptance(acceptanceEvent(exchangeId, certificateId, status, errors, message));
         return ResponseEntity.ok().build();
-    }
-
-    /**
-     * Demo trigger for a provider-initiated v2.4.0 push. There is no inbound request to derive the
-     * counterparty's protocol from, so the caller specifies it: the target consumer's BPN and legacy
-     * endpoint. The binding is recorded (keyed by certificateId, since the exchangeId is assigned inside
-     * {@code publish}) so the notification routes to that v2.4.0 consumer.
-     */
-    @PostMapping(path = "/legacy/certificates/{id}/publish",
-            consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Ccm240PublishResult> publishToLegacyConsumer(@PathVariable("id") String certificateId,
-                                                                       @RequestBody Ccm240PublishTarget target) {
-        if (target == null || target.consumerUrl() == null) {
-            throw ApiException.badRequest("A v2.4.0 publish must specify the consumer's endpoint (consumerUrl)");
-        }
-        bindings.record(new ExchangeBinding(null, certificateId, ProtocolVersions.CCM_2_4_0,
-                CounterpartyRole.CONSUMER, target.consumerBpn(), null, target.consumerUrl()));
-        var publication = provider.publish(certificateId, null);
-        bindings.record(new ExchangeBinding(publication.exchangeId(), certificateId, ProtocolVersions.CCM_2_4_0,
-                CounterpartyRole.CONSUMER, target.consumerBpn(), null, target.consumerUrl()));
-        return ResponseEntity.accepted().body(new Ccm240PublishResult(publication.exchangeId(), certificateId));
-    }
-
-    /** Where to deliver a provider-initiated v2.4.0 push. */
-    public record Ccm240PublishTarget(String consumerBpn, String consumerUrl) {
-    }
-
-    /** The v3 exchange opened by a v2.4.0 publish. */
-    public record Ccm240PublishResult(String exchangeId, String certificateId) {
     }
 
     // --- translation helpers -----------------------------------------------------------------------

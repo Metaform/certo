@@ -5,26 +5,28 @@ import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.web.ApiException;
 
-import java.util.ArrayDeque;
-import java.util.Collections;
-import java.util.Deque;
 import java.util.List;
 
 /**
  * The provider's record of a {@code Certificate Exchange} (CX-0135 &sect;2.1) — one end-to-end
- * delivery interaction for a specific (certificateId, revision), correlated by {@code exchangeId}.
+ * delivery interaction, correlated by {@code exchangeId}.
  *
  * <p>Enforces the CX-0135 &sect;2.1.3 state machine: Fulfillment transitions must be legal, terminal
  * states are immutable, and Acceptance may only be recorded once the exchange is {@code FULFILLED}.
- * For asynchronous fulfillment it also carries a {@code plan} of remaining Fulfillment steps that the
- * provider works through.
+ *
+ * <p>A consumer-initiated request for a certificate the provider does not yet hold is opened as a
+ * {@link #pending} exchange in {@code CERTIFICATION_REQUESTED} — awaiting a certification-authority
+ * (backend) response — carrying the requested type and locations so a later issuance can be matched to
+ * it. The certificate identity is unknown until the backend issues it, so {@code certificateId}/{@code
+ * revision} are assigned at {@link #fulfill} time.
  */
 public class ProviderCertificateExchange {
 
     private final String exchangeId;
-    private final String certificateId;
-    private final int revision;
     private final String counterpartyBpn;
+
+    private String certificateId;
+    private int revision;
 
     private FulfillmentStatus fulfillmentStatus;
     private List<StatusError> fulfillmentErrors;
@@ -32,9 +34,11 @@ public class ProviderCertificateExchange {
     private AcceptanceStatus acceptanceStatus;
     private List<StatusError> acceptanceErrors;
 
-    private final Deque<FulfillmentStatus> plan = new ArrayDeque<>();
-    private boolean willFail;
     private boolean consumerInitiated;
+
+    /** For a pending consumer request: what the consumer asked for, used to match a later issuance. */
+    private String requestedType;
+    private List<String> requestedLocations;
 
     public ProviderCertificateExchange(String exchangeId, String certificateId, int revision, String counterpartyBpn,
                                FulfillmentStatus initialStatus) {
@@ -51,6 +55,21 @@ public class ProviderCertificateExchange {
         this.fulfillmentErrors = initialErrors;
     }
 
+    /**
+     * Opens a consumer-initiated exchange that is waiting for the backend to issue a certificate: no
+     * certificate identity yet, status {@code CERTIFICATION_REQUESTED}, and the requested type/locations
+     * retained so an issuance can be matched to it.
+     */
+    public static ProviderCertificateExchange pending(String exchangeId, String counterpartyBpn,
+                                                      String requestedType, List<String> requestedLocations) {
+        var exchange = new ProviderCertificateExchange(
+                exchangeId, null, 0, counterpartyBpn, FulfillmentStatus.CERTIFICATION_REQUESTED);
+        exchange.consumerInitiated = true;
+        exchange.requestedType = requestedType;
+        exchange.requestedLocations = requestedLocations;
+        return exchange;
+    }
+
     /** Advances the Fulfillment phase, rejecting illegal transitions and changes to a terminal state (409). */
     public void transitionFulfillment(FulfillmentStatus to, List<StatusError> errors) {
         if (!fulfillmentStatus.allowedNext().contains(to)) {
@@ -59,6 +78,16 @@ public class ProviderCertificateExchange {
         }
         this.fulfillmentStatus = to;
         this.fulfillmentErrors = errors;
+    }
+
+    /**
+     * Binds the issued certificate identity and transitions the exchange to {@code FULFILLED} (the
+     * backend produced the certificate). Illegal from a terminal state (409).
+     */
+    public void fulfill(String certificateId, int revision) {
+        this.certificateId = certificateId;
+        this.revision = revision;
+        transitionFulfillment(FulfillmentStatus.FULFILLED, null);
     }
 
     /**
@@ -81,22 +110,6 @@ public class ProviderCertificateExchange {
         this.acceptanceErrors = errors;
     }
 
-    // --- asynchronous fulfillment plan ---------------------------------------------------------
-
-    /** Records the remaining Fulfillment steps the provider will work through (in order). */
-    public void planSteps(FulfillmentStatus... steps) {
-        Collections.addAll(plan, steps);
-    }
-
-    /** Marks this exchange to terminate in {@code FAILED} when fulfillment would otherwise complete. */
-    public void markWillFail() {
-        this.willFail = true;
-    }
-
-    public boolean willFail() {
-        return willFail;
-    }
-
     /** Whether the consumer opened this exchange (so the provider may push fulfillment status to it). */
     public void markConsumerInitiated() {
         this.consumerInitiated = true;
@@ -104,14 +117,6 @@ public class ProviderCertificateExchange {
 
     public boolean isConsumerInitiated() {
         return consumerInitiated;
-    }
-
-    public boolean hasPendingFulfillment() {
-        return !plan.isEmpty();
-    }
-
-    public FulfillmentStatus pollNextStep() {
-        return plan.poll();
     }
 
     // --- accessors -----------------------------------------------------------------------------
@@ -130,6 +135,14 @@ public class ProviderCertificateExchange {
 
     public String counterpartyBpn() {
         return counterpartyBpn;
+    }
+
+    public String requestedType() {
+        return requestedType;
+    }
+
+    public List<String> requestedLocations() {
+        return requestedLocations;
     }
 
     public FulfillmentStatus fulfillmentStatus() {

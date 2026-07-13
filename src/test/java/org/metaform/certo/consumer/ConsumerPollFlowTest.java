@@ -51,28 +51,31 @@ class ConsumerPollFlowTest {
 
     @Test
     void consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts() throws Exception {
-        // Open a request for a not-yet-held certificate -> ACKNOWLEDGED.
-        var exchangeId = mapper.readTree(postJson("/consumer/certificate-requests",
+        // Open a request for a not-yet-held certificate -> CERTIFICATION_REQUESTED (awaiting backend).
+        var exchangeId = mapper.readTree(postJson("/management/v1/consumer/certificate-requests",
                 "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-POLL-1\"]}").body())
                 .get("exchangeId").asString();
-
-        // Provider fulfils; the FULFILLED push to the (unreachable) consumer base URL fails silently.
-        advanceProvider(exchangeId); // CERTIFICATION_REQUESTED
-        advanceProvider(exchangeId); // FULFILLED (push not delivered)
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404); // not retrieved yet
 
+        // The backend issues the certificate; the FULFILLED push to the (unreachable) consumer base URL fails silently.
+        var docId = mapper.readTree(postJson("/management/v1/documents",
+                "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}").body())
+                .get("documentId").asString();
+        var certBody = """
+                {"certificateType":"ISO14001","certificateTypeVersion":"2015","registrationNumber":"DE-CERT-0002",
+                 "validFrom":"2020-01-01","validUntil":"2035-01-01","trustLevel":"high",
+                 "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"BPNS-POLL-1","locationRole":"MAIN_LOCATION"}],
+                 "documentIds":["%s"]}""".formatted(docId);
+        postJson("/management/v1/certificates", certBody);
+
         // Polling learns it's FULFILLED -> the consumer retrieves and accepts.
-        var polled = mapper.readTree(postEmpty("/consumer/certificate-requests/" + exchangeId + "/poll").body());
+        var polled = mapper.readTree(postEmpty("/management/v1/consumer/certificate-requests/" + exchangeId + "/poll").body());
         assertThat(polled.get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
 
         assertThat(mapper.readTree(getAcceptanceStatus(exchangeId).body()).get("status").asString())
                 .isEqualTo("ACCEPTED");
-        assertThat(mapper.readTree(get("/certificate-exchanges/" + exchangeId).body())
+        assertThat(mapper.readTree(get("/management/v1/certificate-exchanges/" + exchangeId).body())
                 .get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
-    }
-
-    private void advanceProvider(String exchangeId) throws Exception {
-        postEmpty("/certificate-requests/" + exchangeId + "/advance");
     }
 
     private HttpResponse<String> get(String path) throws Exception {

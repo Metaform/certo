@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * The {@code io.catenax.business_partner_certificate} <b>3.1.0</b> aspect model — the inline content of
- * a legacy v2.4.0 {@code /companycertificate/push} message. Field names mirror the published 3.1.0 JSON
+ * a v2.4.0 {@code /companycertificate/push} message. Field names mirror the published 3.1.0 JSON
  * schema; camelCase Java names carry a {@link JsonProperty} where the wire name diverges (e.g. the
  * document's {@code documentID}). {@link org.metaform.certo.protocol.ccm240.Ccm240Translation} converts between
  * this and certo's v3 {@link org.metaform.certo.common.model.CertificateRecord}.

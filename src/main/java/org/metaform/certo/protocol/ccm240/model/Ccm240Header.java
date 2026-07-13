@@ -5,8 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * The shared message header of the CX-0135 v2.4.0 Company Certificate Notification API. The v3
- * equivalent is the CloudEvents envelope; {@link org.metaform.certo.protocol.ccm240.Ccm240Translation} maps
- * between them ({@code context} &rarr; event {@code type}, {@code messageId} &rarr; {@code id},
+ * equivalent is the CloudEvents envelope; the adapter maps between them
+ * ({@code context} &rarr; event {@code type}, {@code messageId} &rarr; {@code id},
  * {@code senderBpn} &rarr; {@code source}/{@code sourcebpn}, {@code receiverBpn} &rarr; {@code subject}).
  *
  * @param context           the message-type discriminator (see {@link Ccm240Contexts})

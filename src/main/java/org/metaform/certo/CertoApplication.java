@@ -5,10 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /**
- * Certo — a demonstration of the Catena-X CX-0135 Company Certificate Management (CCM) data-plane
+ * Certo — an implementation of the Catena-X CX-0135 Company Certificate Management (CCM) data-plane
  * wire protocol.
  *
- * <p>The application hosts two REST APIs in a single runtime (demo only):
+ * <p>The application hosts both the provider and consumer REST APIs in a single runtime:
  * <ul>
  *   <li>the {@code Certificate Provider API} (CX-0135 &sect;4.4), and</li>
  *   <li>the {@code Certificate Consumer Notification API} (CX-0135 &sect;4.3).</li>

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * The reply body of a legacy v2.4.0 {@code /companycertificate/request}. Three shapes:
+ * The reply body of a v2.4.0 {@code /companycertificate/request}. Three shapes:
  * {@code IN_PROGRESS} (HTTP 202), {@code COMPLETED} with a {@code documentId} (200), or {@code REJECTED}
  * with errors (200). Built from a v3 {@code CertificateRequestResponse} via
  * {@link org.metaform.certo.protocol.ccm240.Ccm240Translation#toReplyStatus}. Matches the v2.4.0 schema

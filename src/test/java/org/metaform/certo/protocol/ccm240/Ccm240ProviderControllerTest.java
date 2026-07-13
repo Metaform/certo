@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Drives the legacy v2.4.0 provider-facing adapter ({@code /companycertificate/request} + {@code /status})
+ * Drives the v2.4.0 provider-facing adapter ({@code /companycertificate/request} + {@code /status})
  * and asserts the translated calls reach the v3 core and record acceptance on the exchange.
  */
 @SpringBootTest
@@ -37,7 +37,7 @@ class Ccm240ProviderControllerTest {
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
     @Test
-    void legacyRequest_heldCertificate_completed_thenStatusRecordsAcceptance() throws Exception {
+    void v240Request_heldCertificate_completed_thenStatusRecordsAcceptance() throws Exception {
         var request = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Request:1.0.0",
                               "messageId": "11111111-1111-1111-1111-111111111111", "senderBpn": "%s", "receiverBpn": "BPNL0000000001AB",
@@ -67,13 +67,13 @@ class Ccm240ProviderControllerTest {
 
         // The UUID documentId resolved back to the certificate and its v3 exchange; acceptance is recorded there.
         var exchangeId = correlations.exchangeFor("cert-iso9001-0001", CONSUMER_BPN).orElseThrow();
-        mvc.perform(get("/certificate-exchanges/{id}", exchangeId))
+        mvc.perform(get("/management/v1/certificate-exchanges/{id}", exchangeId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.acceptanceStatus").value("ACCEPTED"));
     }
 
     @Test
-    void legacyRequest_completedReturnsOnlyDocumentId() throws Exception {
+    void v240Request_completedReturnsOnlyDocumentId() throws Exception {
         // v2.4.0-compliant: a COMPLETED reply carries only the documentId, never the certificate inline.
         var request = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Request:1.0.0",
@@ -90,22 +90,21 @@ class Ccm240ProviderControllerTest {
     }
 
     @Test
-    void legacyRequest_unofferedType_rejectedWithErrors() throws Exception {
+    void v240Request_notHeld_inProgress() throws Exception {
         var request = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Request:1.0.0",
                               "messageId": "44444444-4444-4444-4444-444444444444", "senderBpn": "%s", "receiverBpn": "BPNL0000000001AB",
                               "sentDateTime": "2025-05-04T08:00:00Z", "version": "3.1.0" },
-                  "content": { "certifiedBpn": "%s", "certificateType": "NOT-OFFERED" } }
+                  "content": { "certifiedBpn": "%s", "certificateType": "ISO50001" } }
                 """.formatted(CONSUMER_BPN, CONSUMER_BPN);
 
         mvc.perform(post("/companycertificate/request").contentType(MediaType.APPLICATION_JSON).content(request))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requestStatus").value("REJECTED"))
-                .andExpect(jsonPath("$.requestErrors[0].message").isNotEmpty());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.requestStatus").value("IN_PROGRESS"));
     }
 
     @Test
-    void legacyStatus_unknownDocumentId_notFound() throws Exception {
+    void v240Status_unknownDocumentId_notFound() throws Exception {
         // A well-formed but never-issued documentId (UUID) resolves to no certificate -> 404.
         var status = """
                 { "header": { "context": "CompanyCertificateManagement-CCMAPI-Status:1.0.0",

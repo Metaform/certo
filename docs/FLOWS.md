@@ -28,12 +28,11 @@ Every flow derives from two independent state machines (CX-0135 §2):
 stateDiagram-v2
     direction LR
     state "Fulfillment / provider-owned" as F {
-        [*] --> ACKNOWLEDGED
-        ACKNOWLEDGED --> CERTIFICATION_REQUESTED
-        ACKNOWLEDGED --> FULFILLED
+        [*] --> CERTIFICATION_REQUESTED
+        [*] --> FULFILLED
+        [*] --> DECLINED
         CERTIFICATION_REQUESTED --> FULFILLED
-        ACKNOWLEDGED --> DECLINED
-        ACKNOWLEDGED --> FAILED
+        CERTIFICATION_REQUESTED --> FAILED
     }
     state "Acceptance / consumer-owned" as A {
         RETRIEVED --> ACCEPTED
@@ -59,9 +58,9 @@ stateDiagram-v2
 
 | Flow | What | Variants |
 |------|------|----------|
-| **A** | Consumer-initiated **pull** | A1 held/immediate · A2 async+push · A3 async+poll · A4 declined · A5 failed |
+| **A** | Consumer-initiated **pull** | A1 held/immediate · A2 async+push · A3 async+poll · A4 backend-declines · A5 backend-fails |
 | **B** | Provider-initiated **push** (lifecycle `CREATED`) | B1 accepted · B2 rejected (expired) · B3 errored |
-| **C** | Certificate **lifecycle** (`MODIFIED` / `WITHDRAWN`) | C1 modify · C2 withdraw · C3 end-to-end |
+| **C** | Certificate **lifecycle** (`MODIFIED` / `WITHDRAWN`) | C1 revise · C2 withdraw · C3 end-to-end |
 | **D** | **Search** / discovery | D1 by type · D2 by location · D3 unsupported field (501) · D4 pagination |
 | **E** | **Cross-cutting** protocol rules (state machine, CloudEvents, documents, batch, idempotency) | — |
 
@@ -70,16 +69,17 @@ stateDiagram-v2
 ## Flow A — Consumer-initiated pull
 
 The consumer opens its **own** request, the certificate becomes available (immediately if held, else
-asynchronously), then the consumer retrieves it and reports acceptance. Driven by the demo trigger
-`POST /consumer/certificate-requests`.
+asynchronously), then the consumer retrieves it and reports acceptance. Driven by the management trigger
+`POST /management/v1/consumer/certificate-requests`.
 
 The `alt` boxes below are **mutually-exclusive paths** (like `if`/`else`) — exactly one branch runs per
 request. They differ *only* in how the consumer reaches `FULFILLED`; the retrieve + accept tail after the
 boxes is identical for all three variants:
 
 - **A1** — the provider already holds a matching certificate → `FULFILLED` in the request response.
-- **A2 / A3** — nothing held, so the provider answers `ACKNOWLEDGED` and produces it asynchronously; the
-  consumer then learns it is `FULFILLED` either by a **push** (A2) or by **polling** (A3).
+- **A2 / A3** — nothing held, so the provider answers `CERTIFICATION_REQUESTED` and waits for its
+  certification-authority backend to issue the certificate (an operator drives this through the management
+  API); the consumer then learns it is `FULFILLED` either by a **push** (A2) or by **polling** (A3).
 
 ```mermaid
 sequenceDiagram
@@ -87,17 +87,17 @@ sequenceDiagram
     actor T as Trigger
     participant C as Consumer
     participant P as Provider
-    T->>C: POST /consumer/certificate-requests {certificateType, certifiedLocationBpns?}
+    T->>C: POST /management/v1/consumer/certificate-requests {certificateType, certifiedLocationBpns?}
     C->>P: POST /certificate-requests
     alt A1 provider already holds a matching cert
         P-->>C: 202 status FULFILLED
     else otherwise provider must produce it
-        P-->>C: 202 status ACKNOWLEDGED
-        Note over P: fulfillment advances, demo advance trigger, publishes cert
+        P-->>C: 202 status CERTIFICATION_REQUESTED
+        Note over P: backend issues cert (POST /management/v1/certificates); waiting exchange fulfilled
         alt A2 consumer learns via push
             P->>C: POST /certificate-notifications, CertificateFulfillmentStatus FULFILLED
         else A3 consumer learns via poll
-            C->>P: POST /consumer/certificate-requests/{id}/poll then GET /certificate-requests/{id}
+            C->>P: POST /management/v1/consumer/certificate-requests/{id}/poll then GET /certificate-requests/{id}
             P-->>C: 200 status FULFILLED
         end
     end
@@ -110,12 +110,16 @@ sequenceDiagram
     P-->>C: 204 provider records the outcome
 ```
 
-1. **Open** — the consumer calls the provider's `POST /certificate-requests`; the provider assigns
-   `exchangeId`/`certificateId`/`revision` (`HTTP 202`) and records a consumer-side exchange.
-2. **Become available** — for an offered type: if a held certificate covers the requested
-   `certifiedLocationBpns` the provider returns `FULFILLED` at once; otherwise `ACKNOWLEDGED`, then it
-   fulfils asynchronously (`ACKNOWLEDGED → CERTIFICATION_REQUESTED → FULFILLED`, or `FAILED`), publishing
-   the certificate at `FULFILLED`. The consumer learns it's `FULFILLED` by **push** or **poll**.
+1. **Open** — the consumer calls the provider's `POST /certificate-requests`; the provider assigns the
+   `exchangeId` (`HTTP 202`) and records a consumer-side exchange. A held cert returns its
+   `certificateId`/`revision` at once; for an async request they are assigned only when the certificate is issued.
+2. **Become available** — any certificate type is accepted: if a held certificate covers the requested
+   `certifiedLocationBpns` the provider returns `FULFILLED` at once; otherwise `CERTIFICATION_REQUESTED`, and
+   the exchange waits for the certification-authority backend. When the backend issues the certificate —
+   uploading its document(s) via `POST /management/v1/documents`, then `POST /management/v1/certificates`
+   referencing them — every waiting exchange it covers is fulfilled; if it cannot, the exchange ends `FAILED`
+   (`POST /management/v1/certificate-requests/{id}/fail`) or `DECLINED`
+   (`POST /management/v1/certificate-requests/{id}/decline`). The consumer learns the outcome by **push** or **poll**.
 3. **Retrieve (two-step)** — `GET /certificates/{id}?revision=` → JSON metadata listing the documents by
    reference; then `GET /documents/{documentId}` for each binary. Available only once `FULFILLED`.
 4. **Report acceptance** — the consumer POSTs a terminal `ACCEPTED`/`REJECTED`/`ERRORED` directly
@@ -126,10 +130,10 @@ sequenceDiagram
 | # | Variant | Tests |
 |---|---------|-------|
 | **A1** | Held cert → immediate `FULFILLED` → accepted | `consumerInitiatedPull_heldCertificate_fulfilledImmediatelyAndAccepted` **[consumer]**; `requestOfferedType_fulfilledImmediately_andPollable` **[provider]** |
-| **A2** | Async fulfillment learned via **push** | `consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts`, `fulfillmentNotification_accepted` **[consumer]**; `request_notHeld_acknowledgesThenFulfillsAsynchronously` **[provider]** |
+| **A2** | Async fulfillment learned via **push** | `consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts`, `fulfillmentNotification_accepted` **[consumer]**; `request_notHeld_waitsThenFulfillsWhenCertificateAdded` **[provider]** |
 | **A3** | Async fulfillment learned via **poll** | `consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts` **[poll]** |
-| **A4** | Unoffered type → `DECLINED` | `consumerInitiatedPull_unofferedType_declined` **[consumer]**; `requestUnofferedType_declinedWithErrors`, `requestMissingType_badRequest` **[provider]** |
-| **A5** | Fulfillment `FAILED` (sentinel `BPNFAIL`) | `consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance` **[consumer]**; `request_failTrigger_endsInFailed` **[provider]** |
+| **A4** | Backend declines → `DECLINED` | `consumerInitiatedPull_backendDecline_recordsDeclinedNoAcceptance` **[consumer]**; `declineRequest_endsInDeclined`, `requestMissingType_badRequest` **[provider]** |
+| **A5** | Fulfillment `FAILED` (backend cannot issue) | `consumerInitiatedPull_backendFailure_recordsFailedNoAcceptance` **[consumer]**; `request_backendFailure_endsInFailed` **[provider]** |
 
 Provider-endpoint coverage for the steps: poll/`404` `requestStatus_unknownExchange_notFound` **[provider]**;
 retrieve `retrieveCertificate_returnsJsonMetadataWithDocumentReferences`, `retrieveCertificate_specificRevision`,
@@ -154,7 +158,7 @@ sequenceDiagram
     actor T as Trigger
     participant P as Provider
     participant C as Consumer
-    T->>P: POST /certificates/{id}/publish
+    T->>P: POST /management/v1/certificates/{id}/publish
     Note over P: opens FULFILLED exchange, stores it
     P->>C: POST /certificate-notifications, CertificateLifecycleStatus CREATED (light subset)
     C->>P: GET /certificates/{certificateId}?revision=
@@ -167,12 +171,12 @@ sequenceDiagram
     P-->>T: 202 exchangeId, consumerNotified
 ```
 
-1. **Publish** — `POST /certificates/{id}/publish` opens+stores a `FULFILLED` exchange and pushes the
+1. **Publish** — `POST /management/v1/certificates/{id}/publish` opens+stores a `FULFILLED` exchange and pushes the
    `CREATED` event. Only `CREATED` opens an exchange.
 2. **Retrieve + evaluate** — the consumer pulls the metadata and each document, then decides.
 3. **Report back** — the consumer reports the terminal status directly (`RETRIEVED` optional, skipped);
    the provider records it (it owns the exchange). Inspect via `GET /certificate-acceptance-status/{id}` (consumer) and
-   `GET /certificate-exchanges/{id}` (provider).
+   `GET /management/v1/certificate-exchanges/{id}` (provider).
 
 **Variants & tests**
 
@@ -186,8 +190,9 @@ sequenceDiagram
 
 ## Flow C — Certificate lifecycle (MODIFIED / WITHDRAWN)
 
-The provider revises a certificate and notifies the consumer, which keeps a synchronized view. These
-transitions do **not** open an exchange (§2.2.4).
+The provider changes a certificate's **state** and, as a **separate** step, notifies a named consumer,
+which keeps a synchronized view. State changes tell no one; a lifecycle `publish` targets one consumer
+(reaching several is several publishes). These transitions do **not** open an exchange (§2.2.4).
 
 ```mermaid
 sequenceDiagram
@@ -195,29 +200,34 @@ sequenceDiagram
     actor T as Trigger
     participant P as Provider
     participant C as Consumer
-    T->>P: POST /certificates/{id}/modify
-    Note over P: appends a new revision, CREATED to MODIFIED
+    T->>P: POST /management/v1/certificates/{id}/revisions
+    Note over P: appends a new revision (state only, no notification)
+    T->>P: POST /management/v1/certificates/{id}/publish {lifecycleStatus: MODIFIED}
     P->>C: POST /certificate-notifications, MODIFIED new revision
     Note over C: known-certificate view bumps to the new revision
-    T->>P: POST /certificates/{id}/withdraw
-    Note over P: lifecycle to WITHDRAWN
+    T->>P: POST /management/v1/certificates/{id}/withdraw
+    Note over P: lifecycle to WITHDRAWN (state only)
+    T->>P: POST /management/v1/certificates/{id}/publish {lifecycleStatus: WITHDRAWN}
     P->>C: POST /certificate-notifications, WITHDRAWN (certificateId only)
     Note over C: marks the certificate WITHDRAWN
 ```
 
-1. **Modify** — `POST /certificates/{id}/modify` appends a new `revision` (`CREATED → MODIFIED`, same
-   fixed locations), serves it, and pushes a `MODIFIED` event (light subset).
-2. **Withdraw** — `POST /certificates/{id}/withdraw` sets `WITHDRAWN`: `GET /certificates/{id}` →
-   `200` with the minimal `{certificateId, status: WITHDRAWN}` body (§3.3.2), search excludes it, a
-   `WITHDRAWN` event (carrying only `certificateId`) is pushed, a second withdraw → `409`.
-3. **Consumer reacts** — updates `GET /consumer/certificates/{id}`: `MODIFIED` bumps the known revision,
-   `WITHDRAWN` marks it unavailable.
+1. **Revise (state)** — `POST /management/v1/certificates/{id}/revisions` creates a new version: appends a
+   `revision` with the caller's issued validity + documents (uploaded first via `POST /management/v1/documents`);
+   `CREATED → MODIFIED`, cert-level metadata carried over. No notification.
+2. **Withdraw (state)** — `POST /management/v1/certificates/{id}/withdraw` sets `WITHDRAWN`:
+   `GET /certificates/{id}` → `200` with the minimal `{certificateId, status: WITHDRAWN}` body (§3.3.2),
+   search excludes it, a second withdraw → `409`. No notification.
+3. **Publish (notify)** — `POST /management/v1/certificates/{id}/publish` with `{"lifecycleStatus": …}` sends
+   a `MODIFIED` (light subset) or `WITHDRAWN` (certificateId only) event to one named target consumer.
+4. **Consumer reacts** — updates `GET /management/v1/consumer/certificates/{id}`: `MODIFIED` bumps the known
+   revision, `WITHDRAWN` marks it unavailable.
 
 **Variants & tests**
 
 | # | Variant | Tests |
 |---|---------|-------|
-| **C1** | Provider modify (new revision served + searched) | `modify_publishesNewRevision_servedAndSearchable` **[provider]** |
+| **C1** | Provider revise (new revision served + searched) | `revise_appendsNewRevision_servedAndSearchable` **[provider]** |
 | **C2** | Provider withdraw (`200` status body + excluded + `409`) | `withdraw_returnsWithdrawnStatusBody_excludedFromSearch_andSecondWithdrawConflicts` **[provider]** |
 | **C3** | Consumer reacts (`MODIFIED`/`WITHDRAWN`) | `lifecycleModified_updatesConsumerKnownCertificate`, `lifecycleWithdrawn_marksConsumerKnownCertificateUnavailable`, `lifecycle_endToEnd_modifyThenWithdraw_consumerReacts` **[consumer]** |
 
@@ -278,15 +288,15 @@ Every flow/variant ↔ its tests (legend above). All 50 tests are accounted for.
 | Flow | Test(s) |
 |------|---------|
 | **A1** held/immediate | `consumerInitiatedPull_heldCertificate_fulfilledImmediatelyAndAccepted` **[consumer]**, `requestOfferedType_fulfilledImmediately_andPollable` **[provider]** |
-| **A2** async + push | `consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts` **[consumer]**, `fulfillmentNotification_accepted` **[consumer]**, `request_notHeld_acknowledgesThenFulfillsAsynchronously` **[provider]** |
+| **A2** async + push | `consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts` **[consumer]**, `fulfillmentNotification_accepted` **[consumer]**, `request_notHeld_waitsThenFulfillsWhenCertificateAdded` **[provider]** |
 | **A3** async + poll | `consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts` **[poll]** |
-| **A4** declined | `consumerInitiatedPull_unofferedType_declined` **[consumer]**, `requestUnofferedType_declinedWithErrors` **[provider]**, `requestMissingType_badRequest` **[provider]** |
-| **A5** failed | `consumerInitiatedPull_failedFulfillment_recordsFailedNoAcceptance` **[consumer]**, `request_failTrigger_endsInFailed` **[provider]** |
+| **A4** backend declines | `consumerInitiatedPull_backendDecline_recordsDeclinedNoAcceptance` **[consumer]**, `declineRequest_endsInDeclined` **[provider]**, `requestMissingType_badRequest` **[provider]** |
+| **A5** failed | `consumerInitiatedPull_backendFailure_recordsFailedNoAcceptance` **[consumer]**, `request_backendFailure_endsInFailed` **[provider]** |
 | **A** steps (poll/retrieve/accept) | `requestStatus_unknownExchange_notFound`, `retrieveCertificate_returnsJsonMetadataWithDocumentReferences`, `retrieveCertificate_specificRevision`, `retrieveCertificate_unknown_notFound`, `acceptanceNotification_recordsStatus_thenUnknownIs404_andRejectedNeedsErrors` **[provider]**; `acceptanceStatus_unknownExchange_notFound` **[consumer]**; `reportsAcceptedAsCloudEvent`, `reportsRejectedWithErrors`, `deliveryFailureIsSwallowed` **[callback]** |
 | **B1** push → accepted | `providerInitiatedPush_closesLoopBackToProvider`, `createdLifecycleEvent_retrievesValidCertificate_andAccepts` **[consumer]** |
 | **B2** push → rejected | `createdLifecycleEvent_retrievesExpiredCertificate_andRejects` **[consumer]** |
 | **B3** push → errored | `createdLifecycleEvent_unknownCertificate_isErrored` **[consumer]** |
-| **C1** modify | `modify_publishesNewRevision_servedAndSearchable` **[provider]** |
+| **C1** revise | `revise_appendsNewRevision_servedAndSearchable` **[provider]** |
 | **C2** withdraw | `withdraw_returnsWithdrawnStatusBody_excludedFromSearch_andSecondWithdrawConflicts` **[provider]** |
 | **C3** consumer reacts | `lifecycleModified_updatesConsumerKnownCertificate`, `lifecycleWithdrawn_marksConsumerKnownCertificateUnavailable`, `lifecycle_endToEnd_modifyThenWithdraw_consumerReacts` **[consumer]** |
 | **D1** search by type | `search_byType_returnsLatestRevision` **[provider]** |
@@ -305,13 +315,13 @@ Every flow/variant ↔ its tests (legend above). All 50 tests are accounted for.
 
 ---
 
-## Demo simplifications (not protocol limitations)
+## Simplifications (not protocol limitations)
 
 - A held certificate covering the requested locations fulfils **immediately**; otherwise the request
-  is `ACKNOWLEDGED` and the provider's asynchronous fulfillment
-  (`ACKNOWLEDGED → CERTIFICATION_REQUESTED → FULFILLED`, or `FAILED`) is driven by an explicit
-  `POST /certificate-requests/{id}/advance` trigger rather than a timer (locations including `BPNFAIL`
-  end in `FAILED`).
+  is `CERTIFICATION_REQUESTED` and waits for the certification-authority backend. In this build the backend is
+  driven through the management API: it uploads the issued document(s) via `POST /management/v1/documents`,
+  then `POST /management/v1/certificates` (referencing them) issues the certificate and fulfils every waiting
+  exchange it covers, or `POST /management/v1/certificate-requests/{id}/fail` ends the exchange in `FAILED`.
 - On `CREATED`/`FULFILLED` the consumer genuinely retrieves over HTTP (OkHttp), evaluates synchronously,
   and reports the terminal outcome back directly (`RETRIEVED` is optional and skipped — a single
   acceptance callback); base URLs are hardcoded (`certo.provider-base-url` / `certo.consumer-base-url`,
