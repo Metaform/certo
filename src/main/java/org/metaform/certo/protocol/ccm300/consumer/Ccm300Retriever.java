@@ -1,8 +1,8 @@
 package org.metaform.certo.protocol.ccm300.consumer;
 
 import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.security.OutboundCall;
@@ -33,11 +33,11 @@ public class Ccm300Retriever implements CertificateRetriever {
 
     private static final Logger LOG = LoggerFactory.getLogger(Ccm300Retriever.class);
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final OutboundTokens outboundTokens;
 
-    public Ccm300Retriever(OkHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
+    public Ccm300Retriever(RetryingHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
         this.http = httpClient;
         this.mapper = mapper;
         this.outboundTokens = outboundTokens;
@@ -62,7 +62,7 @@ public class Ccm300Retriever implements CertificateRetriever {
         authorize(builder, resolved.bearer());
 
         CertificateRecord metadata;
-        try (var response = http.newCall(builder.build()).execute()) {
+        try (var response = http.execute(builder.build())) {
             if (!response.isSuccessful()) {
                 throw new IOException("Provider returned HTTP " + response.code()
                         + " retrieving certificate " + certificateId);
@@ -89,7 +89,7 @@ public class Ccm300Retriever implements CertificateRetriever {
         var builder = new Request.Builder().url(url).get();
         authorize(builder, bearer);
         var request = builder.build();
-        try (var response = http.newCall(request).execute()) {
+        try (var response = http.execute(request)) {
             if (!response.isSuccessful()) {
                 throw new IOException("Provider returned HTTP " + response.code()
                         + " retrieving document " + ref.documentId());

@@ -2,9 +2,9 @@ package org.metaform.certo.protocol.ccm300.consumer;
 
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.AcceptanceStatus;
@@ -42,12 +42,12 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm300Reporter.class);
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm300Reporter(OkHttpClient httpClient, ObjectMapper mapper,
+    public Ccm300Reporter(RetryingHttpClient httpClient, ObjectMapper mapper,
                           OutboundTokens outboundTokens, Clock clock) {
         this.http = httpClient;
         this.mapper = mapper;
@@ -104,7 +104,7 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
         }
         var request = builder.build();
 
-        try (var response = http.newCall(request).execute()) {
+        try (var response = http.execute(request)) {
             if (!response.isSuccessful()) {
                 LOG.warn("Provider did not accept the acceptance report for exchange {}: HTTP {}",
                         exchangeId, response.code());

@@ -31,12 +31,20 @@ certo:
   # GET /tokens/{participantContextId}/{flowId}. A siglet is required (point at a mock siglet for dev/test).
   security:
     siglet-base-url: http://localhost:8090
-  # Outbound OkHttp client timeouts, in seconds (0 disables a given timeout). Shared across all adapters.
+  # Outbound OkHttp client, shared across all adapters (routed through RetryingHttpClient). Timeouts are in
+  # seconds (0 disables a given timeout). Retry (Failsafe, like EDC's EdcHttpClient) retries a transient
+  # IOException or 5xx with exponential backoff. Every outbound call is idempotent so retry is safe: reads;
+  # the notification/acceptance messages correlated by exchangeId (CX-0135 §2.1.1); and the request-open,
+  # which the provider resolves as find-or-create over a still-live exchange rather than opening a duplicate.
+  # Backoff is in millis.
   http:
     connect-timeout-seconds: 10
     read-timeout-seconds: 30
     write-timeout-seconds: 30
     call-timeout-seconds: 60
+    max-retries: 5
+    min-backoff-millis: 500
+    max-backoff-millis: 10000
 
 logging:
   level:

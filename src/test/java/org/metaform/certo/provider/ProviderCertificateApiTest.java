@@ -338,10 +338,12 @@ class ProviderCertificateApiTest {
     }
 
     @Test
-    void reattempt_opensADistinctExchange() throws Exception {
+    void repeatedOpen_reusesTheLiveExchange() throws Exception {
+        // Idempotent open (CX-0135 §2.1.1): a repeated request for the same certificateType + locations reuses
+        // the still-live exchange (here already FULFILLED) rather than opening a duplicate.
         var first = openExchange();
         var second = openExchange();
-        assertThat(first).isNotEqualTo(second);
+        assertThat(second).isEqualTo(first);
     }
 
     @Test

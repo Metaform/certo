@@ -1,9 +1,9 @@
 package org.metaform.certo.protocol.ccm240;
 
 import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -23,10 +23,10 @@ public class Ccm240OutboundClient {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm240OutboundClient.class);
     private static final MediaType JSON = MediaType.get("application/json");
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
 
-    public Ccm240OutboundClient(OkHttpClient httpClient, ObjectMapper mapper) {
+    public Ccm240OutboundClient(RetryingHttpClient httpClient, ObjectMapper mapper) {
         this.http = httpClient;
         this.mapper = mapper;
     }
@@ -62,7 +62,7 @@ public class Ccm240OutboundClient {
             builder.header("Authorization", "Bearer " + bearerToken);
         }
         var request = builder.build();
-        try (var response = http.newCall(request).execute()) {
+        try (var response = http.execute(request)) {
             if (response.isSuccessful()) {
                 return true;
             }

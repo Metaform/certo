@@ -2,9 +2,9 @@ package org.metaform.certo.common.security;
 
 import com.nimbusds.jwt.SignedJWT;
 import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.pc.ParticipantContextStore;
 import org.metaform.certo.common.web.ApiException;
 import org.slf4j.Logger;
@@ -37,13 +37,13 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
     private static final Logger LOG = LoggerFactory.getLogger(SigletTokenVerifier.class);
     private static final MediaType JSON = MediaType.get("application/json");
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final ParticipantContextStore contexts;
     private final String verifyUrl;
 
     public SigletTokenVerifier(SecurityProperties properties, ParticipantContextStore contexts,
-                               OkHttpClient http, ObjectMapper mapper) {
+                               RetryingHttpClient http, ObjectMapper mapper) {
         this.contexts = contexts;
         this.http = http;
         this.mapper = mapper;
@@ -92,7 +92,7 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
         }
         var request = new Request.Builder().url(verifyUrl)
                 .post(RequestBody.create(requestBody, JSON)).build();
-        try (var response = http.newCall(request).execute()) {
+        try (var response = http.execute(request)) {
             if (response.code() == HttpStatus.UNAUTHORIZED.value()) {
                 throw ApiException.unauthorized("Invalid security token: rejected by siglet (expired, revoked, or bad signature)");
             }

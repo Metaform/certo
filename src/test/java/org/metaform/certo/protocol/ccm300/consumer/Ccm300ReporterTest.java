@@ -1,6 +1,5 @@
 package org.metaform.certo.protocol.ccm300.consumer;
 
-import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -10,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.metaform.certo.MockSiglet;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.common.pc.ParticipantContext;
@@ -39,7 +39,7 @@ class Ccm300ReporterTest {
     ObjectMapper mapper;
 
     @Autowired
-    OkHttpClient httpClient;
+    RetryingHttpClient httpClient;
 
     private MockWebServer provider;
     private Ccm300Reporter client;

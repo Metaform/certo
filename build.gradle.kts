@@ -31,6 +31,9 @@ dependencies {
 
     // HTTP client used by the consumer to retrieve certificates from a provider's data plane.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Failsafe: retry with exponential backoff around outbound OkHttp calls — the same retry library
+    // Eclipse Dataspace Components uses for its EdcHttpClient.
+    implementation("dev.failsafe:failsafe:3.3.2")
 
     // JOSE/JWT + JWKS for verifying siglet-minted security tokens on the CCM protocol layer.
     implementation("com.nimbusds:nimbus-jose-jwt:9.40")

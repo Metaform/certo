@@ -100,6 +100,13 @@ public class ProviderCertificateExchange {
     private List<String> requestedLocations;
     private OffsetDateTime requestedAt;
 
+    /**
+     * Canonical key of a consumer-initiated request — its {@code certificateType} plus requested locations
+     * (order-insensitive) — so the provider can reuse a still-live exchange for a repeated request rather than
+     * opening a duplicate (CX-0135 &sect;2.1.1). Null for provider-initiated exchanges.
+     */
+    private String requestKey;
+
     @Version
     private long version;
 
@@ -212,6 +219,24 @@ public class ProviderCertificateExchange {
 
     public boolean isConsumerInitiated() {
         return consumerInitiated;
+    }
+
+    /** Records the canonical request key so a repeated consumer request can reuse this exchange while live. */
+    public void assignRequestKey(String requestKey) {
+        this.requestKey = requestKey;
+    }
+
+    public String requestKey() {
+        return requestKey;
+    }
+
+    /**
+     * Whether this exchange is still live — neither the Fulfillment nor the Acceptance phase has reached a
+     * terminal state — so a repeated request may reuse it (CX-0135 &sect;2.1.1: a re-attempt opens a new
+     * exchange only after a terminal outcome).
+     */
+    public boolean isLive() {
+        return !fulfillmentStatus.isTerminal() && (acceptanceStatus == null || !acceptanceStatus.isTerminal());
     }
 
     // --- accessors -----------------------------------------------------------------------------

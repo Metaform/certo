@@ -1,8 +1,8 @@
 package org.metaform.certo.common.security;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -19,11 +19,11 @@ import java.io.IOException;
 @Component
 public class SigletTokenSource implements SecurityTokenSource {
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final String baseUrl;
 
-    public SigletTokenSource(OkHttpClient http, ObjectMapper mapper, SecurityProperties properties) {
+    public SigletTokenSource(RetryingHttpClient http, ObjectMapper mapper, SecurityProperties properties) {
         this.http = http;
         this.mapper = mapper;
         var base = properties.sigletBaseUrl();
@@ -37,7 +37,7 @@ public class SigletTokenSource implements SecurityTokenSource {
         // The cached token is already scoped to the counterparty, so counterpartyDid is not needed here.
         var url = baseUrl + "/tokens/" + participantContextId + "/" + flowId;
         var request = new Request.Builder().url(url).get().build();
-        try (var response = http.newCall(request).execute()) {
+        try (var response = http.execute(request)) {
             if (!response.isSuccessful()) {
                 throw new ApiException(HttpStatus.BAD_GATEWAY,
                         "Siglet returned HTTP " + response.code() + " for flow " + flowId);

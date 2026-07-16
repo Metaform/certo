@@ -1,9 +1,9 @@
 package org.metaform.certo.consumer;
 
 import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.consumer.spi.InboundCcmEvent;
 import org.metaform.certo.consumer.spi.InboundNotificationListener;
 import org.slf4j.Logger;
@@ -27,11 +27,11 @@ public class WebhookNotificationListener implements InboundNotificationListener 
     private static final Logger LOG = LoggerFactory.getLogger(WebhookNotificationListener.class);
     private static final MediaType JSON = MediaType.get("application/json");
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final String callbackUrl;
 
-    public WebhookNotificationListener(OkHttpClient http, ObjectMapper mapper,
+    public WebhookNotificationListener(RetryingHttpClient http, ObjectMapper mapper,
                                        @Value("${certo.consumer.notification-callback-url}") String callbackUrl) {
         this.http = http;
         this.mapper = mapper;
@@ -43,7 +43,7 @@ public class WebhookNotificationListener implements InboundNotificationListener 
         try {
             var json = mapper.writeValueAsString(event);
             var request = new Request.Builder().url(callbackUrl).post(RequestBody.create(json, JSON)).build();
-            try (var response = http.newCall(request).execute()) {
+            try (var response = http.execute(request)) {
                 if (!response.isSuccessful()) {
                     LOG.warn("Notification callback {} returned HTTP {} for exchange {}",
                             callbackUrl, response.code(), event.exchangeId());

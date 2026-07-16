@@ -47,6 +47,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -107,6 +108,11 @@ public class ProviderExchangeService {
      * covering the requested locations &rarr; immediate {@code FULFILLED}; otherwise
      * {@code CERTIFICATION_REQUESTED} — the exchange waits for the backend to {@code addCertificate} the
      * certificate, {@link #failRequest fail}, or {@link #declineRequest decline} it.
+     *
+     * <p>Idempotent (CX-0135 &sect;2.1.1): a repeated request from the same counterparty for the same
+     * {@code certificateType} + locations reuses the still-live exchange — pending or already {@code FULFILLED}
+     * — rather than opening a duplicate, so a retried open returns the same exchange. A new exchange is opened
+     * only once the prior one reaches a terminal outcome (a re-attempt).
      */
     public CertificateRequestResponse requestCertificate(CertificateRequest request, VerifiedRequestContext requestContext) {
         ApiException.requireText(request.certificateType(), "A certificate request must specify a certificateType");
@@ -117,35 +123,76 @@ public class ProviderExchangeService {
         // The counterparty's BPN and DID both come from the verified token — never resolved later.
         var counterparty = requestContext.bpnOrSubject();
         var counterpartyDid = requestContext.subject();
-        var exchangeId = UUID.randomUUID().toString();
         var requestedLocations = request.certifiedLocations();
+        var requestKey = requestKey(request.certificateType(), requestedLocations);
 
+        // Idempotent open (CX-0135 §2.1.1): a repeated request from the same counterparty for the same
+        // certificateType + locations reuses the still-live exchange — pending or already FULFILLED — rather
+        // than opening a duplicate, so a retried open returns the same exchange. A new one is opened only when
+        // the prior match reached a terminal outcome (a re-attempt). The counterparty scoping means this only
+        // ever collapses one consumer's own repeats.
+        var existing = exchangeStore
+                .findByParticipantContextIdAndCounterpartyBpnAndRequestKey(contextId, counterparty, requestKey)
+                .stream()
+                .filter(ProviderCertificateExchange::isLive)
+                .min(Comparator.comparing(ProviderCertificateExchange::exchangeId));
+        if (existing.isPresent()) {
+            return toResponse(existing.get());
+        }
+
+        // No live exchange: a held certificate covering the request fulfills immediately, otherwise the request
+        // is submitted for certification (pending).
         var held = catalog.findCertificateForLocations(contextId, request.certificateType(), requestedLocations);
         if (held.isPresent()) {
             var certificate = held.get();
-            var revision = certificate.latestRevision().revision();
-            var exchange = new ProviderCertificateExchange(exchangeId,
+            var exchange = new ProviderCertificateExchange(UUID.randomUUID().toString(),
                     contextId,
                     certificate.certificateId(),
-                    revision,
+                    certificate.latestRevision().revision(),
                     counterparty,
                     counterpartyDid,
                     FULFILLED);
             exchange.markConsumerInitiated();
+            exchange.assignRequestKey(requestKey);
             exchangeStore.save(exchange);
-            return new CertificateRequestResponse(exchangeId, certificate.certificateId(), revision, FULFILLED, null);
+            return toResponse(exchange);
         }
 
-        // Not held: submit for certification.
-        var exchange = ProviderCertificateExchange.pending(exchangeId,
+        var exchange = ProviderCertificateExchange.pending(UUID.randomUUID().toString(),
                 contextId,
                 counterparty,
                 counterpartyDid,
                 request.certificateType(),
                 requestedLocations,
                 OffsetDateTime.now(clock));
+        exchange.assignRequestKey(requestKey);
         exchangeStore.save(exchange);
-        return new CertificateRequestResponse(exchangeId, null, null, CERTIFICATION_REQUESTED, null);
+        return toResponse(exchange);
+    }
+
+    /** Renders an exchange as a request response — the current fulfillment status and, once known, the certificate. */
+    private static CertificateRequestResponse toResponse(ProviderCertificateExchange exchange) {
+        var certificateId = exchange.certificateId();
+        return new CertificateRequestResponse(exchange.exchangeId(),
+                certificateId,
+                certificateId != null ? exchange.revision() : null,
+                exchange.fulfillmentStatus(),
+                exchange.fulfillmentErrors());
+    }
+
+    /**
+     * Canonical dedup key for a consumer request: its {@code certificateType} plus requested locations,
+     * order-insensitive and de-duplicated (an omitted/empty location set — the legal entity — is distinct
+     * from any specific location). Used to reuse a still-live exchange for a repeated request.
+     */
+    private static String requestKey(String certificateType, List<String> locations) {
+        var normalized = locations.stream()
+                .filter(location -> location != null && !location.isBlank())
+                .map(String::trim)
+                .distinct()
+                .sorted()
+                .toList();
+        return certificateType + ' ' + String.join(",", normalized);
     }
 
     /**

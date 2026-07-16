@@ -2,10 +2,10 @@ package org.metaform.certo.protocol.ccm300.consumer;
 
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.consumer.spi.CertificateRequester;
@@ -30,11 +30,11 @@ public class Ccm300Requester implements CertificateRequester {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm300Requester.class);
     private static final MediaType JSON = MediaType.get("application/json");
 
-    private final OkHttpClient http;
+    private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final OutboundTokens outboundTokens;
 
-    public Ccm300Requester(OkHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
+    public Ccm300Requester(RetryingHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
         this.http = httpClient;
         this.mapper = mapper;
         this.outboundTokens = outboundTokens;
@@ -50,7 +50,11 @@ public class Ccm300Requester implements CertificateRequester {
         var body = RequestBody.create(mapper.writeValueAsString(payload), JSON);
         var builder = new Request.Builder().url(url(resolved.baseUrl(), "certificate-requests")).post(body);
         authorize(builder, resolved.bearer());
-        return send(builder.build());
+        // Retry-safe: the provider reuses a still-live exchange for a repeated open (CX-0135 §2.1.1), so a
+        // retried send returns the same exchange rather than opening a duplicate.
+        try (Response response = http.execute(builder.build())) {
+            return parse(response);
+        }
     }
 
     /** Polls the fulfillment status of a previously opened exchange. */
@@ -60,7 +64,9 @@ public class Ccm300Requester implements CertificateRequester {
                 .url(url(resolved.baseUrl(), "certificate-requests").newBuilder().addPathSegment(exchangeId).build())
                 .get();
         authorize(builder, resolved.bearer());
-        return send(builder.build());
+        try (Response response = http.execute(builder.build())) {
+            return parse(response);
+        }
     }
 
     private static HttpUrl url(String baseUrl, String segment) throws IOException {
@@ -77,14 +83,12 @@ public class Ccm300Requester implements CertificateRequester {
         }
     }
 
-    private ProviderRequestResult send(Request request) throws IOException {
-        try (Response response = http.newCall(request).execute()) {
-            var responseBody = response.body();
-            var text = responseBody == null ? "" : responseBody.string();
-            if (!response.isSuccessful()) {
-                throw new IOException("Provider returned HTTP " + response.code() + ": " + text);
-            }
-            return mapper.readValue(text, ProviderRequestResult.class);
+    private ProviderRequestResult parse(Response response) throws IOException {
+        var responseBody = response.body();
+        var text = responseBody == null ? "" : responseBody.string();
+        if (!response.isSuccessful()) {
+            throw new IOException("Provider returned HTTP " + response.code() + ": " + text);
         }
+        return mapper.readValue(text, ProviderRequestResult.class);
     }
 }
