@@ -1,10 +1,9 @@
 package org.metaform.certo.provider.dto;
 
-import java.util.List;
-
 /**
- * The result of adding a certificate: the identity assigned to it and the exchange ids that were waiting
- * for it and have now been fulfilled (and their consumers notified).
+ * The result of adding a certificate: the identity assigned to it. Issuing a certificate is a state change
+ * only — waiting consumer exchanges are notified separately, per exchange, via
+ * {@code POST /certificate-requests/{id}/fulfill} (each carrying that consumer's live {@code flow_id}).
  */
-public record CertificateAdded(String certificateId, int revision, List<String> fulfilledExchanges) {
+public record CertificateAdded(String certificateId, int revision) {
 }

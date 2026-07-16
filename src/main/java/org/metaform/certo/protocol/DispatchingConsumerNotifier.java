@@ -2,6 +2,7 @@ package org.metaform.certo.protocol;
 
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
+import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.provider.spi.ConsumerNotifier;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -31,14 +32,14 @@ public class DispatchingConsumerNotifier implements ConsumerNotifier {
     }
 
     @Override
-    public boolean notifyLifecycle(ExchangeBinding target, LifecycleStatusData data) {
-        return adapter(target).notifyLifecycle(target, data);
+    public boolean notifyLifecycle(ExchangeBinding target, LifecycleStatusData data, OutboundCall call) {
+        return adapter(target).notifyLifecycle(target, data, call);
     }
 
     @Override
-    public boolean notifyFulfillment(FulfillmentStatusData data) {
+    public boolean notifyFulfillment(FulfillmentStatusData data, OutboundCall call) {
         var binding = bindings.resolve(data.exchangeId(), CounterpartyRole.CONSUMER).orElse(null);
-        return adapter(binding).notifyFulfillment(binding, data);
+        return adapter(binding).notifyFulfillment(binding, data, call);
     }
 
     private ProtocolNotifier adapter(ExchangeBinding binding) {

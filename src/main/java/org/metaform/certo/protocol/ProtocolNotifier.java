@@ -2,6 +2,7 @@ package org.metaform.certo.protocol;
 
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
+import org.metaform.certo.common.security.OutboundCall;
 
 /**
  * A version-specific renderer/sender for provider &rarr; consumer notifications. One implementation per
@@ -17,13 +18,16 @@ public interface ProtocolNotifier {
 
     /**
      * Delivers a lifecycle notification to the consumer. {@code binding} is null for the native version.
-     * Returns {@code true} on successful delivery.
+     * {@code flowId} is the live outbound flow (secured adapters resolve the token + endpoint from it);
+     * {@code null} when security is disabled. Returns {@code true} on successful delivery.
      */
-    boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data);
+    boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data, OutboundCall call);
 
     /**
      * Delivers a fulfillment-status notification to the consumer. {@code binding} is null for the native
-     * version. Returns {@code true} on successful delivery (or intentional suppression).
+     * version. {@code flowId} is the live outbound flow (secured adapters resolve the token + endpoint from
+     * it); {@code null} when security is disabled. Returns {@code true} on successful delivery (or intentional
+     * suppression).
      */
-    boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data);
+    boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data, OutboundCall call);
 }

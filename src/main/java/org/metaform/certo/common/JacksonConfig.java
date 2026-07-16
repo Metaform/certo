@@ -4,7 +4,7 @@ import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomize
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import tools.jackson.databind.DeserializationFeature;
+import static tools.jackson.databind.DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES;
 
 /**
  * Tunes the JSON mapper. Jackson 3 defaults {@code FAIL_ON_NULL_FOR_PRIMITIVES} to {@code true}, which rejects a
@@ -18,6 +18,6 @@ public class JacksonConfig {
 
     @Bean
     public JsonMapperBuilderCustomizer primitiveDefaultsCustomizer() {
-        return builder -> builder.disable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
+        return builder -> builder.disable(FAIL_ON_NULL_FOR_PRIMITIVES);
     }
 }

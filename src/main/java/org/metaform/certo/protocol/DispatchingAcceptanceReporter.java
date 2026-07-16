@@ -2,6 +2,7 @@ package org.metaform.certo.protocol;
 
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.consumer.spi.AcceptanceReporter;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -30,10 +31,14 @@ public class DispatchingAcceptanceReporter implements AcceptanceReporter {
     }
 
     @Override
-    public void report(String exchangeId, String certificateId, AcceptanceStatus status, List<StatusError> errors) {
+    public void report(String exchangeId,
+                       String certificateId,
+                       AcceptanceStatus status,
+                       OutboundCall call,
+                       List<StatusError> errors) {
         var binding = bindings.resolve(exchangeId, CounterpartyRole.PROVIDER).orElse(null);
         var version = binding != null ? binding.version() : ProtocolVersion.NATIVE;
         var reporter = byVersion.getOrDefault(version, byVersion.get(ProtocolVersion.NATIVE));
-        reporter.report(binding, exchangeId, certificateId, status, errors);
+        reporter.report(binding, exchangeId, certificateId, status, errors, call);
     }
 }

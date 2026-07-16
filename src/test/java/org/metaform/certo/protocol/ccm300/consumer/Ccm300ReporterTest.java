@@ -7,9 +7,13 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.metaform.certo.common.CertoProperties;
+import org.metaform.certo.MockSiglet;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.pc.ParticipantContext;
+import org.metaform.certo.testsupport.InMemoryParticipantContextStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import tools.jackson.databind.ObjectMapper;
@@ -39,18 +43,26 @@ class Ccm300ReporterTest {
 
     private MockWebServer provider;
     private Ccm300Reporter client;
+    private OutboundCall call;
 
     @BeforeEach
     void setUp() throws Exception {
         provider = new MockWebServer();
         provider.start();
-        var properties = new CertoProperties(
-                new CertoProperties.Party("BPNL0000000001AB", "urn:bpn:BPNL0000000001AB"),
-                new CertoProperties.Party("BPNL0000000002CD", "urn:bpn:BPNL0000000002CD"),
-                provider.url("/").toString(),
-                "http://localhost:8080");
         var clock = Clock.fixed(Instant.parse("2026-06-04T12:00:00Z"), ZoneOffset.UTC);
-        client = new Ccm300Reporter(httpClient, mapper, properties, clock);
+        // The consumer tenant sends the acceptance report to the provider (its counterparty).
+        var contexts = new InMemoryParticipantContextStore();
+        var consumer = new ParticipantContext("pctx-consumer", "BPNL0000000002CD",
+                "urn:bpn:BPNL0000000002CD", "did:web:consumer");
+        contexts.save(consumer);
+        contexts.save(new ParticipantContext("pctx-provider", "BPNL0000000001AB",
+                "urn:bpn:BPNL0000000001AB", "did:web:provider"));
+        // The mock siglet returns the (mock) provider's URL as the outbound endpoint for this flow.
+        var siglet = new MockSiglet(contexts, provider.url("/").toString());
+        var outboundTokens = new OutboundTokens(siglet::resolve);
+        client = new Ccm300Reporter(httpClient, mapper, outboundTokens, clock);
+        // Sender = the consumer tenant; counterparty = the provider (BPN + DID supplied on the call).
+        call = new OutboundCall(consumer, "BPNL0000000001AB", "did:web:provider", "flow-1");
     }
 
     @AfterEach
@@ -62,7 +74,7 @@ class Ccm300ReporterTest {
     void reportsAcceptedAsCloudEvent() throws Exception {
         provider.enqueue(new MockResponse().setResponseCode(204));
 
-        client.report(null, "exch-1", "cert-1", AcceptanceStatus.ACCEPTED, null);
+        client.report(null, "exch-1", "cert-1", AcceptanceStatus.ACCEPTED, null, call);
 
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
@@ -89,7 +101,7 @@ class Ccm300ReporterTest {
         provider.enqueue(new MockResponse().setResponseCode(204));
 
         client.report(null, "exch-2", "cert-2", AcceptanceStatus.REJECTED,
-                List.of(new StatusError("Certificate has expired")));
+                List.of(new StatusError("Certificate has expired")), call);
 
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
@@ -103,7 +115,7 @@ class Ccm300ReporterTest {
         // Provider responds 404 (unknown exchange) — the callback is best-effort and must not throw.
         provider.enqueue(new MockResponse().setResponseCode(404));
 
-        client.report(null, "exch-unknown", "cert-3", AcceptanceStatus.ACCEPTED, null);
+        client.report(null, "exch-unknown", "cert-3", AcceptanceStatus.ACCEPTED, null, call);
 
         assertThat(provider.takeRequest(5, TimeUnit.SECONDS)).isNotNull();
     }

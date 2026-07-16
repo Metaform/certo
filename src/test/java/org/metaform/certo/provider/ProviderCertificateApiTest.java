@@ -1,6 +1,7 @@
 package org.metaform.certo.provider;
 
 import org.junit.jupiter.api.Test;
+import org.metaform.certo.TestTenants;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.provider.model.Certificate;
@@ -11,6 +12,8 @@ import org.metaform.certo.provider.store.ProviderDocumentStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.metaform.certo.MockMvcTokenConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
@@ -29,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(MockMvcTokenConfig.class)
 class ProviderCertificateApiTest {
 
     @Autowired
@@ -50,7 +54,7 @@ class ProviderCertificateApiTest {
                         .content("{\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS00000003AYRE\"]}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
-                .andExpect(jsonPath("$.certificateId").value("cert-iso9001-0001"))
+                .andExpect(jsonPath("$.certificateId").value(TestTenants.ISO9001_CERT_ID))
                 .andExpect(jsonPath("$.revision").value(2))
                 .andReturn();
 
@@ -73,7 +77,7 @@ class ProviderCertificateApiTest {
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
-        mvc.perform(post("/management/v1/certificate-requests/{id}/decline", exchangeId).param("reason", "not a customer"))
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-requests/{id}/decline", exchangeId).param("flowId", "flow-1").param("reason", "not a customer"))
                 .andExpect(jsonPath("$.status").value("DECLINED"));
 
         mvc.perform(get("/certificate-requests/{id}", exchangeId))
@@ -98,10 +102,10 @@ class ProviderCertificateApiTest {
 
     @Test
     void retrieveCertificate_returnsJsonMetadataWithDocumentReferences() throws Exception {
-        mvc.perform(get("/certificates/{id}", "cert-iso9001-0001"))
+        mvc.perform(get("/certificates/{id}", TestTenants.ISO9001_CERT_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.certificateId").value("cert-iso9001-0001"))
+                .andExpect(jsonPath("$.certificateId").value(TestTenants.ISO9001_CERT_ID))
                 .andExpect(jsonPath("$.revision").value(2)) // latest by default
                 .andExpect(jsonPath("$.certificateType").value("ISO9001"))
                 .andExpect(jsonPath("$.trustLevel").value("high"))
@@ -113,7 +117,7 @@ class ProviderCertificateApiTest {
 
     @Test
     void retrieveDocument_returnsBinaryWithItsMediaType() throws Exception {
-        var metadata = mapper.readTree(mvc.perform(get("/certificates/{id}", "cert-iso9001-0001"))
+        var metadata = mapper.readTree(mvc.perform(get("/certificates/{id}", TestTenants.ISO9001_CERT_ID))
                 .andReturn().getResponse().getContentAsString());
         var documentId = metadata.get("documents").get(0).get("documentId").asString();
 
@@ -142,7 +146,7 @@ class ProviderCertificateApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(searchByType("ISO9001")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].certificateId").value("cert-iso9001-0001"))
+                .andExpect(jsonPath("$[0].certificateId").value(TestTenants.ISO9001_CERT_ID))
                 .andExpect(jsonPath("$[0].revision").value(2));
     }
 
@@ -253,13 +257,39 @@ class ProviderCertificateApiTest {
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
-        // The backend issues the certificate: it is added and every waiting exchange it covers is fulfilled.
+        // The backend issues the certificate (state only); the client discovers the waiting exchange it
+        // covers (UC2) and fulfills it per-exchange (over that consumer's flow).
         var added = addCertificate("IATF16949", "BPNS-NEW-SITE");
         var certificateId = added.get("certificateId").asString();
-        assertThat(added.get("fulfilledExchanges").toString()).contains(exchangeId);
+        mvc.perform(get("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/{id}/fulfillable-requests", certificateId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].exchangeId").value(exchangeId))
+                .andExpect(jsonPath("$.items[0].consumerBpn").exists());
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-requests/{id}/fulfill", exchangeId).param("flowId", "flow-1"))
+                .andExpect(status().isOk());
 
         assertThat(requestStatus(exchangeId)).isEqualTo("FULFILLED");
         mvc.perform(get("/certificates/{id}", certificateId)).andExpect(status().isOk());
+    }
+
+    @Test
+    void queryPendingRequests_returnsWaitingExchange() throws Exception {
+        var result = mvc.perform(post("/certificate-requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"certificateType\":\"UC1-QUERY-TYPE\",\"certifiedLocations\":[\"BPNS-Q-1\"]}"))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
+
+        // UC1 request-centric query: filter the backlog by the (unique) type and find the waiting exchange.
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-requests/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"certificateType\":\"UC1-QUERY-TYPE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].exchangeId").value(exchangeId))
+                .andExpect(jsonPath("$.items[0].consumerBpn").exists())
+                .andExpect(jsonPath("$.items[0].status").value("CERTIFICATION_REQUESTED"));
     }
 
     @Test
@@ -271,7 +301,7 @@ class ProviderCertificateApiTest {
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
-        mvc.perform(post("/management/v1/certificate-requests/{id}/fail", exchangeId).param("reason", "authority rejected"))
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-requests/{id}/fail", exchangeId).param("flowId", "flow-1").param("reason", "authority rejected"))
                 .andExpect(jsonPath("$.status").value("FAILED"));
 
         mvc.perform(get("/certificate-requests/{id}", exchangeId))
@@ -317,12 +347,12 @@ class ProviderCertificateApiTest {
     @Test
     void revise_appendsNewRevision_servedAndSearchable() throws Exception {
         seedCertificate("cert-mod-test", "MODTEST");
-        var docResult = mvc.perform(post("/management/v1/documents").contentType(MediaType.APPLICATION_JSON)
+        var docResult = mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/documents").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}"))
                 .andExpect(status().isCreated()).andReturn();
         var documentId = mapper.readTree(docResult.getResponse().getContentAsString()).get("documentId").asString();
 
-        mvc.perform(post("/management/v1/certificates/{id}/revisions", "cert-mod-test")
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/{id}/revisions", "cert-mod-test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"validFrom\":\"2026-01-01\",\"validUntil\":\"2029-01-01\",\"documentIds\":[\"" + documentId + "\"]}"))
                 .andExpect(status().isCreated())
@@ -342,7 +372,7 @@ class ProviderCertificateApiTest {
         seedCertificate("cert-wd-test", "WDTEST");
         mvc.perform(get("/certificates/{id}", "cert-wd-test")).andExpect(status().isOk());
 
-        mvc.perform(post("/management/v1/certificates/{id}/withdraw", "cert-wd-test"))
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/{id}/withdraw", "cert-wd-test"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lifecycleStatus").value("WITHDRAWN"));
 
@@ -356,15 +386,15 @@ class ProviderCertificateApiTest {
                         .content(searchByType("WDTEST")))
                 .andExpect(jsonPath("$.length()").value(0));
 
-        mvc.perform(post("/management/v1/certificates/{id}/withdraw", "cert-wd-test")).andExpect(status().isConflict());
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/{id}/withdraw", "cert-wd-test")).andExpect(status().isConflict());
     }
 
     private void seedCertificate(String certificateId, String type) {
-        var cert = new Certificate(certificateId, type, "2015", "REG-" + certificateId, "high", null,
+        var cert = new Certificate(certificateId, TestTenants.PROVIDER_PCTX, type, "2015", "REG-" + certificateId, "high", null,
                 List.of(new CertifiedLocation("BPNL00000001AXS", "BPNA000000000009", "BPNS00000009ZZZZ", LocationRole.MAIN_LOCATION)),
                 null, null);
         var documentId = "doc-" + certificateId + "-r1";
-        documentStore.save(new Document(documentId, LocalDate.of(2024, 1, 1), "en", "application/pdf", new byte[]{'%', 'P', 'D', 'F'}));
+        documentStore.save(new Document(documentId, TestTenants.PROVIDER_PCTX, LocalDate.of(2024, 1, 1), "en", "application/pdf", new byte[]{'%', 'P', 'D', 'F'}));
         cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of(documentId)));
         certificateStore.save(cert);
     }
@@ -468,7 +498,7 @@ class ProviderCertificateApiTest {
 
     /** Backend uploads a document, then issues a certificate referencing it; returns the add-certificate response. */
     private JsonNode addCertificate(String type, String location) throws Exception {
-        var docResult = mvc.perform(post("/management/v1/documents")
+        var docResult = mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/documents")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}"))
                 .andExpect(status().isCreated())
@@ -481,7 +511,7 @@ class ProviderCertificateApiTest {
                  "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"%s","locationRole":"MAIN_LOCATION"}],
                  "issuer":{"issuerName":"TUV","issuerBpn":"BPNL000000ISSUER"},
                  "documentIds":["%s"]}""".formatted(type, location, documentId);
-        var result = mvc.perform(post("/management/v1/certificates")
+        var result = mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -489,7 +519,7 @@ class ProviderCertificateApiTest {
     }
 
     private JsonNode exchangeView(String exchangeId) throws Exception {
-        var result = mvc.perform(get("/management/v1/certificate-exchanges/{id}", exchangeId)).andReturn();
+        var result = mvc.perform(get("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-exchanges/{id}", exchangeId)).andReturn();
         return mapper.readTree(result.getResponse().getContentAsString());
     }
 

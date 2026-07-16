@@ -1,11 +1,30 @@
 package org.metaform.certo.provider.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Convert;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import org.jetbrains.annotations.NotNull;
+import org.metaform.certo.common.Validations;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.common.persistence.StatusErrorListConverter;
 import org.metaform.certo.common.web.ApiException;
 
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
+
+import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATION_REQUESTED;
 
 /**
  * The provider's record of a {@code Certificate Exchange} (CX-0135 &sect;2.1) — one end-to-end
@@ -19,40 +38,101 @@ import java.util.List;
  * (backend) response — carrying the requested type and locations so a later issuance can be matched to
  * it. The certificate identity is unknown until the backend issues it, so {@code certificateId}/{@code
  * revision} are assigned at {@link #fulfill} time.
+ *
+ * <p>Persisted via JPA with {@code @Version} optimistic locking; the §2.1.3 state-machine invariants that
+ * a JVM monitor used to guard are now protected by the version check on save (a lost update fails). Because
+ * JPA does not dirty-track in-place mutation of a converted collection, callers must {@code save} the
+ * aggregate after mutating it.
  */
+@Entity
+@Table(name = "provider_certificate_exchange")
 public class ProviderCertificateExchange {
 
-    private final String exchangeId;
-    private final String counterpartyBpn;
+    @Id
+    @NotNull
+    private String exchangeId;
+    /**
+     * The provider tenant (participant context) that owns this exchange. Never null — an exchange is always
+     * opened within a resolved tenant (enforced in the constructor and by a NOT NULL column).
+     */
+    @NotNull
+    @Column(nullable = false)
+    private String participantContextId;
+    @NotNull
+    @Column(nullable = false)
+    private String counterpartyBpn;
+    /**
+     * The counterparty consumer's DID — the token audience for outbound calls on this exchange.
+     */
+    @NotNull
+    @Column(nullable = false)
+    private String counterpartyDid;
 
+    /** Unknown until the backend issues the certificate ({@link #fulfill}); null for a pending request. */
     private String certificateId;
     private int revision;
 
+    @Enumerated(EnumType.STRING)
+    @NotNull
+    @Column(nullable = false)
     private FulfillmentStatus fulfillmentStatus;
+    @Convert(converter = StatusErrorListConverter.class)
+    @Column(length = 65535)
     private List<StatusError> fulfillmentErrors;
 
+    @Enumerated(EnumType.STRING)
     private AcceptanceStatus acceptanceStatus;
+    @Convert(converter = StatusErrorListConverter.class)
+    @Column(length = 65535)
     private List<StatusError> acceptanceErrors;
 
     private boolean consumerInitiated;
 
-    /** For a pending consumer request: what the consumer asked for, used to match a later issuance. */
+    /**
+     * For a pending consumer request: what the consumer asked for, used to match a later issuance.
+     */
     private String requestedType;
+    // Normalized into child rows so the overlap/subset queries (queryRequests, fulfillableRequests) run in
+    // the database. EAGER: small, and read by toPendingView after the query with open-in-view off.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "exchange_requested_location", joinColumns = @JoinColumn(name = "exchange_id"))
+    @Column(name = "location_bpn")
     private List<String> requestedLocations;
+    private OffsetDateTime requestedAt;
 
-    public ProviderCertificateExchange(String exchangeId, String certificateId, int revision, String counterpartyBpn,
-                               FulfillmentStatus initialStatus) {
-        this(exchangeId, certificateId, revision, counterpartyBpn, initialStatus, null);
+    @Version
+    private long version;
+
+    protected ProviderCertificateExchange() {
+        // for JPA
     }
 
-    public ProviderCertificateExchange(String exchangeId, String certificateId, int revision, String counterpartyBpn,
-                               FulfillmentStatus initialStatus, List<StatusError> initialErrors) {
-        this.exchangeId = exchangeId;
+    public ProviderCertificateExchange(String exchangeId,
+                                       String participantContextId,
+                                       String certificateId,
+                                       int revision,
+                                       String counterpartyBpn,
+                                       String counterpartyDid,
+                                       FulfillmentStatus initialStatus) {
+        this(exchangeId, participantContextId, certificateId, revision, counterpartyBpn, counterpartyDid, initialStatus, null);
+    }
+
+    public ProviderCertificateExchange(String exchangeId,
+                                       String participantContextId,
+                                       String certificateId,
+                                       int revision,
+                                       String counterpartyBpn,
+                                       String counterpartyDid,
+                                       FulfillmentStatus initialStatus,
+                                       List<StatusError> initialErrors) {
+        this.exchangeId = Validations.requireNonBlank(exchangeId, "exchangeId");
+        this.participantContextId = Validations.requireNonBlank(participantContextId, "participantContextId");
         this.certificateId = certificateId;
         this.revision = revision;
-        this.counterpartyBpn = counterpartyBpn;
-        this.fulfillmentStatus = initialStatus;
-        this.fulfillmentErrors = initialErrors;
+        this.counterpartyBpn = Validations.requireNonBlank(counterpartyBpn, "counterpartyBpn");
+        this.counterpartyDid = Validations.requireNonBlank(counterpartyDid, "counterpartyDid");
+        this.fulfillmentStatus = Objects.requireNonNull(initialStatus, "fulfillmentStatus");
+        this.fulfillmentErrors = copyOrNull(initialErrors);
     }
 
     /**
@@ -60,24 +140,37 @@ public class ProviderCertificateExchange {
      * certificate identity yet, status {@code CERTIFICATION_REQUESTED}, and the requested type/locations
      * retained so an issuance can be matched to it.
      */
-    public static ProviderCertificateExchange pending(String exchangeId, String counterpartyBpn,
-                                                      String requestedType, List<String> requestedLocations) {
-        var exchange = new ProviderCertificateExchange(
-                exchangeId, null, 0, counterpartyBpn, FulfillmentStatus.CERTIFICATION_REQUESTED);
+    public static ProviderCertificateExchange pending(String exchangeId,
+                                                      String participantContextId,
+                                                      String counterpartyBpn,
+                                                      String counterpartyDid,
+                                                      String requestedType,
+                                                      List<String> requestedLocations,
+                                                      OffsetDateTime requestedAt) {
+        var exchange = new ProviderCertificateExchange(exchangeId,
+                participantContextId,
+                null,
+                0,
+                counterpartyBpn,
+                counterpartyDid,
+                CERTIFICATION_REQUESTED);
         exchange.consumerInitiated = true;
         exchange.requestedType = requestedType;
-        exchange.requestedLocations = requestedLocations;
+        exchange.requestedLocations = copyOrNull(requestedLocations);
+        exchange.requestedAt = requestedAt;
         return exchange;
     }
 
-    /** Advances the Fulfillment phase, rejecting illegal transitions and changes to a terminal state (409). */
+    /**
+     * Advances the Fulfillment phase, rejecting illegal transitions and changes to a terminal state (409).
+     */
     public void transitionFulfillment(FulfillmentStatus to, List<StatusError> errors) {
         if (!fulfillmentStatus.allowedNext().contains(to)) {
             throw ApiException.conflict("Illegal fulfillment transition " + fulfillmentStatus + " -> " + to
-                    + " for exchange " + exchangeId);
+                                        + " for exchange " + exchangeId);
         }
         this.fulfillmentStatus = to;
-        this.fulfillmentErrors = errors;
+        this.fulfillmentErrors = copyOrNull(errors);
     }
 
     /**
@@ -85,7 +178,7 @@ public class ProviderCertificateExchange {
      * backend produced the certificate). Illegal from a terminal state (409).
      */
     public void fulfill(String certificateId, int revision) {
-        this.certificateId = certificateId;
+        this.certificateId = Validations.requireNonBlank(certificateId, "certificateId");
         this.revision = revision;
         transitionFulfillment(FulfillmentStatus.FULFILLED, null);
     }
@@ -100,17 +193,19 @@ public class ProviderCertificateExchange {
     public void recordAcceptance(AcceptanceStatus to, List<StatusError> errors) {
         if (fulfillmentStatus != FulfillmentStatus.FULFILLED) {
             throw ApiException.conflict("Exchange " + exchangeId + " cannot be accepted before it is FULFILLED"
-                    + " (current fulfillment status: " + fulfillmentStatus + ")");
+                                        + " (current fulfillment status: " + fulfillmentStatus + ")");
         }
         if (acceptanceStatus != null && !acceptanceStatus.allowedNext().contains(to)) {
             throw ApiException.conflict("Illegal acceptance transition " + acceptanceStatus + " -> " + to
-                    + " for exchange " + exchangeId);
+                                        + " for exchange " + exchangeId);
         }
         this.acceptanceStatus = to;
-        this.acceptanceErrors = errors;
+        this.acceptanceErrors = copyOrNull(errors);
     }
 
-    /** Whether the consumer opened this exchange (so the provider may push fulfillment status to it). */
+    /**
+     * Whether the consumer opened this exchange (so the provider may push fulfillment status to it).
+     */
     public void markConsumerInitiated() {
         this.consumerInitiated = true;
     }
@@ -125,6 +220,13 @@ public class ProviderCertificateExchange {
         return exchangeId;
     }
 
+    /**
+     * The provider tenant (participant context) that owns this exchange.
+     */
+    public String participantContextId() {
+        return participantContextId;
+    }
+
     public String certificateId() {
         return certificateId;
     }
@@ -137,12 +239,23 @@ public class ProviderCertificateExchange {
         return counterpartyBpn;
     }
 
+    /**
+     * The counterparty consumer's DID — the token audience for outbound calls on this exchange.
+     */
+    public String counterpartyDid() {
+        return counterpartyDid;
+    }
+
     public String requestedType() {
         return requestedType;
     }
 
     public List<String> requestedLocations() {
-        return requestedLocations;
+        return copyOrNull(requestedLocations);
+    }
+
+    public OffsetDateTime requestedAt() {
+        return requestedAt;
     }
 
     public FulfillmentStatus fulfillmentStatus() {
@@ -150,7 +263,7 @@ public class ProviderCertificateExchange {
     }
 
     public List<StatusError> fulfillmentErrors() {
-        return fulfillmentErrors;
+        return copyOrNull(fulfillmentErrors);
     }
 
     public AcceptanceStatus acceptanceStatus() {
@@ -158,6 +271,14 @@ public class ProviderCertificateExchange {
     }
 
     public List<StatusError> acceptanceErrors() {
-        return acceptanceErrors;
+        return copyOrNull(acceptanceErrors);
+    }
+
+    /**
+     * Snapshots a list to an immutable copy (preserving null) so stored state can't be mutated through a
+     * shared reference on the way in or out.
+     */
+    private static <T> List<T> copyOrNull(List<T> list) {
+        return list == null ? null : List.copyOf(list);
     }
 }

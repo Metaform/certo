@@ -16,13 +16,14 @@ import org.metaform.certo.protocol.ProtocolVersion;
  *   <li>{@code embedded} — full certificate content inline ({@code true}) or by reference ({@code false},
  *       default), so the consumer pulls it (ignored for {@code WITHDRAWN});</li>
  *   <li>{@code revision} — which revision to publish; {@code 0} (default) means the latest;</li>
- *   <li>{@code consumerBpn} / {@code consumerUrl} — the target consumer's BPN and <em>base</em> URL. The
- *       {@code consumerUrl} is <b>required</b> (for every {@code protocolVersion}): it is where the push is
- *       delivered. The configured {@code certo.consumer.*} values are this runtime's own identity, not a
- *       default target.</li>
+ *   <li>{@code consumerBpn} / {@code consumerDid} — the target consumer's BPN (message subject / v2.4.0
+ *       receiver) and DID (the token audience). Both name the counterparty; the DID is supplied here so no
+ *       component has to resolve it from the BPN.</li>
+ *   <li>{@code flowId} — the live siglet flow for this push. <b>Required</b>; the token and the counterparty
+ *       endpoint are resolved from the siglet cache keyed by it.</li>
  * </ul>
  * The primitives default to {@code false}/{@code 0}, the enums default in the constructor, and blank strings
- * normalize to {@code null}. A body that omits {@code consumerUrl} is rejected.
+ * normalize to {@code null}.
  */
 public record PublishRequest(
         LifecycleStatus lifecycleStatus,
@@ -30,18 +31,20 @@ public record PublishRequest(
         boolean embedded,
         int revision,
         String consumerBpn,
-        String consumerUrl) {
+        String consumerDid,
+        String flowId) {
 
     public PublishRequest {
         lifecycleStatus = lifecycleStatus != null ? lifecycleStatus : LifecycleStatus.CREATED;
         protocolVersion = protocolVersion != null ? protocolVersion : ProtocolVersion.NATIVE;
         consumerBpn = blankToNull(consumerBpn);
-        consumerUrl = blankToNull(consumerUrl);
+        consumerDid = blankToNull(consumerDid);
+        flowId = blankToNull(flowId);
     }
 
     /** The defaults used for an empty/absent publish body: {@code CREATED}, native version, by reference, latest. */
     public static PublishRequest defaults() {
-        return new PublishRequest(null, null, false, 0, null, null);
+        return new PublishRequest(null, null, false, 0, null, null, null);
     }
 
     private static String blankToNull(String value) {

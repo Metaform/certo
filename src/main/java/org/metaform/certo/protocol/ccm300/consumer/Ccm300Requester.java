@@ -6,7 +6,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import org.metaform.certo.common.CertoProperties;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.consumer.spi.CertificateRequester;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
 import org.slf4j.Logger;
@@ -20,8 +21,8 @@ import java.util.Map;
 
 /**
  * Opens and polls certificate requests on a Certificate Provider's data plane (CX-0135 &sect;4.4.1 /
- * &sect;4.4.2) using OkHttp — the consumer-initiated "pull" half of the protocol. The provider base URL
- * is hardcoded via {@code certo.provider-base-url}.
+ * &sect;4.4.2) using OkHttp — the consumer-initiated "pull" half of the protocol. The provider endpoint comes
+ * from the siglet cache (per flow).
  */
 @Component
 public class Ccm300Requester implements CertificateRequester {
@@ -31,42 +32,49 @@ public class Ccm300Requester implements CertificateRequester {
 
     private final OkHttpClient http;
     private final ObjectMapper mapper;
-    private final String providerBaseUrl;
+    private final OutboundTokens outboundTokens;
 
-    public Ccm300Requester(OkHttpClient httpClient, ObjectMapper mapper, CertoProperties properties) {
+    public Ccm300Requester(OkHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
         this.http = httpClient;
         this.mapper = mapper;
-        this.providerBaseUrl = properties.providerBaseUrl();
+        this.outboundTokens = outboundTokens;
     }
 
     /** Opens a certificate request and returns the opened exchange's identity and fulfillment status. */
-    public ProviderRequestResult request(String certificateType, List<String> certifiedLocations) throws IOException {
+    public ProviderRequestResult request(String certificateType, List<String> certifiedLocations, OutboundCall call)
+            throws IOException {
+        var resolved = outboundTokens.forCall(call);
         var payload = (certifiedLocations == null || certifiedLocations.isEmpty())
                 ? Map.<String, Object>of("certificateType", certificateType)
                 : Map.<String, Object>of("certificateType", certificateType, "certifiedLocations", certifiedLocations);
         var body = RequestBody.create(mapper.writeValueAsString(payload), JSON);
-        var request = new Request.Builder()
-                .url(url("certificate-requests"))
-                .post(body)
-                .build();
-        return send(request);
+        var builder = new Request.Builder().url(url(resolved.baseUrl(), "certificate-requests")).post(body);
+        authorize(builder, resolved.bearer());
+        return send(builder.build());
     }
 
     /** Polls the fulfillment status of a previously opened exchange. */
-    public ProviderRequestResult pollStatus(String exchangeId) throws IOException {
-        var request = new Request.Builder()
-                .url(url("certificate-requests").newBuilder().addPathSegment(exchangeId).build())
-                .get()
-                .build();
-        return send(request);
+    public ProviderRequestResult pollStatus(String exchangeId, OutboundCall call) throws IOException {
+        var resolved = outboundTokens.forCall(call);
+        var builder = new Request.Builder()
+                .url(url(resolved.baseUrl(), "certificate-requests").newBuilder().addPathSegment(exchangeId).build())
+                .get();
+        authorize(builder, resolved.bearer());
+        return send(builder.build());
     }
 
-    private HttpUrl url(String segment) throws IOException {
-        var base = HttpUrl.parse(providerBaseUrl);
+    private static HttpUrl url(String baseUrl, String segment) throws IOException {
+        var base = HttpUrl.parse(baseUrl);
         if (base == null) {
-            throw new IOException("Invalid provider base URL: " + providerBaseUrl);
+            throw new IOException("Invalid provider base URL: " + baseUrl);
         }
         return base.newBuilder().addPathSegment(segment).build();
+    }
+
+    private static void authorize(Request.Builder builder, String bearer) {
+        if (bearer != null) {
+            builder.header("Authorization", "Bearer " + bearer);
+        }
     }
 
     private ProviderRequestResult send(Request request) throws IOException {

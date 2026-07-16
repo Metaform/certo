@@ -1,33 +1,60 @@
 spring:
   application:
     name: certo
+  # Persistence runs on Spring Data JPA. By default (dev/test) Spring Boot auto-configures an embedded
+  # in-memory H2 database (a uniquely-named instance per application context, so tests are isolated); the
+  # `prod` profile below swaps in Postgres. Concurrency control (unique constraints, @Version optimistic
+  # locking) comes from the database, so it is correct across a cluster.
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
 
 server:
   port: 8080
 
-# Identity used when this runtime produces CloudEvents (CX-0000 §2.1).
-# Placeholder identity values; a real deployment derives these from the participant's DID/BPN.
 certo:
-  # Storage backend for all stores (ports with swappable adapters). 'memory' (default) selects the
-  # in-memory adapters; a future 'postgres' would select JDBC adapters registered under that value.
-  persistence: memory
   # Seed a few sample certificates (with generated PDFs) at startup so the search/retrieval endpoints
   # return data on a fresh run. Off by default; the test suite enables it via the Gradle test task.
   seed-sample-data: false
+  # Identity of the sample tenants created by ProviderCertificateSeeder (only when seed-sample-data=true).
+  # Real tenants are created at runtime via POST /management/v1/participant-contexts and carry their own
+  # bpn/source/did; these values are NOT used as a runtime identity default.
   provider:
-    # BPN of the Certificate Provider (this runtime, when acting as a provider).
     bpn: BPNL0000000001AB
     source: urn:bpn:BPNL0000000001AB
   consumer:
-    # BPN of the Certificate Consumer (this runtime, when acting as a consumer).
     bpn: BPNL0000000002CD
     source: urn:bpn:BPNL0000000002CD
-  # Base URL of the Certificate Provider data plane the consumer retrieves certificates from
-  # and reports acceptance to. Hardcoded here; same runtime by default.
-  provider-base-url: http://localhost:8080
-  # Base URL of the Certificate Consumer notification API the provider pushes lifecycle events to.
-  consumer-base-url: http://localhost:8080
+  # Security tokens on the CCM protocol layer are always on and always come from a siglet STS: inbound calls
+  # are verified via POST /tokens/verify and outbound calls resolve their token AND counterparty endpoint from
+  # GET /tokens/{participantContextId}/{flowId}. A siglet is required (point at a mock siglet for dev/test).
+  security:
+    siglet-base-url: http://localhost:8090
+  # Outbound OkHttp client timeouts, in seconds (0 disables a given timeout). Shared across all adapters.
+  http:
+    connect-timeout-seconds: 10
+    read-timeout-seconds: 30
+    write-timeout-seconds: 30
+    call-timeout-seconds: 60
 
 logging:
   level:
     org.metaform.certo: INFO
+
+---
+# Production profile: Postgres instead of embedded H2. The schema is expected to already exist
+# (managed out of band, e.g. Flyway) so Hibernate only validates it rather than generating DDL.
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${CERTO_DB_URL:jdbc:postgresql://localhost:5432/certo}
+    username: ${CERTO_DB_USER:certo}
+    password: ${CERTO_DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false

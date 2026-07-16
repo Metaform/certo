@@ -5,12 +5,13 @@ import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
-import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
 import org.metaform.certo.protocol.ProtocolVersion;
@@ -43,13 +44,14 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
 
     private final OkHttpClient http;
     private final ObjectMapper mapper;
-    private final CertoProperties properties;
+    private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm300Reporter(OkHttpClient httpClient, ObjectMapper mapper, CertoProperties properties, Clock clock) {
+    public Ccm300Reporter(OkHttpClient httpClient, ObjectMapper mapper,
+                          OutboundTokens outboundTokens, Clock clock) {
         this.http = httpClient;
         this.mapper = mapper;
-        this.properties = properties;
+        this.outboundTokens = outboundTokens;
         this.clock = clock;
     }
 
@@ -63,18 +65,18 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
      */
     @Override
     public void report(ExchangeBinding binding, String exchangeId, String certificateId,
-                       AcceptanceStatus status, List<StatusError> errors) {
+                       AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
         var data = new AcceptanceStatusData(exchangeId, certificateId, status, errors);
         var event = new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
                 CcmEvents.TYPE_ACCEPTANCE_STATUS,
-                properties.consumer().source(),
-                properties.provider().bpn(),
+                call.sender().source(),
+                call.counterpartyBpn(),
                 randomUUID().toString(),
                 OffsetDateTime.now(clock),
                 CloudEvent.CONTENT_TYPE_JSON,
                 CcmEvents.SCHEMA_ACCEPTANCE_STATUS,
-                properties.consumer().bpn(),
+                call.sender().bpn(),
                 data);
 
         String json;
@@ -85,18 +87,22 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
             return;
         }
 
-        var base = HttpUrl.parse(properties.providerBaseUrl());
+        var resolved = outboundTokens.forCall(call);
+        var base = HttpUrl.parse(resolved.baseUrl());
         if (base == null) {
             LOG.warn("Invalid provider base URL '{}'; not reporting acceptance for exchange {}",
-                    properties.providerBaseUrl(), exchangeId);
+                    resolved.baseUrl(), exchangeId);
             return;
         }
         var url = base.newBuilder().addPathSegment("certificate-acceptance-notifications").build();
 
-        var request = new Request.Builder()
+        var builder = new Request.Builder()
                 .url(url)
-                .post(RequestBody.create(json, CLOUDEVENTS_JSON))
-                .build();
+                .post(RequestBody.create(json, CLOUDEVENTS_JSON));
+        if (resolved.bearer() != null) {
+            builder.header("Authorization", "Bearer " + resolved.bearer());
+        }
+        var request = builder.build();
 
         try (var response = http.newCall(request).execute()) {
             if (!response.isSuccessful()) {

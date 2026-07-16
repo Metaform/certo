@@ -14,10 +14,12 @@ import java.util.List;
  * uploaded first via {@code POST /management/v1/documents} and referenced here by {@code documentIds};
  * adding the certificate fulfils every waiting exchange it covers.
  *
- * <p>Required: {@code certificateType}, {@code registrationNumber}, {@code validFrom},
- * {@code validUntil}, a non-empty {@code certifiedLocations} with exactly one {@code MAIN_LOCATION}, and a
- * non-empty {@code documentIds}. {@code certificateTypeVersion} (the type edition, e.g. {@code 2015}),
- * {@code trustLevel}, {@code areaOfApplication}, {@code issuer} and {@code validator} are optional.
+ * <p>The provider tenant issuing the certificate is named in the request path
+ * ({@code /management/v1/participant-contexts/{participantContextId}/certificates}). Required in the body:
+ * {@code certificateType}, {@code registrationNumber}, {@code validFrom}, {@code validUntil}, a non-empty
+ * {@code certifiedLocations} with exactly one {@code MAIN_LOCATION}, and a non-empty {@code documentIds}.
+ * {@code certificateTypeVersion} (the type edition, e.g. {@code 2015}), {@code trustLevel},
+ * {@code areaOfApplication}, {@code issuer} and {@code validator} are optional.
  */
 public record NewCertificate(
         String certificateType,

@@ -1,17 +1,17 @@
 package org.metaform.certo.consumer.store;
 
 import org.metaform.certo.consumer.model.KnownCertificate;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
 /**
- * Store of the consumer's lifecycle view of certificates it has learned about. The port;
- * {@code InMemoryConsumerCertificateStore} is the default (in-memory) adapter, selectable via
- * {@code certo.persistence}.
+ * Store of the consumer's lifecycle view of certificates it has learned about — a Spring Data JPA
+ * repository. The domain-named {@link #find} is a thin alias over {@code findById}; {@code save} is inherited.
  */
-public interface ConsumerCertificateStore {
+public interface ConsumerCertificateStore extends JpaRepository<KnownCertificate, String> {
 
-    void save(KnownCertificate certificate);
-
-    Optional<KnownCertificate> find(String certificateId);
+    default Optional<KnownCertificate> find(String certificateId) {
+        return findById(certificateId);
+    }
 }

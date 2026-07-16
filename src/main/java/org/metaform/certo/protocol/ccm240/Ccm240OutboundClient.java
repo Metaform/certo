@@ -42,11 +42,14 @@ public class Ccm240OutboundClient {
     }
 
     /**
-     * POSTs {@code message} as JSON to {@code url}. Returns {@code true} on a 2xx response.
+     * POSTs {@code message} as JSON to {@code url}, attaching a bearer token when one is supplied. Returns
+     * {@code true} on a 2xx response.
      *
-     * @param url the peer's endpoint, POSTed to directly.
+     * @param url         the peer's endpoint, POSTed to directly.
+     * @param message     the v2.4.0 message body.
+     * @param bearerToken the security token to present, or {@code null} when security is disabled.
      */
-    public boolean post(String url, Object message) {
+    public boolean post(String url, Object message, String bearerToken) {
         String json;
         try {
             json = mapper.writeValueAsString(message);
@@ -54,7 +57,11 @@ public class Ccm240OutboundClient {
             LOG.warn("Could not serialize v2.4.0 message for {}: {}", url, e.getMessage());
             return false;
         }
-        var request = new Request.Builder().url(url).post(RequestBody.create(json, JSON)).build();
+        var builder = new Request.Builder().url(url).post(RequestBody.create(json, JSON));
+        if (bearerToken != null) {
+            builder.header("Authorization", "Bearer " + bearerToken);
+        }
+        var request = builder.build();
         try (var response = http.newCall(request).execute()) {
             if (response.isSuccessful()) {
                 return true;

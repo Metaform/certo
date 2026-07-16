@@ -5,11 +5,13 @@ import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
-import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.pc.ParticipantContext;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolNotifier;
 import org.metaform.certo.protocol.ProtocolVersion;
@@ -44,13 +46,14 @@ public class Ccm300Notifier implements ProtocolNotifier {
 
     private final OkHttpClient http;
     private final ObjectMapper mapper;
-    private final CertoProperties properties;
+    private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm300Notifier(OkHttpClient httpClient, ObjectMapper mapper, CertoProperties properties, Clock clock) {
+    public Ccm300Notifier(OkHttpClient httpClient, ObjectMapper mapper,
+                          OutboundTokens outboundTokens, Clock clock) {
         this.http = httpClient;
         this.mapper = mapper;
-        this.properties = properties;
+        this.outboundTokens = outboundTokens;
         this.clock = clock;
     }
 
@@ -65,17 +68,17 @@ public class Ccm300Notifier implements ProtocolNotifier {
      * @return {@code true} if the consumer accepted the event (2xx), {@code false} otherwise
      */
     @Override
-    public boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data) {
-        if (binding == null || binding.callbackUrl() == null) {
-            LOG.warn("No consumer callback URL for the target; cannot deliver {}", data.status());
-            return false;
-        }
+    public boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data, OutboundCall call) {
+        // Token + counterparty endpoint from the siglet cache (scoped to the counterparty, keyed by the flow).
+        var resolved = outboundTokens.forCall(call);
         // Render the neutral domain event to the v3 wire payload (the certificate goes through the codec).
         var wire = new Ccm300LifecycleStatus(data.status(), data.exchangeId(),
                 Ccm300CertificateCodec.toWire(data.certificate()));
-        var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, wire, binding.peerBpn());
+        var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, wire,
+                call.sender(), call.counterpartyBpn());
         var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
-        return post(event, binding.callbackUrl(), data.exchangeId(), data.status() + " certificate " + certificateId);
+        return post(event, resolved.baseUrl(), resolved.bearer(), data.exchangeId(),
+                data.status() + " certificate " + certificateId);
     }
 
     /**
@@ -85,30 +88,29 @@ public class Ccm300Notifier implements ProtocolNotifier {
      * @return {@code true} if the consumer accepted the event (2xx), {@code false} otherwise
      */
     @Override
-    public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data) {
-        // A consumer-initiated pull records no binding (the CX-0135 §3.3.1 request carries no callback), so the
-        // target falls back to the configured consumer endpoint; an explicit binding, when present, wins.
-        var subject = binding != null && binding.peerBpn() != null ? binding.peerBpn() : properties.consumer().bpn();
-        var base = binding != null && binding.callbackUrl() != null ? binding.callbackUrl() : properties.consumerBaseUrl();
-        var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data, subject);
-        return post(event, base, data.exchangeId(), "fulfillment " + data.status());
+    public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data, OutboundCall call) {
+        // Token + counterparty endpoint from the siglet cache (keyed by the flow).
+        var resolved = outboundTokens.forCall(call);
+        var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data,
+                call.sender(), call.counterpartyBpn());
+        return post(event, resolved.baseUrl(), resolved.bearer(), data.exchangeId(), "fulfillment " + data.status());
     }
 
-    private <T> CloudEvent<T> event(String type, String dataSchema, T data, String subjectBpn) {
+    private <T> CloudEvent<T> event(String type, String dataSchema, T data, ParticipantContext sender, String subjectBpn) {
         return new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
                 type,
-                properties.provider().source(),
+                sender.source(),
                 subjectBpn,
                 UUID.randomUUID().toString(),
                 OffsetDateTime.now(clock),
                 CloudEvent.CONTENT_TYPE_JSON,
                 dataSchema,
-                properties.provider().bpn(),
+                sender.bpn(),
                 data);
     }
 
-    private boolean post(CloudEvent<?> event, String baseUrl, String exchangeId, String description) {
+    private boolean post(CloudEvent<?> event, String baseUrl, String bearerToken, String exchangeId, String description) {
         String json;
         try {
             json = mapper.writeValueAsString(event);
@@ -124,10 +126,13 @@ public class Ccm300Notifier implements ProtocolNotifier {
         }
         var url = base.newBuilder().addPathSegment("certificate-notifications").build();
 
-        var request = new Request.Builder()
+        var builder = new Request.Builder()
                 .url(url)
-                .post(RequestBody.create(json, CLOUDEVENTS_JSON))
-                .build();
+                .post(RequestBody.create(json, CLOUDEVENTS_JSON));
+        if (bearerToken != null) {
+            builder.header("Authorization", "Bearer " + bearerToken);
+        }
+        var request = builder.build();
 
         try (var response = http.newCall(request).execute()) {
             if (response.isSuccessful()) {

@@ -1,16 +1,17 @@
 package org.metaform.certo.provider.store;
 
 import org.metaform.certo.provider.model.Document;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
 /**
- * Store of certificate document binaries held by the provider. The port; {@code InMemoryProviderDocumentStore}
- * is the default (in-memory) adapter, selectable via {@code certo.persistence}.
+ * Store of certificate document binaries held by the provider — a Spring Data JPA repository. The
+ * domain-named {@link #find} is a thin alias over {@code findById}; {@code save} is inherited.
  */
-public interface ProviderDocumentStore {
+public interface ProviderDocumentStore extends JpaRepository<Document, String> {
 
-    void save(Document document);
-
-    Optional<Document> find(String documentId);
+    default Optional<Document> find(String documentId) {
+        return findById(documentId);
+    }
 }

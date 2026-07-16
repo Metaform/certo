@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.metaform.certo.protocol.ExchangeBindingStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.metaform.certo.MockMvcTokenConfig;
+import org.metaform.certo.TestTenants;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -22,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(MockMvcTokenConfig.class)
 class Ccm240ProviderControllerTest {
 
     @Autowired
@@ -66,8 +70,8 @@ class Ccm240ProviderControllerTest {
                 .andExpect(status().isOk());
 
         // The UUID documentId resolved back to the certificate and its v3 exchange; acceptance is recorded there.
-        var exchangeId = correlations.exchangeFor("cert-iso9001-0001", CONSUMER_BPN).orElseThrow();
-        mvc.perform(get("/management/v1/certificate-exchanges/{id}", exchangeId))
+        var exchangeId = correlations.exchangeFor(TestTenants.ISO9001_CERT_ID, CONSUMER_BPN).orElseThrow();
+        mvc.perform(get("/management/v1/participant-contexts/" + "pctx-seed-provider" + "/certificate-exchanges/{id}", exchangeId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.acceptanceStatus").value("ACCEPTED"));
     }

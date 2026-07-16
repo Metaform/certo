@@ -61,18 +61,53 @@ project decision and simplifies the 2.4.0 bridge (which has no revision concept)
 ## 3. Out-of-scope boundaries (affect both APIs)
 
 ### 3.1 No DSP control plane — **By design (out of scope)**
-No catalog, no contract negotiation, no CX-0000 token-refresh authorization. `provider-base-url` /
-`consumer-base-url` are hardcoded and the "pull" is a direct HTTP `GET`, not a dataspace transfer.
-*Impact: neither API is production/certification-compliant; the pull's transport/authorization layer is
-absent.*
+No catalog, no contract negotiation. Flows are established by an external control plane; Certo consumes
+them. The counterparty URL and token always come from the siglet cache (keyed by the ephemeral `flowId`),
+but the *flow* that provisions them is the control plane's job — in particular, an unsolicited provider push
+has no consumer→provider return flow unless the control plane creates one. *Impact: Certo is a data plane;
+the dataspace catalog/negotiation/transfer layer is external by design.*
 
-### 3.2 In-memory storage — **By design (abstracted for Postgres)**
-Every store is now a **port** (interface) with a swappable adapter. The default adapters are in-memory
-(`InMemory*`), active via `certo.persistence=memory` (the default) and reset on restart. A JDBC/Postgres
-adapter can be added per store — a new `Postgres*` class registered under `certo.persistence=postgres` —
-with **no change to the services**, which depend only on the port. Ports: `ProviderCertificateStore`,
-`ProviderDocumentStore`, `ProviderCertificateExchangeStore`, `ConsumerCertificateStore`,
-`ConsumerCertificateExchangeStore`, `ProcessedEventStore`, `ExchangeBindingStore`, `Ccm240DocumentIds`.
+### 3.3 Security tokens + multi-tenancy — **Implemented, always on**
+Security tokens on the CCM protocol layer (both v3.0.0 and v2.4.0) are **always on** and always come from a
+**siglet** STS (`certo.security.siglet-base-url` is required; dev/test point at a mock siglet). Inbound
+protocol calls are verified by calling siglet's **revocation-aware** verification endpoint `POST /tokens/verify`,
+which checks signature, expiry, and `jti` revocation — a per-request network call, so token **refresh** stays
+siglet's concern. Outbound calls are made on behalf of the sender's participant context, resolving token +
+counterparty endpoint from the siglet cache keyed by an ephemeral, per-call `flowId` (no configured-URL
+fallback). The verified caller replaces any previously-trusted inbound BPN, and the token **audience**
+resolves to the receiving tenant. **Multi-tenancy is enforced everywhere,
+no exceptions:** certificates + exchanges belong to a `ParticipantContext` created via the management API
+(no config default); certificate lookup/search/request are tenant-scoped. The management API is never
+token-secured (it carries `flowId` + `participantContextId` as data). *Deferred: server-side
+revocation-aware verify, token refresh, TLS.*
+
+### 3.2 Persistence: Spring Data JPA (H2 dev/test, Postgres prod) — **By design**
+Storage is **Spring Data JPA**. One datasource: an embedded **H2** database by default (dev/test — a
+uniquely-named in-memory instance per Spring context, so tests are isolated), swapped for **Postgres** under
+the `prod` profile. The aggregates are JPA `@Entity`s. Value-object collections and single value objects that
+are only ever read whole with their root (status-error lists, certificate revisions, issuer/validator,
+embedded content) are stored as JSON text (varchar) columns via hand-written `AttributeConverter`s (Jackson
+3), keeping the aggregate one row. Collections that are <b>queried</b> — a certificate's/known-certificate's
+`certifiedLocations` and an exchange's `requestedLocations` — are instead normalized into `@ElementCollection`
+child tables, so coverage, search, and overlap/subset run as real SQL (`JpaSpecificationExecutor` +
+`CertificateSpecifications`/`ExchangeSpecifications`), not by loading every row and filtering in memory.
+
+Most stores (`ProviderCertificateStore`, `ProviderDocumentStore`, `ProviderCertificateExchangeStore`,
+`ConsumerCertificateStore`, `ConsumerCertificateExchangeStore`, `ExchangeBindingStore`) are **Spring Data
+repository interfaces directly** — they extend `JpaRepository` and expose domain-named operations
+(`find`/`all`/`record`/`resolve`) as thin `default` methods. Two keep a hand-written adapter because they
+carry logic beyond CRUD: `ProcessedEventStore` (its `claim` needs an injected `Clock`) and
+`ParticipantContextStore` (a plain port, since a small in-memory fake also implements it for a pure unit
+test, and `MockSiglet` depends on the abstraction).
+
+**Concurrency control is the database's, not the JVM's.** There are no application locks or `synchronized`
+model methods. Create-once uses primary-key / unique (`did`) constraints; read-modify-write uses `@Version`
+optimistic locking; multi-store operations (`publish`, `recordAcceptance`, `handleNotifications`, the seeder,
+tenant create) run under one `@Transactional` so they commit or roll back atomically. Event idempotency
+(`ProcessedEventStore.claim`) inserts a marker row in the same transaction as the side effect — a rollback
+undoes it, so a failed apply is retried (the old two-phase claim/release compensation is gone). This is
+correct across a cluster; the former in-memory `ConcurrentHashMap` design was not.
+*Deferred: prod Postgres schema management (Flyway).*
 
 ---
 
@@ -115,12 +150,11 @@ v2.4.0. Its body selects the `protocolVersion` and, for a non-native (`2.4.0`) t
 base URL — this is how a v2.4.0 consumer is named (there is no inbound request to derive it from). Recording
 that as a v2.4.0 `ExchangeBinding` is what routes the notification to the v2.4.0 adapter.
 
-### 4.7 `documentId` is a UUID mapped from `certificateId` — **Resolved**
-v2.4.0 `documentId` is "the UUID of the asset under which the certificate is available." v3 certificate
-ids are opaque non-UUID strings, so `Ccm240DocumentIds` derives a stable UUID `documentId` per certificate
-(deterministic `nameUUIDFromBytes`) and resolves it back on inbound `/status`. Every `documentId` the
-adapter emits (`COMPLETED` reply, outbound `/available`, outbound `/status`) is now a valid UUID; the
-internal `certificateId` never appears on the wire.
+### 4.7 `documentId` **is** the `certificateId` (both UUIDs) — **Resolved**
+v2.4.0 `documentId` is "the UUID of the asset under which the certificate is available." certo generates
+`certificateId`s as bare **UUIDs** (and the seeded sample certs use fixed UUIDs), so the v2.4.0 `documentId`
+is simply the `certificateId` — no translation table. (An earlier `Ccm240DocumentIds` derived a UUID via
+`nameUUIDFromBytes` and kept a session-only reverse map; it was **deleted** once ids became UUIDs.)
 
 ### 4.6 Outbound routing bindings are keyed by `exchangeId` — **Resolved**
 `publish()` now mints the `exchangeId` first and records the (non-native) `ExchangeBinding` against it
@@ -177,7 +211,10 @@ type-only, and matching/search ignore the version. Thin v2.4.0 messages (`/reque
 no version slot, so it is dropped there (not mangled into the type name). Version-aware request/matching
 would require adding it to the request DTO and the match predicates.
 
-### 5.3 Push-in synthesizes a consumer-local surrogate `exchangeId` — **By design**
+### 5.3 Push-in surrogate `exchangeId`; derived stable `certificateId` — **By design / Resolved**
 On a v2.4.0 `/push` (we are the consumer) the provider assigns no `exchangeId`, so the adapter mints a
-local surrogate. It is honestly a correlation handle, not a provider-assigned id — a real
-provider-assigned id would come from the dataspace layer that is out of scope.
+local surrogate per delivery — honestly a correlation handle, not a provider-assigned id (a real one would
+come from the out-of-scope dataspace layer). The **`certificateId`, by contrast, is now derived
+deterministically** — a name-based UUID of `issuerBpn|registrationNumber` — so a re-push of the same
+certificate keeps its identity and accrues **revisions** (`ConsumerCertificateService.nextPushedRevision`)
+instead of creating a duplicate record on every push. (Earlier it was a fresh random id at `revision=1`.)

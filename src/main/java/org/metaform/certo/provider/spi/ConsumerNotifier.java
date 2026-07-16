@@ -2,6 +2,7 @@ package org.metaform.certo.provider.spi;
 
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
+import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.protocol.ExchangeBinding;
 
 /**
@@ -15,11 +16,16 @@ public interface ConsumerNotifier {
      * Notifies a specific {@code target} consumer of a certificate lifecycle event — a provider-initiated
      * push is always explicitly addressed (there is no provider-side "who holds this" registry; interest
      * lives on the consumer). The {@code target}'s {@code version} selects the adapter and its
-     * {@code callbackUrl} the endpoint (a native-version target uses the configured consumer URL). Returns
-     * {@code true} on successful delivery.
+     * {@code callbackUrl} the endpoint (a native-version target uses the configured consumer URL). {@code flowId}
+     * is the live outbound flow the secured adapter resolves the token + endpoint from; {@code null} when
+     * security is disabled. Returns {@code true} on successful delivery.
      */
-    boolean notifyLifecycle(ExchangeBinding target, LifecycleStatusData data);
+    boolean notifyLifecycle(ExchangeBinding target, LifecycleStatusData data, OutboundCall call);
 
-    /** Pushes a fulfillment status to the consumer (routed by the exchange's binding). Returns {@code true} on success. */
-    boolean notifyFulfillment(FulfillmentStatusData data);
+    /**
+     * Pushes a fulfillment status to the consumer (routed by the exchange's binding). {@code flowId} is the
+     * live outbound flow to deliver over (from which the secured adapter resolves the token + endpoint);
+     * {@code null} when security is disabled. Returns {@code true} on success.
+     */
+    boolean notifyFulfillment(FulfillmentStatusData data, OutboundCall call);
 }

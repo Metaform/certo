@@ -6,8 +6,11 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.metaform.certo.MockSiglet;
+import org.metaform.certo.MockSigletConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -27,10 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
-                "server.port=18084",
-                "certo.provider-base-url=http://localhost:18084",
-                "certo.consumer-base-url=http://localhost:18084"
+                "server.port=18084"
         })
+@Import(MockSigletConfig.class)
 class Ccm240OutboundNotificationTest {
 
     private static final String BASE = "http://localhost:18084";
@@ -40,12 +42,17 @@ class Ccm240OutboundNotificationTest {
     @Autowired
     ObjectMapper mapper;
 
+    @Autowired
+    MockSiglet siglet;
+
     private MockWebServer targetConsumer;
 
     @BeforeEach
     void setUp() throws Exception {
         targetConsumer = new MockWebServer();
         targetConsumer.start();
+        // The v2.4.0 push is delivered to the target consumer; the mock siglet returns its URL as the endpoint.
+        siglet.setEndpoint(targetConsumer.url("/").toString());
     }
 
     @AfterEach
@@ -57,10 +64,9 @@ class Ccm240OutboundNotificationTest {
     void publish_v240ByReference_sendsAvailableMessage() throws Exception {
         targetConsumer.enqueue(new MockResponse().setResponseCode(200));
         var trigger = """
-                {"protocolVersion":"2.4.0","consumerBpn":"BPNL0000000002CD","consumerUrl":"%s"}"""
-                .formatted(targetConsumer.url("/").toString());
+                {"protocolVersion":"2.4.0","flowId":"flow-1","consumerBpn":"BPNL0000000002CD","consumerDid":"did:web:consumer"}""";
 
-        var response = post("/management/v1/certificates/cert-iso9001-0001/publish", trigger);
+        var response = post("/management/v1/participant-contexts/pctx-seed-provider/certificates/00000000-0000-0000-0000-000000009001/publish", trigger);
         assertThat(response.statusCode()).isEqualTo(202);
 
         RecordedRequest available = targetConsumer.takeRequest(5, TimeUnit.SECONDS);
@@ -78,10 +84,9 @@ class Ccm240OutboundNotificationTest {
     void publish_v240Embedded_sendsPushWithFullCertificateInline() throws Exception {
         targetConsumer.enqueue(new MockResponse().setResponseCode(200));
         var trigger = """
-                {"protocolVersion":"2.4.0","embedded":true,"consumerBpn":"BPNL0000000002CD","consumerUrl":"%s"}"""
-                .formatted(targetConsumer.url("/").toString());
+                {"protocolVersion":"2.4.0","flowId":"flow-1","embedded":true,"consumerBpn":"BPNL0000000002CD","consumerDid":"did:web:consumer"}""";
 
-        var response = post("/management/v1/certificates/cert-iso9001-0001/publish", trigger);
+        var response = post("/management/v1/participant-contexts/pctx-seed-provider/certificates/00000000-0000-0000-0000-000000009001/publish", trigger);
         assertThat(response.statusCode()).isEqualTo(202);
 
         RecordedRequest push = targetConsumer.takeRequest(5, TimeUnit.SECONDS);

@@ -1,12 +1,12 @@
 package org.metaform.certo.protocol.ccm240.consumer;
 
-import org.metaform.certo.protocol.ccm240.Ccm240DocumentIds;
 import org.metaform.certo.protocol.ccm240.Ccm240OutboundClient;
 import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
-import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
 import org.metaform.certo.protocol.ProtocolVersion;
@@ -25,10 +25,9 @@ import java.util.UUID;
 
 /**
  * The CX-0135 <b>v2.4.0</b> consumer&rarr;provider acceptance reporter: renders the outcome as a v2.4.0
- * {@code /companycertificate/status} message and POSTs it to the provider's base URL
- * ({@code binding.callbackUrl()}). The wire {@code documentId} is derived from the certificateId via
- * {@link Ccm240DocumentIds}; the v3-only {@code ERRORED} down-maps to {@code REJECTED} (its detail
- * preserved in {@code certificateErrors}).
+ * {@code /companycertificate/status} message and POSTs it to the provider endpoint from the siglet cache. The
+ * wire {@code documentId} is the certificateId (a UUID); the v3-only {@code ERRORED} down-maps to
+ * {@code REJECTED} (its detail preserved in {@code certificateErrors}).
  */
 @Component
 public class Ccm240Reporter implements ProtocolAcceptanceReporter {
@@ -36,15 +35,12 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm240Reporter.class);
 
     private final Ccm240OutboundClient outbound;
-    private final Ccm240DocumentIds documentIds;
-    private final CertoProperties properties;
+    private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm240Reporter(Ccm240OutboundClient outbound, Ccm240DocumentIds documentIds,
-                                    CertoProperties properties, Clock clock) {
+    public Ccm240Reporter(Ccm240OutboundClient outbound, OutboundTokens outboundTokens, Clock clock) {
         this.outbound = outbound;
-        this.documentIds = documentIds;
-        this.properties = properties;
+        this.outboundTokens = outboundTokens;
         this.clock = clock;
     }
 
@@ -55,19 +51,18 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
 
     @Override
     public void report(ExchangeBinding binding, String exchangeId, String certificateId,
-                       AcceptanceStatus status, List<StatusError> errors) {
-        if (binding == null || binding.callbackUrl() == null) {
-            LOG.warn("No v2.4.0 feedback URL for exchange {}; dropping acceptance {}", exchangeId, status);
-            return;
-        }
+                       AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
+        // Token + provider endpoint from the siglet cache (keyed by the flow).
+        var resolved = outboundTokens.forCall(call);
         var v240Status = Ccm240Translation.toCcm240StatusValue(status);
         var content = new Ccm240CertificateStatus.Content(
-                documentIds.documentIdFor(certificateId), v240Status, toCcm240Errors(errors), null, null);
+                certificateId, v240Status, toCcm240Errors(errors), null, null);
+        var receiverBpn = binding != null && binding.peerBpn() != null ? binding.peerBpn() : call.counterpartyBpn();
         var header = new Ccm240Header(Ccm240Contexts.STATUS, UUID.randomUUID().toString(),
-                properties.consumer().bpn(), binding.peerBpn(), OffsetDateTime.now(clock).toString(),
-                "3.1.0", binding.messageId(), null);
-        outbound.post(Ccm240OutboundClient.endpoint(binding.callbackUrl(), "status"),
-                new Ccm240CertificateStatus(header, content));
+                call.sender().bpn(), receiverBpn,
+                OffsetDateTime.now(clock).toString(), "3.1.0", binding == null ? null : binding.messageId(), null);
+        outbound.post(Ccm240OutboundClient.endpoint(resolved.baseUrl(), "status"),
+                new Ccm240CertificateStatus(header, content), resolved.bearer());
     }
 
     private static List<Ccm240Error> toCcm240Errors(List<StatusError> errors) {

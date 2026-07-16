@@ -1,5 +1,12 @@
 package org.metaform.certo.protocol;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
 /**
  * The protocol binding of a Certificate Exchange: which wire-protocol version the counterparty speaks and
  * how to reach it. Recorded when an interaction originates over a non-native protocol (an inbound
@@ -8,14 +15,59 @@ package org.metaform.certo.protocol;
  * on — keyed by the {@code exchangeId}; {@code certificateId} + {@code peerBpn} additionally correlate a
  * v2.4.0 {@code documentId} back to the exchange for inbound status.
  *
- * @param exchangeId    the v3 exchange this binding applies to (may be null until it is assigned)
- * @param certificateId the certificate id (== a v2.4.0 {@code documentId}); correlates status via the peer BPN
- * @param version       the counterparty's protocol version (see {@link ProtocolVersion})
- * @param role          whether the counterparty is a consumer or a provider
- * @param peerBpn       the counterparty's BPN
- * @param messageId     the originating message id, if any (for idempotency)
- * @param callbackUrl   the counterparty's endpoint to deliver outbound messages to (may be null)
+ * <p>Persisted via JPA. Insert-only (recorded once, never mutated), so it carries no {@code @Version}.
  */
-public record ExchangeBinding(String exchangeId, String certificateId, ProtocolVersion version,
-                              CounterpartyRole role, String peerBpn, String messageId, String callbackUrl) {
+@Entity
+@Table(name = "exchange_binding")
+public class ExchangeBinding {
+
+    @Id
+    private String exchangeId;
+    private String certificateId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "protocol_version")
+    private ProtocolVersion version;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "counterparty_role")
+    private CounterpartyRole role;
+    private String peerBpn;
+    private String messageId;
+
+    protected ExchangeBinding() {
+        // for JPA
+    }
+
+    public ExchangeBinding(String exchangeId, String certificateId, ProtocolVersion version,
+                           CounterpartyRole role, String peerBpn, String messageId) {
+        this.exchangeId = exchangeId;
+        this.certificateId = certificateId;
+        this.version = version;
+        this.role = role;
+        this.peerBpn = peerBpn;
+        this.messageId = messageId;
+    }
+
+    public String exchangeId() {
+        return exchangeId;
+    }
+
+    public String certificateId() {
+        return certificateId;
+    }
+
+    public ProtocolVersion version() {
+        return version;
+    }
+
+    public CounterpartyRole role() {
+        return role;
+    }
+
+    public String peerBpn() {
+        return peerBpn;
+    }
+
+    public String messageId() {
+        return messageId;
+    }
 }

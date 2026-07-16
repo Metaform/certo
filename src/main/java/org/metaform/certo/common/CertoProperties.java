@@ -3,19 +3,18 @@ package org.metaform.certo.common;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Identity configuration for the two roles this runtime plays. In a real deployment these would
- * derive from the participant's DID / BPN.
+ * Runtime configuration for the sample tenants. {@code provider}/{@code consumer} are <b>not</b> a runtime
+ * identity default: real tenants are created via the management API and carry their own {@code bpn}/{@code
+ * source}/{@code did} on a {@link org.metaform.certo.common.pc.ParticipantContext}. These two identities
+ * are used only to seed the sample tenants (see {@code ProviderCertificateSeeder}, active only when
+ * {@code certo.seed-sample-data=true}). Counterparty endpoints are never configured here — they come from the
+ * siglet cache per flow.
  *
- * @param provider        identity used when this runtime acts as a Certificate Provider
- * @param consumer        identity used when this runtime acts as a Certificate Consumer
- * @param providerBaseUrl base URL of the Certificate Provider data plane the consumer retrieves from
- *                        and reports acceptance to. Hardcoded; defaults
- *                        to {@code http://localhost:8080}.
- * @param consumerBaseUrl base URL of the Certificate Consumer notification API the provider pushes
- *                        lifecycle events to. Hardcoded; defaults to {@code http://localhost:8080}.
+ * @param provider identity of the sample provider tenant seeded at startup
+ * @param consumer identity of the sample consumer tenant seeded at startup
  */
 @ConfigurationProperties(prefix = "certo")
-public record CertoProperties(Party provider, Party consumer, String providerBaseUrl, String consumerBaseUrl) {
+public record CertoProperties(Party provider, Party consumer) {
 
     /** A participant identity: the BPN and the CloudEvents {@code source} URI used when it emits events. */
     public record Party(String bpn, String source) {

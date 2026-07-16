@@ -1,11 +1,16 @@
 package org.metaform.certo.consumer;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.metaform.certo.MockSiglet;
+import org.metaform.certo.MockSigletConfig;
+import org.metaform.certo.TestTenants;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -27,10 +32,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
-                "server.port=18081",
-                "certo.provider-base-url=http://localhost:18081",
-                "certo.consumer-base-url=http://localhost:59999"
+                "server.port=18081"
         })
+@Import(MockSigletConfig.class)
 class ConsumerPollFlowTest {
 
     private static final String BASE = "http://localhost:18081";
@@ -39,6 +43,9 @@ class ConsumerPollFlowTest {
 
     @Autowired
     ObjectMapper mapper;
+
+    @Autowired
+    MockSiglet siglet;
 
     @TestConfiguration
     static class FixedClockConfig {
@@ -49,16 +56,24 @@ class ConsumerPollFlowTest {
         }
     }
 
+    @BeforeEach
+    void setUp() {
+        // Outbound loopback calls resolve back to this same app.
+        siglet.setEndpoint(BASE);
+    }
+
     @Test
     void consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts() throws Exception {
         // Open a request for a not-yet-held certificate -> CERTIFICATION_REQUESTED (awaiting backend).
-        var exchangeId = mapper.readTree(postJson("/management/v1/consumer/certificate-requests",
-                "{\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-POLL-1\"]}").body())
+        var exchangeId = mapper.readTree(postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests",
+                "{\"providerBpn\":\"" + TestTenants.PROVIDER_BPN + "\",\"providerDid\":\"" + TestTenants.PROVIDER_DID
+                        + "\",\"flowId\":\"flow-1\",\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-POLL-1\"]}").body())
                 .get("exchangeId").asString();
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404); // not retrieved yet
 
-        // The backend issues the certificate; the FULFILLED push to the (unreachable) consumer base URL fails silently.
-        var docId = mapper.readTree(postJson("/management/v1/documents",
+        // The backend issues the certificate (state only), then the client fulfills the waiting exchange;
+        // the FULFILLED push to the (unreachable) consumer base URL fails silently, leaving the state FULFILLED.
+        var docId = mapper.readTree(postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/documents",
                 "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}").body())
                 .get("documentId").asString();
         var certBody = """
@@ -66,15 +81,20 @@ class ConsumerPollFlowTest {
                  "validFrom":"2020-01-01","validUntil":"2035-01-01","trustLevel":"high",
                  "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"BPNS-POLL-1","locationRole":"MAIN_LOCATION"}],
                  "documentIds":["%s"]}""".formatted(docId);
-        postJson("/management/v1/certificates", certBody);
+        postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates", certBody);
+        postEmpty("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-requests/" + exchangeId + "/fulfill?flowId=flow-1");
 
-        // Polling learns it's FULFILLED -> the consumer retrieves and accepts.
-        var polled = mapper.readTree(postEmpty("/management/v1/consumer/certificate-requests/" + exchangeId + "/poll").body());
+        // Polling learns it's FULFILLED; the app never auto-accepts, so the client drives retrieve + accept.
+        var polled = mapper.readTree(postEmpty("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests/" + exchangeId + "/poll?flowId=flow-1").body());
         assertThat(polled.get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
+
+        postEmpty("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/exchanges/" + exchangeId + "/retrieve?flowId=flow-1");
+        postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/exchanges/" + exchangeId + "/accept",
+                "{\"status\":\"ACCEPTED\",\"flowId\":\"flow-1\"}");
 
         assertThat(mapper.readTree(getAcceptanceStatus(exchangeId).body()).get("status").asString())
                 .isEqualTo("ACCEPTED");
-        assertThat(mapper.readTree(get("/management/v1/certificate-exchanges/" + exchangeId).body())
+        assertThat(mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-exchanges/" + exchangeId).body())
                 .get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
     }
 
@@ -84,7 +104,12 @@ class ConsumerPollFlowTest {
     }
 
     private HttpResponse<String> getAcceptanceStatus(String exchangeId) throws Exception {
-        return get("/certificate-acceptance-status/" + exchangeId);
+        // The acceptance-status query is addressed to the consumer tenant that owns the exchange (aud =
+        // consumer DID), from the provider as caller.
+        return http.send(HttpRequest.newBuilder(URI.create(BASE + "/certificate-acceptance-status/" + exchangeId))
+                .header("Authorization", "Bearer " + siglet.mint(
+                        TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_BPN)).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> postJson(String path, String body) throws Exception {

@@ -72,18 +72,14 @@ public final class Ccm240Envelope {
     }
 
     private static void requireMatch(String field, String value, Pattern pattern) {
-        if (value == null || value.isBlank()) {
-            throw ApiException.badRequest("Header is missing required field '" + field + "'");
-        }
+        ApiException.requireText(value, "Header is missing required field '" + field + "'");
         if (!pattern.matcher(value).matches()) {
             throw ApiException.badRequest("Header field '" + field + "' is malformed: " + value);
         }
     }
 
     private static void requireDateTime(String field, String value) {
-        if (value == null || value.isBlank()) {
-            throw ApiException.badRequest("Header is missing required field '" + field + "'");
-        }
+        ApiException.requireText(value, "Header is missing required field '" + field + "'");
         try {
             OffsetDateTime.parse(value);
         } catch (DateTimeParseException e) {

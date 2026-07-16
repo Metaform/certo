@@ -3,9 +3,10 @@ package org.metaform.certo.protocol.ccm300.consumer;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import org.metaform.certo.common.CertoProperties;
 import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.consumer.spi.CertificateRetriever;
 import org.metaform.certo.consumer.spi.RetrievedCertificate;
 import org.metaform.certo.consumer.spi.RetrievedDocument;
@@ -18,7 +19,6 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Objects;
 
 /**
  * Retrieves certificates from a Certificate Provider's data plane (CX-0135 v3) using OkHttp, in two
@@ -26,7 +26,7 @@ import java.util.Objects;
  * reference, then {@code GET /documents/{id}} fetches each document binary. No embedded-document
  * (push) form is used.
  *
- * <p>The provider base URL is hardcoded via {@code certo.provider-base-url}.
+ * <p>The provider endpoint comes from the siglet cache (per flow).
  */
 @Component
 public class Ccm300Retriever implements CertificateRetriever {
@@ -35,33 +35,34 @@ public class Ccm300Retriever implements CertificateRetriever {
 
     private final OkHttpClient http;
     private final ObjectMapper mapper;
-    private final String providerBaseUrl;
+    private final OutboundTokens outboundTokens;
 
-    public Ccm300Retriever(OkHttpClient httpClient, ObjectMapper mapper, CertoProperties properties) {
+    public Ccm300Retriever(OkHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
         this.http = httpClient;
         this.mapper = mapper;
-        this.providerBaseUrl = Objects.requireNonNull(properties.providerBaseUrl(),
-                "certo.provider-base-url must be configured");
+        this.outboundTokens = outboundTokens;
     }
 
     /**
      * Fetches a certificate's (latest-revision) metadata and all its referenced document binaries.
-     * {@code GET /certificates/{id}} always returns the latest revision (CX-0135 &sect;3.3.2).
+     * {@code GET /certificates/{id}} always returns the latest revision (CX-0135 &sect;3.3.2). The endpoint +
+     * bearer come from the siglet cache scoped to the counterparty.
      *
-     * @param certificateId the certificate to retrieve
      * @throws IOException on transport failure or a non-2xx response
      */
-    public RetrievedCertificate fetch(String certificateId) throws IOException {
-        var base = HttpUrl.parse(providerBaseUrl);
+    public RetrievedCertificate fetch(String certificateId, OutboundCall call) throws IOException {
+        var resolved = outboundTokens.forCall(call);
+        var base = HttpUrl.parse(resolved.baseUrl());
         if (base == null) {
-            throw new IOException("Invalid provider base URL: " + providerBaseUrl);
+            throw new IOException("Invalid provider base URL: " + resolved.baseUrl());
         }
         var url = base.newBuilder().addPathSegment("certificates").addPathSegment(certificateId).build();
 
-        var request = new Request.Builder().url(url).header("Accept", "application/json").get().build();
+        var builder = new Request.Builder().url(url).header("Accept", "application/json").get();
+        authorize(builder, resolved.bearer());
 
         CertificateRecord metadata;
-        try (var response = http.newCall(request).execute()) {
+        try (var response = http.newCall(builder.build()).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Provider returned HTTP " + response.code()
                         + " retrieving certificate " + certificateId);
@@ -77,15 +78,17 @@ public class Ccm300Retriever implements CertificateRetriever {
         var documents = new ArrayList<RetrievedDocument>();
         if (metadata.documents() != null) {
             for (CertificateDocument ref : metadata.documents()) {
-                documents.add(fetchDocument(base, ref));
+                documents.add(fetchDocument(base, ref, resolved.bearer()));
             }
         }
         return new RetrievedCertificate(metadata, documents);
     }
 
-    private RetrievedDocument fetchDocument(HttpUrl base, CertificateDocument ref) throws IOException {
+    private RetrievedDocument fetchDocument(HttpUrl base, CertificateDocument ref, String bearer) throws IOException {
         var url = base.newBuilder().addPathSegment("documents").addPathSegment(ref.documentId()).build();
-        var request = new Request.Builder().url(url).get().build();
+        var builder = new Request.Builder().url(url).get();
+        authorize(builder, bearer);
+        var request = builder.build();
         try (var response = http.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Provider returned HTTP " + response.code()
@@ -97,6 +100,12 @@ public class Ccm300Retriever implements CertificateRetriever {
             }
             var contentType = response.header("Content-Type", ref.mediaType());
             return new RetrievedDocument(ref.documentId(), contentType, body.bytes());
+        }
+    }
+
+    private static void authorize(Request.Builder builder, String bearer) {
+        if (bearer != null) {
+            builder.header("Authorization", "Bearer " + bearer);
         }
     }
 }
