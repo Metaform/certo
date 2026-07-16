@@ -148,7 +148,7 @@ public class ConsumerExchangeService {
     }
 
     private ConsumerCertificateExchange findConsumerRequest(String participantContextId, String exchangeId) {
-        return exchangeStore.find(exchangeId)
+        return exchangeStore.findById(exchangeId)
                 .filter(ConsumerCertificateExchange::consumerInitiated)
                 .filter(e -> participantContextId.equals(e.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown request exchangeId: " + exchangeId));
@@ -207,7 +207,7 @@ public class ConsumerExchangeService {
      */
     @Transactional(readOnly = true)
     public CertificateAcceptanceStatusResponse getAcceptanceStatus(String participantContextId, String exchangeId) {
-        var exchange = exchangeStore.find(exchangeId)
+        var exchange = exchangeStore.findById(exchangeId)
                 .filter(e -> participantContextId != null && participantContextId.equals(e.participantContextId()))
                 .filter(e -> e.acceptanceStatus() != null)
                 .orElseThrow(() -> ApiException.notFound("No acceptance status for exchange: " + exchangeId));
@@ -227,7 +227,7 @@ public class ConsumerExchangeService {
     @Transactional(readOnly = true)
     public ConsumerExchangePage queryExchanges(String participantContextId, ConsumerExchangeQuery query) {
         var awaitingOnly = query == null || query.awaitingAcceptanceOnly() == null || query.awaitingAcceptanceOnly();
-        var items = exchangeStore.all().stream()
+        var items = exchangeStore.findAll().stream()
                 .filter(e -> participantContextId.equals(e.participantContextId()))
                 .filter(e -> !awaitingOnly
                         || (e.fulfillmentStatus() == FulfillmentStatus.FULFILLED && e.acceptanceStatus() == null))
@@ -331,7 +331,7 @@ public class ConsumerExchangeService {
                                                        String participantContextId, String providerBpn, String providerDid) {
         // Runs inside the caller's transaction; a concurrent insert of the same id fails the primary-key
         // constraint (that transaction rolls back and retries), so no JVM lock is needed.
-        return exchangeStore.find(exchangeId).orElseGet(() -> {
+        return exchangeStore.findById(exchangeId).orElseGet(() -> {
             var created = new ConsumerCertificateExchange(exchangeId, certificateId, revision != null ? revision : 1,
                     false, FulfillmentStatus.FULFILLED, null, participantContextId, providerBpn, providerDid);
             exchangeStore.save(created);
@@ -371,7 +371,7 @@ public class ConsumerExchangeService {
         // Only a fulfillment for an exchange owned by the receiving tenant (the verified audience) is applied;
         // a push addressed to another tenant can never mutate this tenant's exchange.
         var participantContextId = requestContext.participantContextId();
-        var exchange = exchangeStore.find(data.exchangeId())
+        var exchange = exchangeStore.findById(data.exchangeId())
                 .filter(e -> participantContextId.equals(e.participantContextId()))
                 .orElse(null);
         if (exchange == null) {
@@ -387,7 +387,7 @@ public class ConsumerExchangeService {
 
     /** An exchange that must exist within the tenant's scope, else 404 (existence not revealed across tenants). */
     private ConsumerCertificateExchange requireOwnedExchange(String participantContextId, String exchangeId) {
-        return exchangeStore.find(exchangeId)
+        return exchangeStore.findById(exchangeId)
                 .filter(e -> participantContextId.equals(e.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
     }

@@ -180,7 +180,7 @@ public class ProviderCatalogService {
      */
     @Transactional(readOnly = true)
     public Document getDocument(String documentId, String contextId) {
-        return documentStore.find(documentId)
+        return documentStore.findById(documentId)
                 .filter(d -> d.participantContextId().equals(contextId))
                 .orElseThrow(() -> notFound("Unknown document: " + documentId));
     }
@@ -259,7 +259,7 @@ public class ProviderCatalogService {
 
     private CertificateRecord toRecord(Certificate c, CertificateRevision rev, boolean withContent) {
         var docRefs = rev.documentIds().stream()
-                .map(documentStore::find)
+                .map(documentStore::findById)
                 .filter(Optional::isPresent).map(Optional::get)
                 .map(d -> new CertificateDocument(d.documentId(), d.createdDate(), d.language(), d.mediaType(),
                         withContent ? Base64.getEncoder().encodeToString(d.content()) : null))
@@ -281,7 +281,7 @@ public class ProviderCatalogService {
     }
 
     private Optional<Certificate> findCertificate(String contextId, String certificateId) {
-        return certificateStore.find(certificateId)
+        return certificateStore.findById(certificateId)
                 .filter(c -> contextId.equals(c.participantContextId()));
     }
 
@@ -339,7 +339,7 @@ public class ProviderCatalogService {
                     "Must reference at least one document (upload it via POST /management/v1/documents first)");
         }
         for (var documentId : documentIds) {
-            var owned = documentStore.find(documentId)
+            var owned = documentStore.findById(documentId)
                     .filter(d -> d.participantContextId().equals(contextId))
                     .isPresent();
             if (!owned) {

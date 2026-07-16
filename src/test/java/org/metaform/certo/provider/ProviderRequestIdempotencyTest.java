@@ -72,7 +72,7 @@ class ProviderRequestIdempotencyTest {
         var first = exchanges.requestCertificate(request, consumer());
 
         // Drive the exchange to a terminal Fulfillment state directly, then re-request.
-        var exchange = exchangeStore.find(first.exchangeId()).orElseThrow();
+        var exchange = exchangeStore.findById(first.exchangeId()).orElseThrow();
         exchange.transitionFulfillment(DECLINED, List.of(new StatusError("declined")));
         exchangeStore.save(exchange);
 

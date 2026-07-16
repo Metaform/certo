@@ -100,7 +100,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
         expired.addRevision(revision(expired, 1, LocalDate.of(2018, 1, 1), LocalDate.of(2020, 1, 1)));
         certificates.save(expired);
 
-        LOG.info("Seeded {} sample certificates for tenant {}", certificates.all().size(), pctx);
+        LOG.info("Seeded {} sample certificates for tenant {}", certificates.findAll().size(), pctx);
     }
 
     private CertificateRevision revision(Certificate cert, int revision, LocalDate from, LocalDate until) {

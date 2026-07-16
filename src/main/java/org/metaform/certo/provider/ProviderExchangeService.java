@@ -298,7 +298,7 @@ public class ProviderExchangeService {
     /** Returns the current fulfillment status of an exchange (CX-0135 &sect;3.3.1.1). */
     @Transactional(readOnly = true)
     public CertificateRequestStatus getRequestStatus(String exchangeId) {
-        var exchange = exchangeStore.find(exchangeId)
+        var exchange = exchangeStore.findById(exchangeId)
                 .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
         return toRequestStatus(exchange);
     }
@@ -325,7 +325,7 @@ public class ProviderExchangeService {
                 throw badRequest("Acceptance event is missing data.status");
             }
             validateAcceptanceErrors(data.status(), data.errors());
-            var exchange = exchangeStore.find(data.exchangeId())
+            var exchange = exchangeStore.findById(data.exchangeId())
                     .filter(e -> e.participantContextId().equals(contextId))
                     .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + data.exchangeId()));
             if (exchange.fulfillmentStatus() != FULFILLED) {
@@ -448,7 +448,7 @@ public class ProviderExchangeService {
 
     /** An exchange that must exist within the tenant's scope, else 404 (existence not revealed across tenants). */
     private ProviderCertificateExchange requireExchange(String contextId, String exchangeId) {
-        return exchangeStore.find(exchangeId)
+        return exchangeStore.findById(exchangeId)
                 .filter(e -> e.participantContextId().equals(contextId))
                 .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
     }

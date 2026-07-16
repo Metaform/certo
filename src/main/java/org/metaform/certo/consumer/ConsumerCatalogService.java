@@ -26,7 +26,7 @@ public class ConsumerCatalogService {
     /** Returns the consumer's lifecycle view of a certificate its tenant has learned about. */
     @Transactional(readOnly = true)
     public KnownCertificate getKnownCertificate(String participantContextId, String certificateId) {
-        return certificateStore.find(certificateId)
+        return certificateStore.findById(certificateId)
                 .filter(c -> participantContextId.equals(c.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
     }
@@ -40,7 +40,7 @@ public class ConsumerCatalogService {
      */
     @Transactional(readOnly = true)
     public int nextPushedRevision(String participantContextId, String certificateId) {
-        return certificateStore.find(certificateId)
+        return certificateStore.findById(certificateId)
                 .filter(c -> participantContextId != null && participantContextId.equals(c.participantContextId()))
                 .map(c -> (c.revision() == null ? 1 : c.revision()) + 1)
                 .orElse(1);
@@ -54,7 +54,7 @@ public class ConsumerCatalogService {
      */
     public void recordKnownCertificate(LifecycleStatusData data, String participantContextId) {
         CertificateRecord c = data.certificate();
-        certificateStore.find(c.certificateId()).ifPresentOrElse(
+        certificateStore.findById(c.certificateId()).ifPresentOrElse(
                 known -> {
                     known.apply(c.revision(), data.status(), c.certificateType(),
                             c.validFrom(), c.validUntil(), c.certifiedLocations());
