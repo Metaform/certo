@@ -182,6 +182,44 @@ class ConsumerCertificateApiTest {
     }
 
     @Test
+    void providerPollAcceptance_pullsConsumerVerdict() throws Exception {
+        // Provider publishes (embedded) to the consumer, opening an exchange the consumer will accept.
+        var publish = postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX
+                + "/certificates/" + TestTenants.ISO14001_CERT_ID + "/publish",
+                "{\"embedded\":true,\"flowId\":\"flow-1\"," + SELF_TARGET + "}");
+        var exchangeId = mapper.readTree(publish.body()).get("exchangeId").asString();
+        var pollPath = "/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX
+                + "/certificate-exchanges/" + exchangeId + "/poll-acceptance?flowId=flow-1";
+
+        // Before any decision the consumer returns 404, so the poll leaves the exchange pre-acceptance.
+        var before = postEmpty(pollPath);
+        assertThat(before.statusCode()).isEqualTo(200);
+        assertThat(mapper.readTree(before.body()).hasNonNull("acceptanceStatus")).isFalse();
+
+        // The consumer decides; the provider then pulls that verdict via poll-acceptance.
+        driveAccept(exchangeId);
+        var after = postEmpty(pollPath);
+        assertThat(mapper.readTree(after.body()).get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void providerPublish_sameIdempotencyKey_reusesExchange_differentKeyOpensNew() throws Exception {
+        var publishPath = "/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX
+                + "/certificates/" + TestTenants.ISO14001_CERT_ID + "/publish";
+        var keyed = "{\"flowId\":\"flow-1\",\"idempotencyKey\":\"pub-key-1\"," + SELF_TARGET + "}";
+
+        var first = mapper.readTree(postJson(publishPath, keyed).body());
+        var second = mapper.readTree(postJson(publishPath, keyed).body());
+        // Same idempotencyKey → the re-publish reused the still-live exchange rather than opening a duplicate.
+        assertThat(second.get("exchangeId").asString()).isEqualTo(first.get("exchangeId").asString());
+
+        // A different key opens a genuinely new exchange (multiple exchanges may concern the same certificate).
+        var third = mapper.readTree(postJson(publishPath,
+                "{\"flowId\":\"flow-1\",\"idempotencyKey\":\"pub-key-2\"," + SELF_TARGET + "}").body());
+        assertThat(third.get("exchangeId").asString()).isNotEqualTo(first.get("exchangeId").asString());
+    }
+
+    @Test
     void consumerInitiatedPull_pushOnFulfillment_retrievesAndAccepts() throws Exception {
         var initiate = postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests",
                 initiateBody("ISO14001", "BPNS-PULL-1"));

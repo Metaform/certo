@@ -74,6 +74,13 @@ public class ConsumerCertificateExchange {
     @Convert(converter = StatusErrorListConverter.class)
     @Column(length = 65535)
     private List<StatusError> acceptanceErrors;
+    /**
+     * Whether the recorded acceptance has been successfully reported to the provider. Recording is durable but
+     * the outbound report is best-effort (post-commit), so a crash in between leaves {@code false}; the
+     * reconciliation query ({@code queryExchanges}) surfaces such exchanges so delivery can be re-driven. The
+     * re-report is idempotent on the provider (its acceptance CloudEvent {@code id} is stable per exchange).
+     */
+    private boolean acceptanceReported;
 
     /**
      * The certificate content when it arrived <b>inline</b> (an embedded v2.4.0 push), retained so a later
@@ -132,6 +139,16 @@ public class ConsumerCertificateExchange {
         }
         this.acceptanceStatus = status;
         this.acceptanceErrors = errors;
+        this.acceptanceReported = false;
+    }
+
+    /** Whether this exchange's recorded acceptance still needs (re-)reporting to the provider. */
+    public boolean acceptanceReportPending() {
+        return acceptanceStatus != null && !acceptanceReported;
+    }
+
+    public void markAcceptanceReported() {
+        this.acceptanceReported = true;
     }
 
     /** Retains inline certificate content (an embedded push) for a later management-driven retrieve/accept. */

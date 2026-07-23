@@ -9,9 +9,9 @@ import java.util.List;
 /**
  * A version-specific renderer/sender for consumer &rarr; provider acceptance reporting. One implementation
  * per protocol version registers itself under {@link #version()}; {@link DispatchingAcceptanceReporter}
- * selects the right one from the exchange's {@link ExchangeBinding}. The v3 implementation ignores the
- * binding and sends a CloudEvent to the configured provider; other versions render their own message to
- * {@code binding.callbackUrl()}.
+ * selects the right one from the exchange's {@link ExchangeBinding} and delegates. Each adapter renders its
+ * own wire format; the token and provider endpoint are resolved from the siglet cache via the
+ * {@link OutboundCall}'s flow. The v2.4.0 adapter uses the binding's per-exchange detail; the v3 adapter does not.
  */
 public interface ProtocolAcceptanceReporter {
 

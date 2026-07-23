@@ -1,6 +1,7 @@
 package org.metaform.certo.consumer.model;
 
 import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LifecycleStatus;
@@ -16,6 +18,7 @@ import org.metaform.certo.common.model.LifecycleStatus;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * The consumer's view of a certificate's lifecycle, kept in sync from {@code CertificateLifecycleStatus}
@@ -23,15 +26,25 @@ import java.util.List;
  * and {@code WITHDRAWN} (no longer available). It belongs to the {@code participantContextId} tenant the
  * lifecycle event was addressed to (the verified token audience).
  *
+ * <p>Identity is a surrogate id with a unique constraint on {@code (participantContextId, certificateId)} —
+ * the provider-assigned {@code certificateId} is unique only <em>within</em> a tenant, so two consumer
+ * tenants that learn about the same provider certificate each keep their own row (rather than colliding on a
+ * shared primary key and clobbering each other's view).
+ *
  * <p>Persisted via JPA with {@code @Version} optimistic locking. Because JPA does not dirty-track in-place
  * mutation of a converted collection, callers must {@code save} the aggregate after applying an update.
  */
 @Entity
-@Table(name = "known_certificate")
+@Table(name = "known_certificate",
+        uniqueConstraints = @UniqueConstraint(name = "uk_known_certificate_tenant_cert",
+                columnNames = {"participant_context_id", "certificate_id"}))
 public class KnownCertificate {
 
     @Id
+    private String id;
+    @Column(name = "certificate_id", nullable = false)
     private String certificateId;
+    @Column(name = "participant_context_id", nullable = false)
     private String participantContextId;
     private Integer revision;
     @Enumerated(EnumType.STRING)
@@ -40,7 +53,7 @@ public class KnownCertificate {
     private LocalDate validFrom;
     private LocalDate validUntil;
     @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "known_certificate_certified_location", joinColumns = @JoinColumn(name = "certificate_id"))
+    @CollectionTable(name = "known_certificate_certified_location", joinColumns = @JoinColumn(name = "known_certificate_id"))
     private List<CertifiedLocation> certifiedLocations;
     @Version
     private long version;
@@ -52,6 +65,7 @@ public class KnownCertificate {
     public KnownCertificate(String certificateId, String participantContextId, Integer revision, LifecycleStatus lifecycleStatus,
                             String certificateType, LocalDate validFrom, LocalDate validUntil,
                             List<CertifiedLocation> certifiedLocations) {
+        this.id = UUID.randomUUID().toString();
         this.certificateId = certificateId;
         this.participantContextId = participantContextId;
         this.revision = revision;

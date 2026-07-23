@@ -32,24 +32,25 @@ import org.metaform.certo.provider.dto.PublishRequest;
 import org.metaform.certo.provider.model.Certificate;
 import org.metaform.certo.provider.model.CertificateRevision;
 import org.metaform.certo.provider.model.ProviderCertificateExchange;
+import org.metaform.certo.provider.spi.AcceptancePoller;
 import org.metaform.certo.provider.spi.ConsumerNotifier;
 import org.metaform.certo.provider.store.ExchangeSpecifications;
 import org.metaform.certo.provider.store.ProviderCertificateExchangeStore;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -71,13 +72,13 @@ import static org.metaform.certo.common.web.ApiException.badRequest;
 @Transactional
 public class ProviderExchangeService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ProviderExchangeService.class);
 
     private final ProviderCertificateExchangeStore exchangeStore;
     private final ExchangeBindingStore bindingStore;
     private final ProcessedEventStore eventStore;
     private final ParticipantContextStore contextStore;
-    private final ConsumerNotifier consumerNotifications;
+    private final ConsumerNotifier consumerNotifier;
+    private final AcceptancePoller acceptancePoller;
     private final CloudEventCodec codec;
     private final ProviderCatalogService catalog;
     private final TransactionTemplate tx;
@@ -87,7 +88,8 @@ public class ProviderExchangeService {
                                    ExchangeBindingStore bindingStore,
                                    ProcessedEventStore eventStore,
                                    ParticipantContextStore contextStore,
-                                   ConsumerNotifier consumerNotifications,
+                                   ConsumerNotifier consumerNotifier,
+                                   AcceptancePoller acceptancePoller,
                                    CloudEventCodec codec,
                                    ProviderCatalogService catalog,
                                    PlatformTransactionManager txManager,
@@ -96,7 +98,8 @@ public class ProviderExchangeService {
         this.bindingStore = bindingStore;
         this.eventStore = eventStore;
         this.contextStore = contextStore;
-        this.consumerNotifications = consumerNotifications;
+        this.consumerNotifier = consumerNotifier;
+        this.acceptancePoller = acceptancePoller;
         this.codec = codec;
         this.catalog = catalog;
         this.tx = new TransactionTemplate(txManager);
@@ -124,24 +127,25 @@ public class ProviderExchangeService {
         var counterparty = requestContext.bpnOrSubject();
         var counterpartyDid = requestContext.subject();
         var requestedLocations = request.certifiedLocations();
-        var requestKey = requestKey(request.certificateType(), requestedLocations);
+        // "req:"-namespaced so a consumer-open key can never collide with a provider-publish key in the shared
+        // liveDedupKey column (see publish).
+        var dedupKey = "req:" + requestKey(request.certificateType(), requestedLocations);
 
-        // Idempotent open (CX-0135 §2.1.1): a repeated request from the same counterparty for the same
-        // certificateType + locations reuses the still-live exchange — pending or already FULFILLED — rather
-        // than opening a duplicate, so a retried open returns the same exchange. A new one is opened only when
-        // the prior match reached a terminal outcome (a re-attempt). The counterparty scoping means this only
-        // ever collapses one consumer's own repeats.
+        // Idempotent open (CX-0135 §2.1.1): a repeated request from the same counterparty (keyed on its
+        // verified DID) for the same certificateType + locations reuses the still-live exchange — pending or
+        // already FULFILLED — rather than opening a duplicate, so a retried open returns the same exchange. A
+        // new one is opened only when the prior match reached a terminal outcome (its liveDedupKey is nulled,
+        // so the unique constraint no longer guards it). The DID scoping means this only ever collapses one
+        // consumer's own repeats.
         var existing = exchangeStore
-                .findByParticipantContextIdAndCounterpartyBpnAndRequestKey(contextId, counterparty, requestKey)
-                .stream()
-                .filter(ProviderCertificateExchange::isLive)
-                .min(Comparator.comparing(ProviderCertificateExchange::exchangeId));
+                .findByParticipantContextIdAndCounterpartyDidAndLiveDedupKey(contextId, counterpartyDid, dedupKey);
         if (existing.isPresent()) {
             return toResponse(existing.get());
         }
 
         // No live exchange: a held certificate covering the request fulfills immediately, otherwise the request
-        // is submitted for certification (pending).
+        // is submitted for certification (pending). A truly concurrent duplicate open loses the unique
+        // constraint here; its transaction rolls back and the client retry then finds the winner above.
         var held = catalog.findCertificateForLocations(contextId, request.certificateType(), requestedLocations);
         if (held.isPresent()) {
             var certificate = held.get();
@@ -153,7 +157,7 @@ public class ProviderExchangeService {
                     counterpartyDid,
                     FULFILLED);
             exchange.markConsumerInitiated();
-            exchange.assignRequestKey(requestKey);
+            exchange.assignLiveDedupKey(dedupKey);
             exchangeStore.save(exchange);
             return toResponse(exchange);
         }
@@ -165,7 +169,7 @@ public class ProviderExchangeService {
                 request.certificateType(),
                 requestedLocations,
                 OffsetDateTime.now(clock));
-        exchange.assignRequestKey(requestKey);
+        exchange.assignLiveDedupKey(dedupKey);
         exchangeStore.save(exchange);
         return toResponse(exchange);
     }
@@ -245,6 +249,14 @@ public class ProviderExchangeService {
                         "No held certificate covers the request for exchange " + exchangeId + " yet"));
         exchange.fulfill(certificate.certificateId(), certificate.latestRevision().revision());
         exchangeStore.save(exchange);
+        // Backfill a non-native binding's certificateId (unknown while the request was pending) so a v2.4.0
+        // consumer's later acceptance /status correlates back to this exchange.
+        bindingStore.resolve(exchangeId, CounterpartyRole.CONSUMER)
+                .filter(binding -> binding.certificateId() == null)
+                .ifPresent(binding -> {
+                    binding.assignCertificateId(certificate.certificateId());
+                    bindingStore.save(binding);
+                });
         afterCommit(() -> pushFulfillmentStatus(exchange, flowId));
         return toRequestStatus(exchange);
     }
@@ -295,21 +307,61 @@ public class ProviderExchangeService {
                 exchange.acceptanceStatus(), exchange.acceptanceErrors());
     }
 
-    /** Returns the current fulfillment status of an exchange (CX-0135 &sect;3.3.1.1). */
+    /** Returns the current fulfillment status of an exchange owned by the caller's tenant (CX-0135 &sect;3.3.1.1). */
     @Transactional(readOnly = true)
-    public CertificateRequestStatus getRequestStatus(String exchangeId) {
-        var exchange = exchangeStore.findById(exchangeId)
-                .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
-        return toRequestStatus(exchange);
+    public CertificateRequestStatus getRequestStatus(String contextId, String exchangeId) {
+        return toRequestStatus(requireExchange(contextId, exchangeId));
+    }
+
+    /**
+     * Provider-initiated recovery of a consumer's acceptance decision (CX-0135 &sect;4.3.3): GETs the
+     * consumer's acceptance-status over a fresh {@code flowId} and records any verdict on the exchange — the
+     * pull fallback for a lost best-effort acceptance push, avoiding a durable outbox. Only a native v3
+     * consumer exposes this endpoint (a v2.4.0 consumer pushes {@code /status}), so a non-native binding is
+     * rejected. Idempotent: re-recording the same verdict is a no-op.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ExchangeView pollAcceptance(String contextId, String exchangeId, String flowId) {
+        requireFlow(flowId);
+        var exchange = requireExchange(contextId, exchangeId);
+        var binding = bindingStore.resolve(exchangeId, CounterpartyRole.CONSUMER).orElse(null);
+        if (binding != null && binding.version() != ProtocolVersion.NATIVE) {
+            throw ApiException.conflict("Cannot poll acceptance for a v2.4.0 consumer (it pushes /status)");
+        }
+        var call = new OutboundCall(requireContext(contextId),
+                exchange.counterpartyBpn(), exchange.counterpartyDid(), flowId);
+        AcceptanceStatusData polled;
+        try {
+            polled = acceptancePoller.pollAcceptance(exchangeId, call).orElse(null);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Acceptance poll failed: " + e.getMessage());
+        }
+        if (polled != null && polled.status() != null) {
+            var status = polled.status();
+            var errors = polled.errors();
+            // Record the verdict pulled from the authoritative consumer endpoint (no forgery risk — the
+            // provider polled its own exchange's known consumer) in its own transaction; skip if already set.
+            tx.executeWithoutResult(s -> {
+                var current = requireExchange(contextId, exchangeId);
+                if (current.acceptanceStatus() != status) {
+                    current.recordAcceptance(status, errors);
+                    exchangeStore.save(current);
+                }
+            });
+        }
+        return getExchangeView(contextId, exchangeId);
     }
 
     /**
      * Records acceptance feedback delivered as one or more {@code CertificateAcceptanceStatus} CloudEvents
      * (CX-0135 &sect;3.3.5). Acceptance MUST reference an existing exchange <b>owned by the verified caller's
-     * tenant</b> (else 404). The batch is atomic and duplicate events are ignored.
+     * tenant AND opened with the verified caller as its counterparty</b> (else 404) — so one counterparty
+     * cannot forge another's feedback within the same tenant. The exchange must have reached a fulfillment
+     * outcome (enforced by {@link ProviderCertificateExchange#recordAcceptance}). The batch is atomic and
+     * duplicate events are ignored.
      */
     @Transactional
-    public void recordAcceptance(byte[] body, String contextId) {
+    public void recordAcceptance(byte[] body, VerifiedRequestContext caller) {
         var pending = new ArrayList<EventBatch.PendingEvent>();
         for (var node : codec.toEventNodes(body)) {
             var type = codec.typeOf(node);
@@ -317,27 +369,45 @@ public class ProviderExchangeService {
                 throw badRequest("Unexpected event type for acceptance endpoint: " + type);
             }
             var event = codec.decode(node, AcceptanceStatusData.class);
-            var data = event.data();
-            if (data == null || data.exchangeId() == null) {
-                throw badRequest("Acceptance event is missing data.exchangeId");
-            }
-            if (data.status() == null) {
-                throw badRequest("Acceptance event is missing data.status");
-            }
-            validateAcceptanceErrors(data.status(), data.errors());
-            var exchange = exchangeStore.findById(data.exchangeId())
-                    .filter(e -> e.participantContextId().equals(contextId))
-                    .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + data.exchangeId()));
-            if (exchange.fulfillmentStatus() != FULFILLED) {
-                throw ApiException.conflict("Exchange " + data.exchangeId() + " is not FULFILLED"
-                                            + " (current fulfillment status: " + exchange.fulfillmentStatus() + ")");
-            }
-            pending.add(new EventBatch.PendingEvent(codec.dedupKey(event), () -> {
-                exchange.recordAcceptance(data.status(), data.errors());
-                exchangeStore.save(exchange);
-            }));
+            pending.add(prepareAcceptance(event.data(), caller, codec.dedupKey(event)));
         }
         EventBatch.applyDeduplicated(pending, eventStore);
+    }
+
+    /**
+     * Records a single acceptance delivered over a <b>non-CloudEvent</b> protocol (the v2.4.0 {@code /status}
+     * adapter), with an adapter-supplied {@code dedupKey}. Avoids the v2.4.0 path having to synthesize a
+     * CloudEvent only for this service to decode it back. Same tenant + counterparty guard and dedup as the
+     * CloudEvent path.
+     */
+    @Transactional
+    public void recordAcceptance(AcceptanceStatusData data, String dedupKey, VerifiedRequestContext caller) {
+        EventBatch.applyDeduplicated(List.of(prepareAcceptance(data, caller, dedupKey)), eventStore);
+    }
+
+    /**
+     * Validates one acceptance and resolves the exchange it targets — which must be owned by the verified
+     * caller's tenant AND opened with the caller as counterparty (else 404) — then returns the deferred
+     * mutation keyed for deduplication. Resolution is eager (a bad request / unknown exchange throws now); only
+     * the state change is deferred into the batch.
+     */
+    private EventBatch.PendingEvent prepareAcceptance(AcceptanceStatusData data, VerifiedRequestContext caller,
+                                                      String dedupKey) {
+        if (data == null || data.exchangeId() == null) {
+            throw badRequest("Acceptance event is missing data.exchangeId");
+        }
+        if (data.status() == null) {
+            throw badRequest("Acceptance event is missing data.status");
+        }
+        validateAcceptanceErrors(data.status(), data.errors());
+        var exchange = exchangeStore.findById(data.exchangeId())
+                .filter(e -> e.participantContextId().equals(caller.participantContextId()))
+                .filter(e -> caller.subject().equals(e.counterpartyDid()))
+                .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + data.exchangeId()));
+        return new EventBatch.PendingEvent(dedupKey, () -> {
+            exchange.recordAcceptance(data.status(), data.errors());
+            exchangeStore.save(exchange);
+        });
     }
 
     /**
@@ -361,8 +431,13 @@ public class ProviderExchangeService {
             throw badRequest("A publish must name the target consumerDid (the token audience)");
         }
 
+        // "pub:"-namespaced idempotency key (null when the caller supplied none), sharing the liveDedupKey
+        // column with consumer opens ("req:") without colliding.
+        var dedupKey = req.idempotencyKey() == null ? null : "pub:" + req.idempotencyKey();
+
         String exchangeId = null;
         int revision;
+        boolean reuseExisting = false;
         LifecycleStatusData data;
         if (lifecycle == LifecycleStatus.WITHDRAWN) {
             var certificate = catalog.resolveCertificate(sender.participantContextId(), certificateId);
@@ -380,35 +455,50 @@ public class ProviderExchangeService {
                     : CertificateRecord.lightTriage(certificateId, rev.revision(), certificate.certificateType(),
                     rev.validFrom(), rev.validUntil());
             if (lifecycle == LifecycleStatus.CREATED) {
-                // A CREATED push opens an exchange (the consumer accepts it, closing the loop).
-                exchangeId = UUID.randomUUID().toString();
+                // A CREATED push opens an exchange (the consumer accepts it, closing the loop). Idempotent
+                // (CX-0135 §2.1.1): a re-publish with the same idempotencyKey reuses the still-live exchange
+                // (and re-notifies below) rather than opening a duplicate; a new/absent key opens a fresh one.
+                var existing = dedupKey == null ? Optional.<ProviderCertificateExchange>empty()
+                        : exchangeStore.findByParticipantContextIdAndCounterpartyDidAndLiveDedupKey(
+                                contextId, req.consumerDid(), dedupKey);
+                if (existing.isPresent()) {
+                    exchangeId = existing.get().exchangeId();
+                    reuseExisting = true;
+                } else {
+                    exchangeId = UUID.randomUUID().toString();
+                }
             }
             data = new LifecycleStatusData(lifecycle, exchangeId, certData);
         }
 
         var target = new ExchangeBinding(exchangeId, certificateId, version, CounterpartyRole.CONSUMER,
-                req.consumerBpn(), null);
-        // Persist the opened exchange and its binding in one transaction, then notify once committed so the DB
-        // connection is not held across the outbound push. Only a CREATED push opens an exchange; a non-native
-        // consumer's binding lets its acceptance /status correlate back.
-        var openedExchangeId = exchangeId;
-        var openedRevision = revision;
-        tx.executeWithoutResult(status -> {
-            if (openedExchangeId != null) {
-                exchangeStore.save(new ProviderCertificateExchange(openedExchangeId,
-                        sender.participantContextId(),
-                        certificateId,
-                        openedRevision,
-                        req.consumerBpn(),
-                        req.consumerDid(),
-                        FULFILLED));
-                if (version != ProtocolVersion.NATIVE) {
-                    bindingStore.record(target);
+                req.consumerBpn(), req.consumerDid(), null);
+        // Persist a newly-opened exchange and its binding in one transaction, then notify once committed so the
+        // DB connection is not held across the outbound push. Reuse skips the persist (the existing row stands);
+        // a concurrent duplicate open loses the liveDedupKey unique constraint and its transaction rolls back.
+        // Only a CREATED push opens an exchange; a non-native consumer's binding lets its /status correlate back.
+        if (!reuseExisting) {
+            var openedExchangeId = exchangeId;
+            var openedRevision = revision;
+            tx.executeWithoutResult(status -> {
+                if (openedExchangeId != null) {
+                    var opened = new ProviderCertificateExchange(openedExchangeId,
+                            sender.participantContextId(),
+                            certificateId,
+                            openedRevision,
+                            req.consumerBpn(),
+                            req.consumerDid(),
+                            FULFILLED);
+                    opened.assignLiveDedupKey(dedupKey);
+                    exchangeStore.save(opened);
+                    if (version != ProtocolVersion.NATIVE) {
+                        bindingStore.record(target);
+                    }
                 }
-            }
-        });
+            });
+        }
         var call = new OutboundCall(sender, req.consumerBpn(), req.consumerDid(), req.flowId());
-        var notified = consumerNotifications.notifyLifecycle(target, data, call);
+        var notified = consumerNotifier.notifyLifecycle(target, data, call);
         return new CertificatePublication(exchangeId, certificateId, revision, notified);
     }
 
@@ -442,7 +532,7 @@ public class ProviderExchangeService {
         }
         var call = new OutboundCall(requireContext(exchange.participantContextId()),
                 exchange.counterpartyBpn(), exchange.counterpartyDid(), flowId);
-        consumerNotifications.notifyFulfillment(new FulfillmentStatusData(
+        consumerNotifier.notifyFulfillment(new FulfillmentStatusData(
                 exchange.exchangeId(), exchange.certificateId(), status, exchange.fulfillmentErrors()), call);
     }
 

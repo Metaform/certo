@@ -50,8 +50,8 @@ public class SigletTokenSource implements SecurityTokenSource {
             }
             return new ResolvedToken(parsed.token(), parsed.endpoint());
         } catch (IOException e) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY,
-                    "Could not reach siglet for flow " + flowId + ": " + e.getMessage());
+            // Don't echo the connectivity detail (siglet host/port) to the caller.
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Could not resolve an outbound token for flow " + flowId);
         }
     }
 

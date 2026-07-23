@@ -3,8 +3,6 @@ package org.metaform.certo.protocol.ccm240.provider;
 import org.metaform.certo.protocol.ccm240.Ccm240Envelope;
 import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
-import org.metaform.certo.common.cloudevent.CcmEvents;
-import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
@@ -22,8 +20,6 @@ import org.metaform.certo.protocol.ccm240.model.Ccm240Error;
 import org.metaform.certo.protocol.ccm240.model.Ccm240RequestReply;
 import org.metaform.certo.provider.ProviderExchangeService;
 import org.metaform.certo.provider.dto.CertificateRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,10 +27,7 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
-import tools.jackson.databind.ObjectMapper;
 
-import java.time.Clock;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -48,19 +41,13 @@ import java.util.UUID;
 @RestController
 public class Ccm240ProviderController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm240ProviderController.class);
 
     private final ProviderExchangeService provider;
     private final ExchangeBindingStore bindings;
-    private final ObjectMapper mapper;
-    private final Clock clock;
 
-    public Ccm240ProviderController(ProviderExchangeService provider, ExchangeBindingStore bindings,
-                                    ObjectMapper mapper, Clock clock) {
+    public Ccm240ProviderController(ProviderExchangeService provider, ExchangeBindingStore bindings) {
         this.provider = provider;
         this.bindings = bindings;
-        this.mapper = mapper;
-        this.clock = clock;
     }
 
     /** {@code POST /companycertificate/request} — request a certificate (consumer &rarr; provider). */
@@ -83,14 +70,16 @@ public class Ccm240ProviderController {
 
         var senderBpn = message.header() == null ? null : message.header().senderBpn();
         var messageId = message.header() == null ? null : message.header().messageId();
-        // The counterparty is a v2.4.0 consumer; the outbound endpoint comes from the siglet cache.
+        // The counterparty is a v2.4.0 consumer; the outbound endpoint comes from the siglet cache. The binding
+        // is keyed for inbound correlation on the consumer's VERIFIED DID (not the self-declared header BPN),
+        // while peerBpn is kept only as the v2.4.0 wire receiver.
         bindings.record(new ExchangeBinding(response.exchangeId(), response.certificateId(),
-                ProtocolVersion.CCM_2_4_0, CounterpartyRole.CONSUMER, senderBpn, messageId));
+                ProtocolVersion.CCM_2_4_0, CounterpartyRole.CONSUMER, senderBpn, requestContext.subject(), messageId));
 
         return switch (Ccm240Translation.toReplyStatus(response.status())) {
             case IN_PROGRESS -> ResponseEntity.accepted().body(Ccm240RequestReply.inProgress());
             case COMPLETED -> ResponseEntity.ok(Ccm240RequestReply.completed(response.certificateId()));
-            case REJECTED -> ResponseEntity.ok(Ccm240RequestReply.rejected(toCcm240Errors(response.errors())));
+            case REJECTED -> ResponseEntity.ok(Ccm240RequestReply.rejected(toRejectionReplyErrors(response.errors())));
         };
     }
 
@@ -106,30 +95,35 @@ public class Ccm240ProviderController {
         }
         Ccm240Envelope.requireUuid("documentId", content.documentId());
         Ccm240Envelope.validateLocationBpns(content.locationBpns());
-        var senderBpn = message.header() == null ? null : message.header().senderBpn();
         // The v2.4.0 documentId is the certificateId (a UUID); no translation table.
         var certificateId = content.documentId();
-        var exchangeId = bindings.exchangeFor(certificateId, senderBpn)
+        // Correlate on the caller's VERIFIED DID (not the self-declared header senderBpn), so a caller cannot
+        // resolve another consumer's exchange.
+        var exchangeId = bindings.exchangeFor(certificateId, requestContext.subject())
                 .orElseThrow(() -> ApiException.notFound(
-                        "No exchange for documentId " + content.documentId() + " from " + senderBpn));
+                        "No exchange for documentId " + content.documentId() + " from the calling consumer"));
 
         var status = Ccm240Translation.toAcceptanceStatus(content.certificateStatus());
-        var errors = toStatusErrors(content);
-        provider.recordAcceptance(acceptanceEvent(exchangeId, certificateId, status, errors, message, requestContext),
-                requestContext.participantContextId());
+        var errors = toStatusErrors(content, status);
+        // v2.4.0 has no CloudEvent id; derive a dedup key from the messageId (scoped to the verified caller) so
+        // a retransmission collapses. The sender is the authenticated caller, not the self-declared header BPN.
+        var messageId = message.header().messageId() != null ? message.header().messageId() : UUID.randomUUID().toString();
+        var dedupKey = "ccm240-status:" + requestContext.subject() + ":" + messageId;
+        provider.recordAcceptance(new AcceptanceStatusData(exchangeId, certificateId, status, errors),
+                dedupKey, requestContext);
         return ResponseEntity.ok().build();
     }
 
     // --- translation helpers -----------------------------------------------------------------------
 
-    private static List<Ccm240Error> toCcm240Errors(List<StatusError> errors) {
+    private static List<Ccm240Error> toRejectionReplyErrors(List<StatusError> errors) {
         if (errors == null || errors.isEmpty()) {
             return List.of(new Ccm240Error("Request rejected"));
         }
         return errors.stream().map(e -> new Ccm240Error(e.message())).toList();
     }
 
-    private static List<StatusError> toStatusErrors(Ccm240CertificateStatus.Content content) {
+    private static List<StatusError> toStatusErrors(Ccm240CertificateStatus.Content content, AcceptanceStatus status) {
         var errors = new ArrayList<StatusError>();
         if (content.certificateErrors() != null) {
             content.certificateErrors().forEach(e -> errors.add(new StatusError(e.message())));
@@ -141,30 +135,11 @@ public class Ccm240ProviderController {
                 }
             }
         }
+        // v2.4.0 makes error detail optional even for a rejection; the v3 core requires a non-empty errors
+        // array for REJECTED/ERRORED, so synthesize a default rather than bounce a valid legacy message.
+        if (errors.isEmpty() && status.requiresErrors()) {
+            errors.add(new StatusError("Certificate " + status.name().toLowerCase() + " by consumer"));
+        }
         return errors.isEmpty() ? null : errors;
-    }
-
-    private byte[] acceptanceEvent(String exchangeId, String certificateId, AcceptanceStatus status,
-                                   List<StatusError> errors, Ccm240CertificateStatus message,
-                                   VerifiedRequestContext requestContext) {
-        var header = message.header();
-        // The sender is the authenticated caller (the verified identity, not the self-declared header BPN);
-        // the receiver is this provider tenant as named in the validated v2.4.0 header.
-        var senderBpn = requestContext.bpnOrSubject();
-        var receiverBpn = header.receiverBpn();
-        var messageId = header.messageId() == null ? UUID.randomUUID().toString() : header.messageId();
-        var data = new AcceptanceStatusData(exchangeId, certificateId, status, errors);
-        var event = new CloudEvent<>(
-                CloudEvent.SPEC_VERSION,
-                CcmEvents.TYPE_ACCEPTANCE_STATUS,
-                "urn:bpn:" + senderBpn,
-                receiverBpn,
-                messageId,
-                OffsetDateTime.now(clock),
-                CloudEvent.CONTENT_TYPE_JSON,
-                CcmEvents.SCHEMA_ACCEPTANCE_STATUS,
-                senderBpn,
-                data);
-        return mapper.writeValueAsBytes(event);
     }
 }

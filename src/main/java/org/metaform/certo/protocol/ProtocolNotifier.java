@@ -7,9 +7,10 @@ import org.metaform.certo.common.security.OutboundCall;
 /**
  * A version-specific renderer/sender for provider &rarr; consumer notifications. One implementation per
  * protocol version registers itself under {@link #version()}; {@link DispatchingConsumerNotifier} selects
- * the right one from the exchange's {@link ExchangeBinding}. The v3 implementation ignores the binding and
- * sends CloudEvents to the configured consumer; other versions render their own message to
- * {@code binding.callbackUrl()}.
+ * the right one from the exchange's {@link ExchangeBinding} and delegates. Each adapter renders its own wire
+ * format; the token and counterparty endpoint are resolved from the siglet cache via the {@link OutboundCall}'s
+ * flow. The {@code binding} is passed through for adapters that need its per-exchange detail (e.g. the v2.4.0
+ * adapter); the v3 adapter does not use it.
  */
 public interface ProtocolNotifier {
 
@@ -17,17 +18,16 @@ public interface ProtocolNotifier {
     ProtocolVersion version();
 
     /**
-     * Delivers a lifecycle notification to the consumer. {@code binding} is null for the native version.
-     * {@code flowId} is the live outbound flow (secured adapters resolve the token + endpoint from it);
-     * {@code null} when security is disabled. Returns {@code true} on successful delivery.
+     * Delivers a lifecycle notification to the consumer. {@code binding} is null for the native version. The
+     * {@link OutboundCall} carries the sender context and the live flow (adapters resolve the token + endpoint
+     * from it). Returns {@code true} on successful delivery.
      */
     boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data, OutboundCall call);
 
     /**
      * Delivers a fulfillment-status notification to the consumer. {@code binding} is null for the native
-     * version. {@code flowId} is the live outbound flow (secured adapters resolve the token + endpoint from
-     * it); {@code null} when security is disabled. Returns {@code true} on successful delivery (or intentional
-     * suppression).
+     * version. The {@link OutboundCall} carries the sender context and the live flow. Returns {@code true} on
+     * successful delivery (or intentional suppression where the target protocol has no equivalent).
      */
     boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data, OutboundCall call);
 }

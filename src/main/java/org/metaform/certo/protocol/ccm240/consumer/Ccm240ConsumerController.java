@@ -4,6 +4,7 @@ import org.metaform.certo.protocol.ccm240.Ccm240Envelope;
 import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import org.metaform.certo.common.cloudevent.ProcessedEventStore;
 import org.metaform.certo.common.security.SecurityTokenInterceptor;
 import org.metaform.certo.common.security.VerifiedRequestContext;
 import org.metaform.certo.common.web.ApiException;
@@ -52,12 +53,14 @@ public class Ccm240ConsumerController {
     private final ConsumerExchangeService consumer;
     private final ConsumerCatalogService catalog;
     private final ExchangeBindingStore bindings;
+    private final ProcessedEventStore eventStore;
 
     public Ccm240ConsumerController(ConsumerExchangeService consumer, ConsumerCatalogService catalog,
-                                    ExchangeBindingStore bindings) {
+                                    ExchangeBindingStore bindings, ProcessedEventStore eventStore) {
         this.consumer = consumer;
         this.catalog = catalog;
         this.bindings = bindings;
+        this.eventStore = eventStore;
     }
 
     /** A small ack body carrying the assigned v3 identifiers (a convenience; v2.4.0 clients ignore it). */
@@ -107,13 +110,24 @@ public class Ccm240ConsumerController {
         var issuerBpn = content.issuer() != null ? content.issuer().issuerBpn() : null;
         var identityKey = (issuerBpn != null ? issuerBpn : header.senderBpn()) + "|" + content.registrationNumber();
         var certificateId = UUID.nameUUIDFromBytes(identityKey.getBytes(StandardCharsets.UTF_8)).toString();
+
+        // Idempotency: v2.4.0 has no CloudEvent id, but a retransmission repeats header.messageId. Claim it
+        // (scoped to the verified caller) inside this transaction so a duplicate push does not bump the
+        // revision or open a second exchange (adapter-architecture §7.4). A duplicate returns the exchange the
+        // first delivery opened.
+        var dedupKey = "ccm240-push:" + requestContext.subject() + ":" + header.messageId();
+        if (!eventStore.claim(dedupKey)) {
+            var priorExchangeId = bindings.exchangeFor(certificateId, requestContext.subject()).orElse(null);
+            return ResponseEntity.ok(new Ccm240PushAck(certificateId, priorExchangeId));
+        }
+
         var revision = catalog.nextPushedRevision(requestContext.participantContextId(), certificateId);
         var certificate = Ccm240Translation.upConvert(content, certificateId, revision);
 
         // A v2.4.0 provider assigns no exchangeId; mint a consumer-local surrogate per delivery.
         var exchangeId = UUID.randomUUID().toString();
         bindings.record(new ExchangeBinding(exchangeId, certificateId, ProtocolVersion.CCM_2_4_0,
-                CounterpartyRole.PROVIDER, header.senderBpn(), header.messageId()));
+                CounterpartyRole.PROVIDER, header.senderBpn(), requestContext.subject(), header.messageId()));
 
         // Hand the embedded certificate to our consumer as a CREATED; it accepts inline and reports the
         // outcome back to this v2.4.0 provider (routed by the binding above). No provider role is played.

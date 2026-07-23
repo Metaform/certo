@@ -49,4 +49,9 @@ public record CertificateRecord(
     public static CertificateRecord idOnly(String certificateId) {
         return new CertificateRecord(certificateId, null, null, null, null, null, null, null, null, null, null, null, null);
     }
+
+    /** Whether any document carries inline {@code contentBase64} — i.e. this is an embedded (push) record. */
+    public boolean hasEmbeddedContent() {
+        return documents != null && documents.stream().anyMatch(d -> d.contentBase64() != null);
+    }
 }

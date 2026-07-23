@@ -9,6 +9,6 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
  * {@code findAll} / {@code save} inherited). {@link JpaSpecificationExecutor} backs the coverage/search
  * queries (see {@code CertificateSpecifications}).
  */
-public interface ProviderCertificateStore extends JpaRepository<Certificate, String>,
-        JpaSpecificationExecutor<Certificate> {
+public interface ProviderCertificateStore
+        extends JpaRepository<Certificate, String>, JpaSpecificationExecutor<Certificate> {
 }

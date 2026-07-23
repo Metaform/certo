@@ -34,14 +34,17 @@ import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Comparator;
 import java.util.List;
 
 import static org.metaform.certo.common.TransactionSupport.afterCommit;
@@ -61,6 +64,9 @@ public class ConsumerExchangeService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ConsumerExchangeService.class);
 
+    /** Upper bound on a single reconciliation-query result set (the client acts on a batch, then re-queries). */
+    private static final int MAX_QUERY_RESULTS = 500;
+
     private final ConsumerCertificateExchangeStore exchangeStore;
     private final CloudEventCodec codec;
     private final ProcessedEventStore eventStore;
@@ -70,6 +76,7 @@ public class ConsumerExchangeService {
     private final ParticipantContextStore contextStore;
     private final ConsumerCatalogService catalog;
     private final List<InboundNotificationListener> listeners;
+    private final TransactionTemplate tx;
 
     public ConsumerExchangeService(ConsumerCertificateExchangeStore exchangeStore,
                                    CloudEventCodec codec,
@@ -79,7 +86,8 @@ public class ConsumerExchangeService {
                                    AcceptanceReporter acceptanceClient,
                                    ParticipantContextStore contextStore,
                                    ConsumerCatalogService catalog,
-                                   List<InboundNotificationListener> listeners) {
+                                   List<InboundNotificationListener> listeners,
+                                   PlatformTransactionManager txManager) {
         this.exchangeStore = exchangeStore;
         this.codec = codec;
         this.eventStore = eventStore;
@@ -89,6 +97,7 @@ public class ConsumerExchangeService {
         this.contextStore = contextStore;
         this.catalog = catalog;
         this.listeners = listeners;
+        this.tx = new TransactionTemplate(txManager);
     }
 
     /**
@@ -99,13 +108,13 @@ public class ConsumerExchangeService {
     // Non-transactional: the remote request runs between short store transactions (context lookup, then the
     // exchange save) so no DB connection is held across the outbound call.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ConsumerCertificateExchange initiateRequest(String participantContextId,
+    public ConsumerCertificateExchange initiateRequest(String contextId,
                                                        String providerBpn,
                                                        String providerDid,
                                                        String certificateType,
                                                        String flowId,
                                                        List<String> certifiedLocations) {
-        var sender = requireContext(participantContextId);
+        var sender = requireContext(contextId);
         var call = new OutboundCall(sender, providerBpn, providerDid, flowId);
         ProviderRequestResult result;
         try {
@@ -119,7 +128,7 @@ public class ConsumerExchangeService {
                 true,
                 result.status(),
                 result.errors(),
-                participantContextId,
+                contextId,
                 providerBpn,
                 providerDid);
         exchangeStore.save(exchange);
@@ -130,8 +139,8 @@ public class ConsumerExchangeService {
     // Non-transactional: load the exchange, poll the provider outside any transaction, then save the mirrored
     // status — so no DB connection is held across the outbound call.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ConsumerCertificateExchange pollRequest(String participantContextId, String exchangeId, String flowId) {
-        var exchange = findConsumerRequest(participantContextId, exchangeId);
+    public ConsumerCertificateExchange pollRequest(String contextId, String exchangeId, String flowId) {
+        var exchange = findConsumerRequest(contextId, exchangeId);
         try {
             var result = requestClient.pollStatus(exchangeId, outboundCall(exchange, flowId));
             exchange.updateFulfillment(result.status(), result.certificateId(), result.errors());
@@ -143,14 +152,14 @@ public class ConsumerExchangeService {
     }
 
     @Transactional(readOnly = true)
-    public ConsumerCertificateExchange getRequest(String participantContextId, String exchangeId) {
-        return findConsumerRequest(participantContextId, exchangeId);
+    public ConsumerCertificateExchange getRequest(String contextId, String exchangeId) {
+        return findConsumerRequest(contextId, exchangeId);
     }
 
-    private ConsumerCertificateExchange findConsumerRequest(String participantContextId, String exchangeId) {
+    private ConsumerCertificateExchange findConsumerRequest(String contextId, String exchangeId) {
         return exchangeStore.findById(exchangeId)
                 .filter(ConsumerCertificateExchange::consumerInitiated)
-                .filter(e -> participantContextId.equals(e.participantContextId()))
+                .filter(e -> contextId.equals(e.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown request exchangeId: " + exchangeId));
     }
 
@@ -188,10 +197,17 @@ public class ConsumerExchangeService {
     }
 
     /**
-     * Emits a recorded inbound event to every registered listener (best-effort — a failing listener never
-     * disrupts the inbound acknowledgement; the event is already recorded and reconcilable).
+     * Emits a recorded inbound event to every registered listener, <b>after the inbound transaction
+     * commits</b>: a listener (e.g. the webhook) must not run while the DB connection is held, and must never
+     * fire for a batch that later rolls back (which would leave a client reacting to an exchange that does not
+     * exist). Best-effort — a failing listener never disrupts the inbound acknowledgement; the event is
+     * already recorded and reconcilable.
      */
     private void emit(InboundCcmEvent event) {
+        afterCommit(() -> notifyListeners(event));
+    }
+
+    private void notifyListeners(InboundCcmEvent event) {
         for (var listener : listeners) {
             try {
                 listener.onNotification(event);
@@ -206,9 +222,9 @@ public class ConsumerExchangeService {
      * {@code 404} until the Acceptance phase has begun (the exchange may still be in Fulfillment).
      */
     @Transactional(readOnly = true)
-    public CertificateAcceptanceStatusResponse getAcceptanceStatus(String participantContextId, String exchangeId) {
+    public CertificateAcceptanceStatusResponse getAcceptanceStatus(String contextId, String exchangeId) {
         var exchange = exchangeStore.findById(exchangeId)
-                .filter(e -> participantContextId != null && participantContextId.equals(e.participantContextId()))
+                .filter(e -> contextId != null && contextId.equals(e.participantContextId()))
                 .filter(e -> e.acceptanceStatus() != null)
                 .orElseThrow(() -> ApiException.notFound("No acceptance status for exchange: " + exchangeId));
         return new CertificateAcceptanceStatusResponse(
@@ -220,21 +236,21 @@ public class ConsumerExchangeService {
     }
 
     /**
-     * Consumer-side reconciliation query: the exchanges awaiting the caller's action. By default those that
-     * are {@code FULFILLED} but not yet accepted (the outstanding retrieve/accept work — the safety net for
-     * a dropped notification callback); pass {@code awaitingAcceptanceOnly=false} for all recorded exchanges.
+     * Consumer-side reconciliation query: the exchanges awaiting the caller's action — {@code FULFILLED} but
+     * not yet accepted (outstanding retrieve/accept), or accepted but not confirmed reported (needs
+     * re-reporting). The safety net for a dropped notification callback or a lost acceptance report. Pass
+     * {@code awaitingAcceptanceOnly=false} for all of the tenant's exchanges. Scoped and bounded in the
+     * database; results are capped at {@value #MAX_QUERY_RESULTS} (a client that hits the cap acts on the
+     * returned batch, which shrinks it, and queries again).
      */
     @Transactional(readOnly = true)
-    public ConsumerExchangePage queryExchanges(String participantContextId, ConsumerExchangeQuery query) {
+    public ConsumerExchangePage queryExchanges(String contextId, ConsumerExchangeQuery query) {
         var awaitingOnly = query == null || query.awaitingAcceptanceOnly() == null || query.awaitingAcceptanceOnly();
-        var items = exchangeStore.findAll().stream()
-                .filter(e -> participantContextId.equals(e.participantContextId()))
-                .filter(e -> !awaitingOnly
-                        || (e.fulfillmentStatus() == FulfillmentStatus.FULFILLED && e.acceptanceStatus() == null))
-                .sorted(Comparator.comparing(ConsumerCertificateExchange::exchangeId))
-                .map(ConsumerExchangeView::of)
-                .toList();
-        return new ConsumerExchangePage(items);
+        var pageable = PageRequest.of(0, MAX_QUERY_RESULTS, Sort.by("exchangeId"));
+        var rows = awaitingOnly
+                ? exchangeStore.findAwaitingAction(contextId, pageable)
+                : exchangeStore.findByParticipantContextId(contextId, pageable);
+        return new ConsumerExchangePage(rows.stream().map(ConsumerExchangeView::of).toList());
     }
 
     /**
@@ -245,8 +261,8 @@ public class ConsumerExchangeService {
     // Non-transactional: load the exchange in its own short transaction, then fetch from the provider outside
     // any transaction so no DB connection is held across the outbound call.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public RetrievedCertificate retrieve(String participantContextId, String exchangeId, String flowId) {
-        var exchange = requireOwnedExchange(participantContextId, exchangeId);
+    public RetrievedCertificate retrieve(String contextId, String exchangeId, String flowId) {
+        var exchange = requireOwnedExchange(contextId, exchangeId);
         // An embedded push delivered the content inline (no pull endpoint to re-fetch); return what we kept.
         if (exchange.embeddedContent() != null) {
             return exchange.embeddedContent();
@@ -265,15 +281,30 @@ public class ConsumerExchangeService {
      * Management-driven acceptance: records the caller's decision for an exchange and reports it to the
      * provider over the given live {@code flowId}. The decision (ACCEPTED / REJECTED / ERRORED) is the
      * caller's — the consumer applies no rule of its own.
+     *
+     * <p>The report is <b>best-effort</b> (post-commit), so a lost report leaves the acceptance recorded here
+     * but unknown to the provider. Recovery is by polling, not a durable outbox: {@link #queryExchanges}
+     * surfaces such exchanges for a re-drive, and the provider can pull the verdict via its
+     * {@code poll-acceptance} op ({@code GET /certificate-acceptance-status/{id}}).
      */
-    public void accept(String participantContextId, String exchangeId, AcceptanceStatus status,
+    public void accept(String contextId, String exchangeId, AcceptanceStatus status,
                        List<StatusError> errors, String flowId) {
-        var exchange = requireOwnedExchange(participantContextId, exchangeId);
-        exchange.transitionAcceptance(status, errors);
-        exchangeStore.save(exchange);
-        // Report once the acceptance is committed, so the DB connection is not held across the outbound call.
-        afterCommit(() -> acceptanceClient.report(exchangeId, exchange.certificateId(), status, outboundCall(exchange, flowId), errors
-        ));
+        var exchange = requireOwnedExchange(contextId, exchangeId);
+        // A re-drive with the same verdict (e.g. reconciling an acceptance that was recorded but whose report
+        // was lost) is not a fresh transition — skip it (avoid a 409) and just re-report over the new flowId.
+        // The provider dedups the re-report (its acceptance CloudEvent id is stable per exchange).
+        if (status != exchange.acceptanceStatus()) {
+            exchange.transitionAcceptance(status, errors);
+            exchangeStore.save(exchange);
+        }
+        var call = outboundCall(exchange, flowId);
+        // Report once the acceptance is committed, so the DB connection is not held across the outbound call;
+        // on success mark it reported (in its own transaction) so the reconciliation query stops surfacing it.
+        afterCommit(() -> {
+            acceptanceClient.report(exchangeId, exchange.certificateId(), status, call, errors);
+            tx.executeWithoutResult(s -> exchangeStore.findById(exchangeId)
+                    .ifPresent(ConsumerCertificateExchange::markAcceptanceReported));
+        });
     }
 
     /**
@@ -315,7 +346,7 @@ public class ConsumerExchangeService {
             var exchange = ensureExchange(data.exchangeId(), cert.certificateId(), cert.revision(),
                     requestContext.participantContextId(), requestContext.bpnOrSubject(),
                     requestContext.subject());
-            if (hasEmbeddedContent(cert)) {
+            if (cert.hasEmbeddedContent()) {
                 exchange.attachEmbeddedContent(embeddedToRetrieved(cert));
                 exchangeStore.save(exchange);
             }
@@ -328,12 +359,20 @@ public class ConsumerExchangeService {
     }
 
     private ConsumerCertificateExchange ensureExchange(String exchangeId, String certificateId, Integer revision,
-                                                       String participantContextId, String providerBpn, String providerDid) {
+                                                       String contextId, String providerBpn, String providerDid) {
         // Runs inside the caller's transaction; a concurrent insert of the same id fails the primary-key
         // constraint (that transaction rolls back and retries), so no JVM lock is needed.
-        return exchangeStore.findById(exchangeId).orElseGet(() -> {
+        return exchangeStore.findById(exchangeId).map(existing -> {
+            // A reused exchangeId must belong to this tenant AND the calling provider (verified DID); otherwise
+            // a different caller is addressing — and would overwrite — an exchange that is not theirs.
+            if (!contextId.equals(existing.participantContextId())
+                    || !providerDid.equals(existing.providerDid())) {
+                throw ApiException.notFound("Unknown exchangeId: " + exchangeId);
+            }
+            return existing;
+        }).orElseGet(() -> {
             var created = new ConsumerCertificateExchange(exchangeId, certificateId, revision != null ? revision : 1,
-                    false, FulfillmentStatus.FULFILLED, null, participantContextId, providerBpn, providerDid);
+                    false, FulfillmentStatus.FULFILLED, null, contextId, providerBpn, providerDid);
             exchangeStore.save(created);
             return created;
         });
@@ -346,10 +385,6 @@ public class ConsumerExchangeService {
                         d.contentBase64() == null ? new byte[0] : Base64.getDecoder().decode(d.contentBase64())))
                 .toList();
         return new RetrievedCertificate(cert, documents);
-    }
-
-    private static boolean hasEmbeddedContent(CertificateRecord cert) {
-        return cert.documents() != null && cert.documents().stream().anyMatch(d -> d.contentBase64() != null);
     }
 
     private void validateFulfillment(FulfillmentStatusData data) {
@@ -368,11 +403,14 @@ public class ConsumerExchangeService {
      * never decides acceptance itself. An event for an exchange the consumer didn't open is ignored.
      */
     private void applyFulfillment(FulfillmentStatusData data, VerifiedRequestContext requestContext) {
-        // Only a fulfillment for an exchange owned by the receiving tenant (the verified audience) is applied;
-        // a push addressed to another tenant can never mutate this tenant's exchange.
-        var participantContextId = requestContext.participantContextId();
+        // Only a fulfillment for an exchange owned by the receiving tenant (the verified audience) AND opened
+        // with the calling provider (the verified caller's DID) is applied — so a rogue provider cannot
+        // overwrite another provider's exchange within this tenant.
+        var contextId = requestContext.participantContextId();
+        var callerDid = requestContext.subject();
         var exchange = exchangeStore.findById(data.exchangeId())
-                .filter(e -> participantContextId.equals(e.participantContextId()))
+                .filter(e -> contextId.equals(e.participantContextId()))
+                .filter(e -> callerDid.equals(e.providerDid()))
                 .orElse(null);
         if (exchange == null) {
             LOG.info("Fulfillment status {} for unknown exchange {} — ignored", data.status(), data.exchangeId());
@@ -386,9 +424,9 @@ public class ConsumerExchangeService {
     }
 
     /** An exchange that must exist within the tenant's scope, else 404 (existence not revealed across tenants). */
-    private ConsumerCertificateExchange requireOwnedExchange(String participantContextId, String exchangeId) {
+    private ConsumerCertificateExchange requireOwnedExchange(String contextId, String exchangeId) {
         return exchangeStore.findById(exchangeId)
-                .filter(e -> participantContextId.equals(e.participantContextId()))
+                .filter(e -> contextId.equals(e.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
     }
 
@@ -399,11 +437,11 @@ public class ConsumerExchangeService {
     }
 
     /** Resolves a participant context, failing the request when the named tenant does not exist. */
-    private ParticipantContext requireContext(String participantContextId) {
-        if (participantContextId == null) {
-            throw ApiException.badRequest("A participantContextId is required");
+    private ParticipantContext requireContext(String contextId) {
+        if (contextId == null) {
+            throw ApiException.badRequest("A contextId is required");
         }
-        return contextStore.find(participantContextId)
-                .orElseThrow(() -> ApiException.badRequest("Unknown participantContextId: " + participantContextId));
+        return contextStore.find(contextId)
+                .orElseThrow(() -> ApiException.badRequest("Unknown contextId: " + contextId));
     }
 }

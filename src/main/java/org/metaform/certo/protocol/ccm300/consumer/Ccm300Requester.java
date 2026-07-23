@@ -5,13 +5,12 @@ import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.consumer.spi.CertificateRequester;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -27,7 +26,6 @@ import java.util.Map;
 @Component
 public class Ccm300Requester implements CertificateRequester {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm300Requester.class);
     private static final MediaType JSON = MediaType.get("application/json");
 
     private final RetryingHttpClient http;
@@ -49,7 +47,7 @@ public class Ccm300Requester implements CertificateRequester {
                 : Map.<String, Object>of("certificateType", certificateType, "certifiedLocations", certifiedLocations);
         var body = RequestBody.create(mapper.writeValueAsString(payload), JSON);
         var builder = new Request.Builder().url(url(resolved.baseUrl(), "certificate-requests")).post(body);
-        authorize(builder, resolved.bearer());
+        OutboundJsonClient.authorize(builder, resolved.bearer());
         // Retry-safe: the provider reuses a still-live exchange for a repeated open (CX-0135 §2.1.1), so a
         // retried send returns the same exchange rather than opening a duplicate.
         try (Response response = http.execute(builder.build())) {
@@ -63,7 +61,7 @@ public class Ccm300Requester implements CertificateRequester {
         var builder = new Request.Builder()
                 .url(url(resolved.baseUrl(), "certificate-requests").newBuilder().addPathSegment(exchangeId).build())
                 .get();
-        authorize(builder, resolved.bearer());
+        OutboundJsonClient.authorize(builder, resolved.bearer());
         try (Response response = http.execute(builder.build())) {
             return parse(response);
         }
@@ -75,12 +73,6 @@ public class Ccm300Requester implements CertificateRequester {
             throw new IOException("Invalid provider base URL: " + baseUrl);
         }
         return base.newBuilder().addPathSegment(segment).build();
-    }
-
-    private static void authorize(Request.Builder builder, String bearer) {
-        if (bearer != null) {
-            builder.header("Authorization", "Bearer " + bearer);
-        }
     }
 
     private ProviderRequestResult parse(Response response) throws IOException {

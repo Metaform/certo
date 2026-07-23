@@ -1,10 +1,7 @@
 package org.metaform.certo.protocol.ccm300.consumer;
 
-import okhttp3.HttpUrl;
 import okhttp3.MediaType;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import org.metaform.certo.common.RetryingHttpClient;
+import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.AcceptanceStatus;
@@ -15,42 +12,34 @@ import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
 import org.metaform.certo.protocol.ProtocolVersion;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
-
-import static java.util.UUID.randomUUID;
+import java.util.UUID;
 
 /**
  * Reports the consumer's Acceptance-phase outcome back to the Certificate Provider by POSTing a
  * {@code CertificateAcceptanceStatus} CloudEvent to {@code /certificate-acceptance-notifications}
  * (CX-0135 &sect;4.4.4), closing the exchange loop.
  *
- * <p>Best-effort: a failure to deliver (transport error, or the provider not recognizing the
- * exchange) is logged but does not disrupt the consumer's own processing — the consumer has already
- * recorded its decision locally.
+ * <p>Best-effort (via {@link OutboundJsonClient}): a failure to deliver (transport error, or the provider not
+ * recognizing the exchange) is logged but does not disrupt the consumer's own processing — the consumer has
+ * already recorded its decision locally.
  */
 @Component
 public class Ccm300Reporter implements ProtocolAcceptanceReporter {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm300Reporter.class);
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
 
-    private final RetryingHttpClient http;
-    private final ObjectMapper mapper;
+    private final OutboundJsonClient outbound;
     private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm300Reporter(RetryingHttpClient httpClient, ObjectMapper mapper,
-                          OutboundTokens outboundTokens, Clock clock) {
-        this.http = httpClient;
-        this.mapper = mapper;
+    public Ccm300Reporter(OutboundJsonClient outbound, OutboundTokens outboundTokens, Clock clock) {
+        this.outbound = outbound;
         this.outboundTokens = outboundTokens;
         this.clock = clock;
     }
@@ -72,45 +61,23 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
                 CcmEvents.TYPE_ACCEPTANCE_STATUS,
                 call.sender().source(),
                 call.counterpartyBpn(),
-                randomUUID().toString(),
+                // Deterministic id per (exchange, verdict), so a re-report (e.g. reconciling a lost report) is
+                // deduplicated by the provider on source+id rather than re-applied. RETRIEVED vs the terminal
+                // verdict get distinct ids (both are legitimate events for the exchange).
+                acceptanceEventId(exchangeId, status),
                 OffsetDateTime.now(clock),
                 CloudEvent.CONTENT_TYPE_JSON,
                 CcmEvents.SCHEMA_ACCEPTANCE_STATUS,
                 call.sender().bpn(),
                 data);
 
-        String json;
-        try {
-            json = mapper.writeValueAsString(event);
-        } catch (RuntimeException e) {
-            LOG.warn("Could not serialize acceptance event for exchange {}: {}", exchangeId, e.getMessage());
-            return;
-        }
-
         var resolved = outboundTokens.forCall(call);
-        var base = HttpUrl.parse(resolved.baseUrl());
-        if (base == null) {
-            LOG.warn("Invalid provider base URL '{}'; not reporting acceptance for exchange {}",
-                    resolved.baseUrl(), exchangeId);
-            return;
-        }
-        var url = base.newBuilder().addPathSegment("certificate-acceptance-notifications").build();
+        outbound.postTo(resolved.baseUrl(), "certificate-acceptance-notifications", event, CLOUDEVENTS_JSON,
+                resolved.bearer(), "report acceptance " + status + " for exchange " + exchangeId);
+    }
 
-        var builder = new Request.Builder()
-                .url(url)
-                .post(RequestBody.create(json, CLOUDEVENTS_JSON));
-        if (resolved.bearer() != null) {
-            builder.header("Authorization", "Bearer " + resolved.bearer());
-        }
-        var request = builder.build();
-
-        try (var response = http.execute(request)) {
-            if (!response.isSuccessful()) {
-                LOG.warn("Provider did not accept the acceptance report for exchange {}: HTTP {}",
-                        exchangeId, response.code());
-            }
-        } catch (IOException e) {
-            LOG.warn("Failed to report acceptance for exchange {}: {}", exchangeId, e.getMessage());
-        }
+    /** A stable CloudEvent id for an acceptance event, so a re-report of the same (exchange, verdict) dedups. */
+    private static String acceptanceEventId(String exchangeId, AcceptanceStatus status) {
+        return UUID.nameUUIDFromBytes((exchangeId + "|" + status).getBytes(StandardCharsets.UTF_8)).toString();
     }
 }

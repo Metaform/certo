@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import org.jetbrains.annotations.NotNull;
 import org.metaform.certo.common.Validations;
@@ -45,7 +46,14 @@ import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATION_RE
  * aggregate after mutating it.
  */
 @Entity
-@Table(name = "provider_certificate_exchange")
+@Table(name = "provider_certificate_exchange",
+        // At most one *live* consumer-initiated exchange per (tenant, counterparty, request) — so two
+        // concurrent identical opens cannot both create a row (the loser's insert is rejected by the DB and
+        // its transaction rolls back; the client retry then finds the winner). The key is nulled once the
+        // exchange reaches a terminal outcome, and unique constraints treat NULLs as distinct, so a re-attempt
+        // after a terminal outcome opens a fresh exchange without colliding.
+        uniqueConstraints = @UniqueConstraint(name = "uk_exchange_live_request",
+                columnNames = {"participant_context_id", "counterparty_did", "live_dedup_key"}))
 public class ProviderCertificateExchange {
 
     @Id
@@ -101,11 +109,14 @@ public class ProviderCertificateExchange {
     private OffsetDateTime requestedAt;
 
     /**
-     * Canonical key of a consumer-initiated request — its {@code certificateType} plus requested locations
-     * (order-insensitive) — so the provider can reuse a still-live exchange for a repeated request rather than
-     * opening a duplicate (CX-0135 &sect;2.1.1). Null for provider-initiated exchanges.
+     * The key that makes opening this exchange idempotent while it is live, so a repeat reuses it rather than
+     * opening a duplicate (CX-0135 &sect;2.1.1). Namespaced by origin: {@code "req:"} + the consumer request's
+     * canonical {@code certificateType}+locations for a consumer-initiated open, or {@code "pub:"} + the
+     * caller's idempotency key for a provider-initiated publish. Null when no key applies, and <b>nulled once
+     * this exchange reaches a terminal outcome</b> so the unique constraint stops guarding it (a re-attempt
+     * then opens a fresh exchange).
      */
-    private String requestKey;
+    private String liveDedupKey;
 
     @Version
     private long version;
@@ -178,6 +189,7 @@ public class ProviderCertificateExchange {
         }
         this.fulfillmentStatus = to;
         this.fulfillmentErrors = copyOrNull(errors);
+        releaseLiveKeyIfTerminal();
     }
 
     /**
@@ -191,15 +203,18 @@ public class ProviderCertificateExchange {
     }
 
     /**
-     * Records an Acceptance-phase outcome (CX-0135 &sect;4.4.4). The exchange must be {@code FULFILLED}
-     * first (&sect;2.1.2), and transitions out of a terminal acceptance state are rejected (409). The
-     * non-terminal {@code RETRIEVED} status is optional, so the first status recorded may be a terminal
-     * verdict reached directly from {@code FULFILLED} (&sect;2.1.3); the provider never requires a prior
-     * {@code RETRIEVED}.
+     * Records an Acceptance-phase outcome (CX-0135 &sect;4.4.4). Feedback may follow any Fulfillment
+     * <em>outcome</em> — {@code FULFILLED}, {@code DECLINED}, or {@code FAILED} (&sect;2.1.3 draws Feedback
+     * from all three) — but not an exchange still in progress with no outcome yet. Transitions out of a
+     * terminal acceptance state are rejected (409). The non-terminal {@code RETRIEVED} status is optional, so
+     * the first status recorded may be a terminal verdict reached directly (&sect;2.1.3); no prior
+     * {@code RETRIEVED} is required.
      */
     public void recordAcceptance(AcceptanceStatus to, List<StatusError> errors) {
-        if (fulfillmentStatus != FulfillmentStatus.FULFILLED) {
-            throw ApiException.conflict("Exchange " + exchangeId + " cannot be accepted before it is FULFILLED"
+        // FULFILLED, or a fulfillment dead-end (DECLINED/FAILED — isTerminal() marks no further *fulfillment*
+        // transition, which is exactly a produced outcome). Pre-outcome states have delivered nothing to judge.
+        if (fulfillmentStatus != FulfillmentStatus.FULFILLED && !fulfillmentStatus.isTerminal()) {
+            throw ApiException.conflict("Exchange " + exchangeId + " cannot be accepted before a fulfillment outcome"
                                         + " (current fulfillment status: " + fulfillmentStatus + ")");
         }
         if (acceptanceStatus != null && !acceptanceStatus.allowedNext().contains(to)) {
@@ -208,6 +223,14 @@ public class ProviderCertificateExchange {
         }
         this.acceptanceStatus = to;
         this.acceptanceErrors = copyOrNull(errors);
+        releaseLiveKeyIfTerminal();
+    }
+
+    /** Nulls the live-request key once the exchange is no longer live, so the unique constraint stops guarding it. */
+    private void releaseLiveKeyIfTerminal() {
+        if (!isLive()) {
+            this.liveDedupKey = null;
+        }
     }
 
     /**
@@ -221,13 +244,13 @@ public class ProviderCertificateExchange {
         return consumerInitiated;
     }
 
-    /** Records the canonical request key so a repeated consumer request can reuse this exchange while live. */
-    public void assignRequestKey(String requestKey) {
-        this.requestKey = requestKey;
+    /** Records the (namespaced) dedup key so a repeated open — consumer request or provider publish — reuses this exchange while live. */
+    public void assignLiveDedupKey(String liveDedupKey) {
+        this.liveDedupKey = liveDedupKey;
     }
 
-    public String requestKey() {
-        return requestKey;
+    public String liveDedupKey() {
+        return liveDedupKey;
     }
 
     /**

@@ -55,8 +55,10 @@ public class Ccm300ProviderController {
 
     /** {@code GET /certificate-requests/{id}} — poll fulfillment status (CX-0135 &sect;3.3.1.1). */
     @GetMapping(path = "/certificate-requests/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CertificateRequestStatus getRequestStatus(@PathVariable("id") String exchangeId) {
-        return exchanges.getRequestStatus(exchangeId);
+    public CertificateRequestStatus getRequestStatus(@PathVariable("id") String exchangeId,
+            @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
+            VerifiedRequestContext requestContext) {
+        return exchanges.getRequestStatus(requestContext.participantContextId(), exchangeId);
     }
 
     /**
@@ -97,7 +99,7 @@ public class Ccm300ProviderController {
     public ResponseEntity<Void> postAcceptance(@RequestBody byte[] body,
             @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
             VerifiedRequestContext requestContext) {
-        exchanges.recordAcceptance(body, requestContext.participantContextId());
+        exchanges.recordAcceptance(body, requestContext);
         return ResponseEntity.noContent().build();
     }
 

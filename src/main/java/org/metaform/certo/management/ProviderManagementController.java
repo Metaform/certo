@@ -178,4 +178,16 @@ public class ProviderManagementController {
                                     @PathVariable("id") String exchangeId) {
         return exchanges.getExchangeView(participantContextId, exchangeId);
     }
+
+    /**
+     * {@code POST /certificate-exchanges/{id}/poll-acceptance} — recover a possibly-lost acceptance by pulling
+     * the consumer's acceptance-status over {@code flowId} and recording any verdict on the exchange (the pull
+     * fallback to the consumer's best-effort push). Native v3 consumers only. Returns the refreshed view.
+     */
+    @PostMapping(path = "/certificate-exchanges/{id}/poll-acceptance", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ExchangeView pollAcceptance(@PathVariable("participantContextId") String participantContextId,
+                                       @PathVariable("id") String exchangeId,
+                                       @RequestParam(value = "flowId", required = false) String flowId) {
+        return exchanges.pollAcceptance(participantContextId, exchangeId, flowId);
+    }
 }

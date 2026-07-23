@@ -1,34 +1,18 @@
 package org.metaform.certo.protocol.ccm240;
 
 import okhttp3.MediaType;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import org.metaform.certo.common.RetryingHttpClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
 
 /**
- * Sends v2.4.0 JSON messages to a peer's endpoint. Best-effort: transport or
- * non-2xx failures are logged, not thrown — the v3 core has already recorded its state locally.
- *
- * <p>{@code url} is POSTed to directly as the peer's endpoint.
+ * v2.4.0 outbound endpoint helpers. The actual delivery goes through the shared
+ * {@link org.metaform.certo.common.OutboundJsonClient}; this holds only the v2.4.0-specific URL shape and
+ * content type.
  */
-@Component
-public class Ccm240OutboundClient {
+public final class Ccm240OutboundClient {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm240OutboundClient.class);
-    private static final MediaType JSON = MediaType.get("application/json");
+    /** v2.4.0 messages are plain {@code application/json}. */
+    public static final MediaType JSON = MediaType.get("application/json");
 
-    private final RetryingHttpClient http;
-    private final ObjectMapper mapper;
-
-    public Ccm240OutboundClient(RetryingHttpClient httpClient, ObjectMapper mapper) {
-        this.http = httpClient;
-        this.mapper = mapper;
+    private Ccm240OutboundClient() {
     }
 
     /**
@@ -39,38 +23,5 @@ public class Ccm240OutboundClient {
     public static String endpoint(String baseUrl, String message) {
         var trimmed = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         return trimmed + "/companycertificate/" + message;
-    }
-
-    /**
-     * POSTs {@code message} as JSON to {@code url}, attaching a bearer token when one is supplied. Returns
-     * {@code true} on a 2xx response.
-     *
-     * @param url         the peer's endpoint, POSTed to directly.
-     * @param message     the v2.4.0 message body.
-     * @param bearerToken the security token to present, or {@code null} when security is disabled.
-     */
-    public boolean post(String url, Object message, String bearerToken) {
-        String json;
-        try {
-            json = mapper.writeValueAsString(message);
-        } catch (RuntimeException e) {
-            LOG.warn("Could not serialize v2.4.0 message for {}: {}", url, e.getMessage());
-            return false;
-        }
-        var builder = new Request.Builder().url(url).post(RequestBody.create(json, JSON));
-        if (bearerToken != null) {
-            builder.header("Authorization", "Bearer " + bearerToken);
-        }
-        var request = builder.build();
-        try (var response = http.execute(request)) {
-            if (response.isSuccessful()) {
-                return true;
-            }
-            LOG.warn("Ccm240 peer at {} returned HTTP {}", url, response.code());
-            return false;
-        } catch (IOException e) {
-            LOG.warn("Failed to deliver v2.4.0 message to {}: {}", url, e.getMessage());
-            return false;
-        }
     }
 }

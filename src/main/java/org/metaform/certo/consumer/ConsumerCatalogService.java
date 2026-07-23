@@ -25,9 +25,8 @@ public class ConsumerCatalogService {
 
     /** Returns the consumer's lifecycle view of a certificate its tenant has learned about. */
     @Transactional(readOnly = true)
-    public KnownCertificate getKnownCertificate(String participantContextId, String certificateId) {
-        return certificateStore.findById(certificateId)
-                .filter(c -> participantContextId.equals(c.participantContextId()))
+    public KnownCertificate getKnownCertificate(String contextId, String certificateId) {
+        return certificateStore.findByParticipantContextIdAndCertificateId(contextId, certificateId)
                 .orElseThrow(() -> ApiException.notFound("Unknown certificateId: " + certificateId));
     }
 
@@ -39,28 +38,29 @@ public class ConsumerCatalogService {
      * certificate rather than a duplicate record.
      */
     @Transactional(readOnly = true)
-    public int nextPushedRevision(String participantContextId, String certificateId) {
-        return certificateStore.findById(certificateId)
-                .filter(c -> participantContextId != null && participantContextId.equals(c.participantContextId()))
+    public int nextPushedRevision(String contextId, String certificateId) {
+        return certificateStore.findByParticipantContextIdAndCertificateId(contextId, certificateId)
                 .map(c -> (c.revision() == null ? 1 : c.revision()) + 1)
                 .orElse(1);
     }
 
     /**
-     * Creates or updates the consumer tenant's lifecycle view of the certificate from a lifecycle event.
-     * Runs inside the caller's transaction; the {@code certificateId} primary key serializes concurrent
-     * creates. Updates mutate the managed {@code certifiedLocations} collection in place (see
-     * {@link KnownCertificate#apply}).
+     * Creates or updates the <b>calling tenant's</b> lifecycle view of the certificate from a lifecycle
+     * event. Runs inside the caller's transaction; the {@code (participantContextId, certificateId)} unique
+     * constraint serializes concurrent creates. Updates mutate the managed {@code certifiedLocations}
+     * collection in place (see {@link KnownCertificate#apply}). A different tenant that later learns about the
+     * same certificate gets its own row rather than mutating this one.
      */
-    public void recordKnownCertificate(LifecycleStatusData data, String participantContextId) {
+    public void recordKnownCertificate(LifecycleStatusData data, String contextId) {
         CertificateRecord c = data.certificate();
-        certificateStore.findById(c.certificateId()).ifPresentOrElse(
-                known -> {
-                    known.apply(c.revision(), data.status(), c.certificateType(),
-                            c.validFrom(), c.validUntil(), c.certifiedLocations());
-                    certificateStore.save(known);
-                },
-                () -> certificateStore.save(new KnownCertificate(c.certificateId(), participantContextId, c.revision(),
-                        data.status(), c.certificateType(), c.validFrom(), c.validUntil(), c.certifiedLocations())));
+        certificateStore.findByParticipantContextIdAndCertificateId(contextId, c.certificateId())
+                .ifPresentOrElse(
+                        known -> {
+                            known.apply(c.revision(), data.status(), c.certificateType(),
+                                    c.validFrom(), c.validUntil(), c.certifiedLocations());
+                            certificateStore.save(known);
+                        },
+                        () -> certificateStore.save(new KnownCertificate(c.certificateId(), contextId, c.revision(),
+                                data.status(), c.certificateType(), c.validFrom(), c.validUntil(), c.certifiedLocations())));
     }
 }

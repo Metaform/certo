@@ -1,10 +1,7 @@
 package org.metaform.certo.protocol.ccm300.provider;
 
-import okhttp3.HttpUrl;
 import okhttp3.MediaType;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import org.metaform.certo.common.RetryingHttpClient;
+import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.FulfillmentStatusData;
@@ -17,42 +14,32 @@ import org.metaform.certo.protocol.ProtocolNotifier;
 import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
  * Pushes certificate lifecycle events to a Certificate Consumer's notification API
- * ({@code POST /certificate-notifications}, CX-0135 &sect;4.3.1) using OkHttp. Used by the provider's
- * publish action to notify a consumer that a certificate is available.
+ * ({@code POST /certificate-notifications}, CX-0135 &sect;4.3.1). Used by the provider's publish action to
+ * notify a consumer that a certificate is available.
  *
- * <p>The target consumer is taken from the exchange's {@link ExchangeBinding} — its BPN is the event
- * subject and its {@code callbackUrl} the endpoint — exactly as the v2.4.0 notifier routes. The
- * configured {@code certo.consumer.*} values are this runtime's own consumer identity, never the push
- * target. (A consumer-initiated fulfillment push has no per-exchange target in the current protocol, so
- * that path alone falls back to the configured consumer endpoint.)
+ * <p>The event subject is the counterparty consumer's BPN (from the {@link OutboundCall}); the token and
+ * endpoint are resolved from the siglet cache via the call's flow, and the POST is delegated to
+ * {@link OutboundJsonClient}. This adapter does not read the {@link ExchangeBinding} (a native v3 target has none).
  */
 @Component
 public class Ccm300Notifier implements ProtocolNotifier {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm300Notifier.class);
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
 
-    private final RetryingHttpClient http;
-    private final ObjectMapper mapper;
+    private final OutboundJsonClient outbound;
     private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm300Notifier(RetryingHttpClient httpClient, ObjectMapper mapper,
-                          OutboundTokens outboundTokens, Clock clock) {
-        this.http = httpClient;
-        this.mapper = mapper;
+    public Ccm300Notifier(OutboundJsonClient outbound, OutboundTokens outboundTokens, Clock clock) {
+        this.outbound = outbound;
         this.outboundTokens = outboundTokens;
         this.clock = clock;
     }
@@ -77,8 +64,9 @@ public class Ccm300Notifier implements ProtocolNotifier {
         var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, wire,
                 call.sender(), call.counterpartyBpn());
         var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
-        return post(event, resolved.baseUrl(), resolved.bearer(), data.exchangeId(),
-                data.status() + " certificate " + certificateId);
+        return outbound.postTo(resolved.baseUrl(), "certificate-notifications", event, CLOUDEVENTS_JSON,
+                resolved.bearer(), "notify " + data.status() + " certificate " + certificateId
+                        + " for exchange " + data.exchangeId());
     }
 
     /**
@@ -93,7 +81,8 @@ public class Ccm300Notifier implements ProtocolNotifier {
         var resolved = outboundTokens.forCall(call);
         var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data,
                 call.sender(), call.counterpartyBpn());
-        return post(event, resolved.baseUrl(), resolved.bearer(), data.exchangeId(), "fulfillment " + data.status());
+        return outbound.postTo(resolved.baseUrl(), "certificate-notifications", event, CLOUDEVENTS_JSON,
+                resolved.bearer(), "notify fulfillment " + data.status() + " for exchange " + data.exchangeId());
     }
 
     private <T> CloudEvent<T> event(String type, String dataSchema, T data, ParticipantContext sender, String subjectBpn) {
@@ -108,41 +97,5 @@ public class Ccm300Notifier implements ProtocolNotifier {
                 dataSchema,
                 sender.bpn(),
                 data);
-    }
-
-    private boolean post(CloudEvent<?> event, String baseUrl, String bearerToken, String exchangeId, String description) {
-        String json;
-        try {
-            json = mapper.writeValueAsString(event);
-        } catch (RuntimeException e) {
-            LOG.warn("Could not serialize event for exchange {}: {}", exchangeId, e.getMessage());
-            return false;
-        }
-
-        var base = HttpUrl.parse(baseUrl);
-        if (base == null) {
-            LOG.warn("Invalid consumer callback URL '{}'; not notifying", baseUrl);
-            return false;
-        }
-        var url = base.newBuilder().addPathSegment("certificate-notifications").build();
-
-        var builder = new Request.Builder()
-                .url(url)
-                .post(RequestBody.create(json, CLOUDEVENTS_JSON));
-        if (bearerToken != null) {
-            builder.header("Authorization", "Bearer " + bearerToken);
-        }
-        var request = builder.build();
-
-        try (var response = http.execute(request)) {
-            if (response.isSuccessful()) {
-                return true;
-            }
-            LOG.warn("Consumer rejected notification for exchange {}: HTTP {}", exchangeId, response.code());
-            return false;
-        } catch (IOException e) {
-            LOG.warn("Failed to notify consumer for exchange {}: {}", exchangeId, e.getMessage());
-            return false;
-        }
     }
 }

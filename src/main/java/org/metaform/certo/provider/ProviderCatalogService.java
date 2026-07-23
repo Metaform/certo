@@ -49,7 +49,7 @@ import static org.metaform.certo.common.web.ApiException.requireText;
  */
 @Service
 @Transactional
-public class ProviderCatalogService {
+public class ProviderCatalogService implements org.metaform.certo.provider.spi.HeldCertificateLookup {
     /**
      * Search fields the provider supports (CX-0135 §3.3.4); any other field is rejected with 501.
      */
@@ -241,6 +241,14 @@ public class ProviderCatalogService {
     public Certificate resolveCertificate(String contextId, String certificateId) {
         return findCertificate(contextId, certificateId)
                 .orElseThrow(() -> notFound("Unknown certificateId: " + certificateId));
+    }
+
+    /** {@link org.metaform.certo.provider.spi.HeldCertificateLookup}: the tenant's certificate as a record, or empty. */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<CertificateRecord> find(String participantContextId, String certificateId) {
+        return findCertificate(participantContextId, certificateId)
+                .map(certificate -> toRecord(certificate, certificate.latestRevision()));
     }
 
     /**

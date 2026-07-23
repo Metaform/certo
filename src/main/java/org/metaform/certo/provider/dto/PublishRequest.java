@@ -21,6 +21,10 @@ import org.metaform.certo.protocol.ProtocolVersion;
  *       component has to resolve it from the BPN.</li>
  *   <li>{@code flowId} — the live siglet flow for this push. <b>Required</b>; the token and the counterparty
  *       endpoint are resolved from the siglet cache keyed by it.</li>
+ *   <li>{@code idempotencyKey} — optional. A stable key the caller reuses across retries of the same logical
+ *       {@code CREATED} publish: a repeat with the same key reuses the still-live exchange (and re-notifies)
+ *       rather than opening a duplicate; a new key opens a genuinely new exchange. Absent = a fresh exchange
+ *       every call. Ignored for {@code MODIFIED}/{@code WITHDRAWN} (they open no exchange).</li>
  * </ul>
  * The primitives default to {@code false}/{@code 0}, the enums default in the constructor, and blank strings
  * normalize to {@code null}.
@@ -32,7 +36,8 @@ public record PublishRequest(
         int revision,
         String consumerBpn,
         String consumerDid,
-        String flowId) {
+        String flowId,
+        String idempotencyKey) {
 
     public PublishRequest {
         lifecycleStatus = lifecycleStatus != null ? lifecycleStatus : LifecycleStatus.CREATED;
@@ -40,11 +45,12 @@ public record PublishRequest(
         consumerBpn = blankToNull(consumerBpn);
         consumerDid = blankToNull(consumerDid);
         flowId = blankToNull(flowId);
+        idempotencyKey = blankToNull(idempotencyKey);
     }
 
     /** The defaults used for an empty/absent publish body: {@code CREATED}, native version, by reference, latest. */
     public static PublishRequest defaults() {
-        return new PublishRequest(null, null, false, 0, null, null, null);
+        return new PublishRequest(null, null, false, 0, null, null, null, null);
     }
 
     private static String blankToNull(String value) {

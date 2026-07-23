@@ -137,6 +137,25 @@ class Ccm240ConsumerControllerTest {
         assertThat(known.get("revision").asInt()).isEqualTo(2);
     }
 
+    @Test
+    void v240Push_duplicateMessageId_isIdempotent() throws Exception {
+        // A retransmission repeats the messageId; the second delivery must not open a second exchange or bump
+        // the revision (it is deduplicated), and returns the exchange the first delivery opened.
+        var first = mapper.readTree(post("/companycertificate/push",
+                pushBody("88888888-8888-8888-8888-888888888888", "REG-DUP-1")).body());
+        var second = mapper.readTree(post("/companycertificate/push",
+                pushBody("88888888-8888-8888-8888-888888888888", "REG-DUP-1")).body());
+
+        var certificateId = first.get("certificateId").asString();
+        assertThat(second.get("certificateId").asString()).isEqualTo(certificateId);
+        assertThat(second.get("exchangeId").asString()).isEqualTo(first.get("exchangeId").asString());
+
+        // The duplicate did not accrue a revision — the known certificate is still at revision 1.
+        var known = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX
+                + "/consumer/certificates/" + certificateId).body());
+        assertThat(known.get("revision").asInt()).isEqualTo(1);
+    }
+
     /** A minimal v2.4.0 push body for the given message id and (identity-bearing) registration number. */
     private static String pushBody(String messageId, String registrationNumber) {
         var pdf = Base64.getEncoder().encodeToString("PDF-CONTENT".getBytes(StandardCharsets.UTF_8));

@@ -7,8 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- * Supplies the single, shared {@link OkHttpClient} injected into every outbound HTTP client — the v3
- * {@code Ccm300*} adapters and the v2.4.0 {@code Ccm240OutboundClient}. An {@code OkHttpClient} owns a
+ * Supplies the single, shared {@link OkHttpClient} that backs {@code RetryingHttpClient} — the executor every
+ * outbound adapter uses (directly, or via {@code OutboundJsonClient}). An {@code OkHttpClient} owns a
  * connection pool and a dispatcher thread pool and is designed to be shared, so the whole runtime uses one
  * configured instance rather than constructing a fresh (unshared) client per collaborator. Timeouts are
  * configurable via {@code certo.http.*} ({@link HttpClientProperties}).

@@ -2,6 +2,7 @@ package org.metaform.certo.protocol.ccm300.consumer;
 
 import okhttp3.HttpUrl;
 import okhttp3.Request;
+import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
@@ -12,8 +13,6 @@ import org.metaform.certo.consumer.spi.RetrievedCertificate;
 import org.metaform.certo.consumer.spi.RetrievedDocument;
 import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300Certificate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -31,7 +30,6 @@ import java.util.ArrayList;
 @Component
 public class Ccm300Retriever implements CertificateRetriever {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm300Retriever.class);
 
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
@@ -59,7 +57,7 @@ public class Ccm300Retriever implements CertificateRetriever {
         var url = base.newBuilder().addPathSegment("certificates").addPathSegment(certificateId).build();
 
         var builder = new Request.Builder().url(url).header("Accept", "application/json").get();
-        authorize(builder, resolved.bearer());
+        OutboundJsonClient.authorize(builder, resolved.bearer());
 
         CertificateRecord metadata;
         try (var response = http.execute(builder.build())) {
@@ -87,7 +85,7 @@ public class Ccm300Retriever implements CertificateRetriever {
     private RetrievedDocument fetchDocument(HttpUrl base, CertificateDocument ref, String bearer) throws IOException {
         var url = base.newBuilder().addPathSegment("documents").addPathSegment(ref.documentId()).build();
         var builder = new Request.Builder().url(url).get();
-        authorize(builder, bearer);
+        OutboundJsonClient.authorize(builder, bearer);
         var request = builder.build();
         try (var response = http.execute(request)) {
             if (!response.isSuccessful()) {
@@ -103,9 +101,4 @@ public class Ccm300Retriever implements CertificateRetriever {
         }
     }
 
-    private static void authorize(Request.Builder builder, String bearer) {
-        if (bearer != null) {
-            builder.header("Authorization", "Bearer " + bearer);
-        }
-    }
 }

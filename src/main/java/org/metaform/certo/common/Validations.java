@@ -1,7 +1,8 @@
 package org.metaform.certo.common;
 
 /**
- * Validations.
+ * Small argument/invariant guards shared across the codebase — {@code Objects.requireNonNull}-style checks
+ * that throw on a missing required value and return the value so the call can be inlined at assignment.
  */
 public final class Validations {
 

@@ -3,6 +3,7 @@ package org.metaform.certo.protocol.ccm240.consumer;
 import org.metaform.certo.protocol.ccm240.Ccm240OutboundClient;
 import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
+import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;
@@ -14,8 +15,6 @@ import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateStatus;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Contexts;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Error;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Header;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -32,13 +31,12 @@ import java.util.UUID;
 @Component
 public class Ccm240Reporter implements ProtocolAcceptanceReporter {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm240Reporter.class);
 
-    private final Ccm240OutboundClient outbound;
+    private final OutboundJsonClient outbound;
     private final OutboundTokens outboundTokens;
     private final Clock clock;
 
-    public Ccm240Reporter(Ccm240OutboundClient outbound, OutboundTokens outboundTokens, Clock clock) {
+    public Ccm240Reporter(OutboundJsonClient outbound, OutboundTokens outboundTokens, Clock clock) {
         this.outbound = outbound;
         this.outboundTokens = outboundTokens;
         this.clock = clock;
@@ -56,16 +54,17 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
         var resolved = outboundTokens.forCall(call);
         var v240Status = Ccm240Translation.toCcm240StatusValue(status);
         var content = new Ccm240CertificateStatus.Content(
-                certificateId, v240Status, toCcm240Errors(errors), null, null);
+                certificateId, v240Status, toReportedErrors(errors), null, null);
         var receiverBpn = binding != null && binding.peerBpn() != null ? binding.peerBpn() : call.counterpartyBpn();
         var header = new Ccm240Header(Ccm240Contexts.STATUS, UUID.randomUUID().toString(),
                 call.sender().bpn(), receiverBpn,
                 OffsetDateTime.now(clock).toString(), "3.1.0", binding == null ? null : binding.messageId(), null);
-        outbound.post(Ccm240OutboundClient.endpoint(resolved.baseUrl(), "status"),
-                new Ccm240CertificateStatus(header, content), resolved.bearer());
+        outbound.postToUrl(Ccm240OutboundClient.endpoint(resolved.baseUrl(), "status"),
+                new Ccm240CertificateStatus(header, content), Ccm240OutboundClient.JSON, resolved.bearer(),
+                "v2.4.0 status " + status + " for exchange " + exchangeId);
     }
 
-    private static List<Ccm240Error> toCcm240Errors(List<StatusError> errors) {
+    private static List<Ccm240Error> toReportedErrors(List<StatusError> errors) {
         if (errors == null || errors.isEmpty()) {
             return null;
         }

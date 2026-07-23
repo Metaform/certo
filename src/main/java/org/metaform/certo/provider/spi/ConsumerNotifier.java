@@ -15,17 +15,15 @@ public interface ConsumerNotifier {
     /**
      * Notifies a specific {@code target} consumer of a certificate lifecycle event — a provider-initiated
      * push is always explicitly addressed (there is no provider-side "who holds this" registry; interest
-     * lives on the consumer). The {@code target}'s {@code version} selects the adapter and its
-     * {@code callbackUrl} the endpoint (a native-version target uses the configured consumer URL). {@code flowId}
-     * is the live outbound flow the secured adapter resolves the token + endpoint from; {@code null} when
-     * security is disabled. Returns {@code true} on successful delivery.
+     * lives on the consumer). The {@code target}'s {@code version} selects the adapter; the token and endpoint
+     * are resolved from the siglet cache via the {@link OutboundCall}'s flow. Returns {@code true} on
+     * successful delivery.
      */
     boolean notifyLifecycle(ExchangeBinding target, LifecycleStatusData data, OutboundCall call);
 
     /**
-     * Pushes a fulfillment status to the consumer (routed by the exchange's binding). {@code flowId} is the
-     * live outbound flow to deliver over (from which the secured adapter resolves the token + endpoint);
-     * {@code null} when security is disabled. Returns {@code true} on success.
+     * Pushes a fulfillment status to the consumer (routed by the exchange's binding); the {@link OutboundCall}
+     * carries the live flow the adapter resolves the token + endpoint from. Returns {@code true} on success.
      */
     boolean notifyFulfillment(FulfillmentStatusData data, OutboundCall call);
 }

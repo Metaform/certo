@@ -347,6 +347,15 @@ class ProviderCertificateApiTest {
     }
 
     @Test
+    void fulfill_withoutFlowId_isBadRequest() throws Exception {
+        // requireFlow: a management operation that pushes outbound must carry a flowId (checked before the
+        // exchange is loaded), so a missing flowId is a 400 regardless of the exchange id.
+        mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX
+                        + "/certificate-requests/{id}/fulfill", "exch-anything"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void revise_appendsNewRevision_servedAndSearchable() throws Exception {
         seedCertificate("cert-mod-test", "MODTEST");
         var docResult = mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/documents").contentType(MediaType.APPLICATION_JSON)

@@ -104,9 +104,10 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
             Map<String, Object> claims = mapper.readValue(body, Map.class);
             return claims;
         } catch (IOException e) {
-            LOG.debug("Could not reach siglet for token verification: {}", e.getMessage());
-            throw new ApiException(HttpStatus.BAD_GATEWAY,
-                    "Could not reach siglet for token verification: " + e.getMessage());
+            // Log the connectivity detail server-side; return a generic message so internal topology (siglet
+            // host/port) is not disclosed to the (as-yet unauthenticated) external caller.
+            LOG.warn("Could not reach siglet for token verification: {}", e.getMessage());
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Token verification is temporarily unavailable");
         }
     }
 
