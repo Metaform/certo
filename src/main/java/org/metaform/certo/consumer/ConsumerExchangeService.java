@@ -47,7 +47,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
-import static org.metaform.certo.common.TransactionSupport.afterCommit;
+import static org.metaform.certo.common.util.TransactionSupport.afterCommit;
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 
 /**

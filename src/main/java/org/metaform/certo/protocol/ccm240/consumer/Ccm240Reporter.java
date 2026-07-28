@@ -3,7 +3,7 @@ package org.metaform.certo.protocol.ccm240.consumer;
 import org.metaform.certo.protocol.ccm240.Ccm240OutboundClient;
 import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
-import org.metaform.certo.common.OutboundJsonClient;
+import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;

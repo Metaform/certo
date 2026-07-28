@@ -55,7 +55,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.util.UUID.randomUUID;
-import static org.metaform.certo.common.TransactionSupport.afterCommit;
+import static org.metaform.certo.common.util.TransactionSupport.afterCommit;
 import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATION_REQUESTED;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FAILED;

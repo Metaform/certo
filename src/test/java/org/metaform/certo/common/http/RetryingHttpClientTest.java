@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.http;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;

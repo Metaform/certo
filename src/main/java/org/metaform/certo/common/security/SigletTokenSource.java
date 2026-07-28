@@ -2,7 +2,7 @@ package org.metaform.certo.common.security;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import okhttp3.Request;
-import org.metaform.certo.common.RetryingHttpClient;
+import org.metaform.certo.common.http.RetryingHttpClient;
 import org.metaform.certo.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;

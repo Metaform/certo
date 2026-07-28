@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.http;
 
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;

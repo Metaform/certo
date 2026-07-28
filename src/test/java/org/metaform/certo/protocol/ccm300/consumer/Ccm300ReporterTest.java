@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.metaform.certo.MockSiglet;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.common.OutboundJsonClient;
+import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.common.pc.ParticipantContext;

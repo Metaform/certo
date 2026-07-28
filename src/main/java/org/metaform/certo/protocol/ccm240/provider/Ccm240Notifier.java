@@ -2,7 +2,7 @@ package org.metaform.certo.protocol.ccm240.provider;
 
 import org.metaform.certo.protocol.ccm240.Ccm240OutboundClient;
 
-import org.metaform.certo.common.OutboundJsonClient;
+import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.FulfillmentStatusData;

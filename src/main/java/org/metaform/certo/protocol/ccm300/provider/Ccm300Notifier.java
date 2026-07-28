@@ -1,7 +1,7 @@
 package org.metaform.certo.protocol.ccm300.provider;
 
 import okhttp3.MediaType;
-import org.metaform.certo.common.OutboundJsonClient;
+import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.FulfillmentStatusData;

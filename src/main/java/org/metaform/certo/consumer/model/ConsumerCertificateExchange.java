@@ -9,7 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.jetbrains.annotations.NotNull;
-import org.metaform.certo.common.Validations;
+import org.metaform.certo.common.util.Validations;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;

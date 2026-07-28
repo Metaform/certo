@@ -2,8 +2,8 @@ package org.metaform.certo.protocol.ccm300.consumer;
 
 import okhttp3.HttpUrl;
 import okhttp3.Request;
-import org.metaform.certo.common.OutboundJsonClient;
-import org.metaform.certo.common.RetryingHttpClient;
+import org.metaform.certo.common.http.OutboundJsonClient;
+import org.metaform.certo.common.http.RetryingHttpClient;
 import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.security.OutboundCall;

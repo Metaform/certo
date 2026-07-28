@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.util;
 
 /**
  * Small argument/invariant guards shared across the codebase — {@code Objects.requireNonNull}-style checks

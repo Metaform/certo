@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.util;
 
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;

@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.util;
 
 import org.junit.jupiter.api.Test;
 

@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

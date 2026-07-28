@@ -1,4 +1,4 @@
-package org.metaform.certo.common;
+package org.metaform.certo.common.http;
 
 import dev.failsafe.Failsafe;
 import dev.failsafe.FailsafeException;

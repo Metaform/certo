@@ -1,6 +1,6 @@
 package org.metaform.certo.provider;
 
-import org.metaform.certo.common.CertoProperties;
+import org.metaform.certo.common.config.CertoProperties;
 import org.metaform.certo.common.model.CertificateIssuer;
 import org.metaform.certo.common.model.CertificateValidator;
 import org.metaform.certo.common.model.CertifiedLocation;

@@ -3,7 +3,7 @@ package org.metaform.certo.consumer;
 import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
-import org.metaform.certo.common.RetryingHttpClient;
+import org.metaform.certo.common.http.RetryingHttpClient;
 import org.metaform.certo.consumer.spi.InboundCcmEvent;
 import org.metaform.certo.consumer.spi.InboundNotificationListener;
 import org.slf4j.Logger;
