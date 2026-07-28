@@ -34,14 +34,14 @@ public class DispatchingAcceptanceReporter implements AcceptanceReporter {
     }
 
     @Override
-    public void report(String exchangeId,
-                       String certificateId,
-                       AcceptanceStatus status,
-                       OutboundCall call,
-                       List<StatusError> errors) {
+    public boolean report(String exchangeId,
+                          String certificateId,
+                          AcceptanceStatus status,
+                          OutboundCall call,
+                          List<StatusError> errors) {
         var binding = bindings.resolve(exchangeId, CounterpartyRole.PROVIDER).orElse(null);
         var version = binding != null ? binding.version() : ProtocolVersion.NATIVE;
         var reporter = byVersion.getOrDefault(version, byVersion.get(ProtocolVersion.NATIVE));
-        reporter.report(binding, exchangeId, certificateId, status, errors, call);
+        return reporter.report(binding, exchangeId, certificateId, status, errors, call);
     }
 }

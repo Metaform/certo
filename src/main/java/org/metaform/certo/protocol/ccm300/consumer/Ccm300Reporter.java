@@ -50,11 +50,12 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
     }
 
     /**
-     * Sends an acceptance status event for the given exchange to the provider (best-effort).
+     * Sends an acceptance status event for the given exchange to the provider (best-effort). Returns
+     * {@code true} on successful delivery.
      */
     @Override
-    public void report(ExchangeBinding binding, String exchangeId, String certificateId,
-                       AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
+    public boolean report(ExchangeBinding binding, String exchangeId, String certificateId,
+                          AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
         var data = new AcceptanceStatusData(exchangeId, certificateId, status, errors);
         var event = new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
@@ -72,7 +73,7 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
                 data);
 
         var resolved = outboundTokenCache.forCall(call);
-        outbound.postTo(resolved.baseUrl(), "certificate-acceptance-notifications", event, CLOUDEVENTS_JSON,
+        return outbound.postTo(resolved.baseUrl(), "certificate-acceptance-notifications", event, CLOUDEVENTS_JSON,
                 resolved.bearer(), "report acceptance " + status + " for exchange " + exchangeId);
     }
 

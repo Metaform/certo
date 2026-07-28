@@ -7,6 +7,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -51,6 +52,24 @@ class ParticipantContextControllerTest {
         // Same id, different did -> the id clash is a conflict.
         mvc.perform(create("tenant-dup", "BPNL000000000P03", "urn:bpn:BPNL000000000P03", "did:web:pctx-dup-2"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void list_returnsAllRegisteredContexts() throws Exception {
+        mvc.perform(create("tenant-list-1", "BPNL000000000P05", "urn:bpn:BPNL000000000P05", "did:web:pctx-list-1"))
+                .andExpect(status().isCreated());
+        mvc.perform(create("tenant-list-2", "BPNL000000000P06", "urn:bpn:BPNL000000000P06", "did:web:pctx-list-2"))
+                .andExpect(status().isCreated());
+
+        // GET on the collection root returns a JSON array including every registered context (both just-created
+        // tenants and the seeded provider/consumer ones).
+        mvc.perform(get("/management/v1/participant-contexts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[?(@.participantContextId=='tenant-list-1')].did")
+                        .value(org.hamcrest.Matchers.hasItem("did:web:pctx-list-1")))
+                .andExpect(jsonPath("$[?(@.participantContextId=='tenant-list-2')].did")
+                        .value(org.hamcrest.Matchers.hasItem("did:web:pctx-list-2")));
     }
 
     @Test

@@ -40,6 +40,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
@@ -99,7 +100,11 @@ public class ConsumerExchangeService {
         this.contextStore = contextStore;
         this.catalog = catalog;
         this.listeners = listeners;
+        // REQUIRES_NEW: this template is used from an afterCommit callback (the acceptance-report mark), where
+        // the outer transaction has already committed; a plain REQUIRED template would join that completed
+        // transaction and never flush the change. A fresh transaction commits the mark on its own.
         this.tx = new TransactionTemplate(txManager);
+        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
@@ -306,11 +311,13 @@ public class ConsumerExchangeService {
         }
         var call = outboundCall(exchange, flowId);
         // Report once the acceptance is committed, so the DB connection is not held across the outbound call;
-        // on success mark it reported (in its own transaction) so the reconciliation query stops surfacing it.
+        // mark it reported (in its own transaction) ONLY if delivery succeeded, so a lost report stays surfaced
+        // by the reconciliation query ({@link #queryExchanges}) for a re-drive.
         afterCommit(() -> {
-            acceptanceClient.report(exchangeId, exchange.certificateId(), status, call, errors);
-            tx.executeWithoutResult(_ -> exchangeStore.findById(exchangeId)
-                    .ifPresent(ConsumerCertificateExchange::markAcceptanceReported));
+            if (acceptanceClient.report(exchangeId, exchange.certificateId(), status, call, errors)) {
+                tx.executeWithoutResult(_ -> exchangeStore.findById(exchangeId)
+                        .ifPresent(ConsumerCertificateExchange::markAcceptanceReported));
+            }
         });
     }
 

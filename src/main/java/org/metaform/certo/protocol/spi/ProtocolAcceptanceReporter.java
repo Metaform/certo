@@ -24,12 +24,13 @@ public interface ProtocolAcceptanceReporter {
     /**
      * Reports the acceptance outcome to the provider. {@code binding} is null for the native version.
      * {@code call} carries the sender participant context, the provider (counterparty) BPN, and the live
-     * outbound flow the secured adapter resolves its token + endpoint from.
+     * outbound flow the secured adapter resolves its token + endpoint from. Returns {@code true} on successful
+     * delivery (a {@code 2xx}); {@code false} on any delivery failure (never throws).
      */
-    void report(ExchangeBinding binding,
-                String exchangeId,
-                String certificateId,
-                AcceptanceStatus status,
-                List<StatusError> errors,
-                OutboundCall call);
+    boolean report(ExchangeBinding binding,
+                   String exchangeId,
+                   String certificateId,
+                   AcceptanceStatus status,
+                   List<StatusError> errors,
+                   OutboundCall call);
 }

@@ -18,7 +18,9 @@ public interface AcceptanceReporter {
     /**
      * Reports the consumer's acceptance outcome for an exchange to the provider (best-effort). {@code call}
      * carries the sender participant context, the provider (counterparty) BPN, and the live outbound flow the
-     * secured adapter resolves its token + endpoint from.
+     * secured adapter resolves its token + endpoint from. Returns {@code true} if the report was delivered
+     * (a {@code 2xx}); {@code false} on any delivery failure — never throws — so the caller can leave the
+     * exchange flagged for a reconciliation re-drive rather than marking it reported.
      */
-    void report(String exchangeId, String certificateId, AcceptanceStatus status, OutboundCall call, List<StatusError> errors);
+    boolean report(String exchangeId, String certificateId, AcceptanceStatus status, OutboundCall call, List<StatusError> errors);
 }

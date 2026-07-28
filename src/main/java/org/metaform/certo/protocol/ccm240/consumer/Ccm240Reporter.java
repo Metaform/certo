@@ -48,8 +48,8 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
     }
 
     @Override
-    public void report(ExchangeBinding binding, String exchangeId, String certificateId,
-                       AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
+    public boolean report(ExchangeBinding binding, String exchangeId, String certificateId,
+                          AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
         // Token + provider endpoint from the siglet cache (keyed by the flow).
         var resolved = outboundTokenCache.forCall(call);
         var v240Status = Ccm240Translation.toCcm240StatusValue(status);
@@ -59,7 +59,7 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
         var header = new Ccm240Header(Ccm240Contexts.STATUS, UUID.randomUUID().toString(),
                 call.sender().bpn(), receiverBpn,
                 OffsetDateTime.now(clock).toString(), "3.1.0", binding == null ? null : binding.messageId(), null);
-        outbound.postToUrl(Ccm240OutboundClient.endpoint(resolved.baseUrl(), "status"),
+        return outbound.postToUrl(Ccm240OutboundClient.endpoint(resolved.baseUrl(), "status"),
                 new Ccm240CertificateStatus(header, content), Ccm240OutboundClient.JSON, resolved.bearer(),
                 "v2.4.0 status " + status + " for exchange " + exchangeId);
     }
