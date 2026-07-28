@@ -2,7 +2,7 @@ package org.metaform.certo.provider.store;
 
 import jakarta.persistence.criteria.Predicate;
 import org.metaform.certo.provider.dto.CertificateQuery;
-import org.metaform.certo.provider.model.Certificate;
+import org.metaform.certo.provider.domain.Certificate;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;

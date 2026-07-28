@@ -1,5 +1,9 @@
 package org.metaform.certo.protocol;
 
+import org.metaform.certo.protocol.domain.ExchangeBinding;
+import org.metaform.certo.protocol.spi.ProtocolNotifier;
+import org.metaform.certo.protocol.store.ExchangeBindingStore;
+
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.security.OutboundCall;

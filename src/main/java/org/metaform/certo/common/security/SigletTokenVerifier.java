@@ -5,7 +5,7 @@ import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import org.metaform.certo.common.http.RetryingHttpClient;
-import org.metaform.certo.common.pc.ParticipantContextStore;
+import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.common.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

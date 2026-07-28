@@ -9,8 +9,8 @@ import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.common.security.OutboundTokenCache;
-import org.metaform.certo.protocol.ExchangeBinding;
-import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
+import org.metaform.certo.protocol.domain.ExchangeBinding;
+import org.metaform.certo.protocol.spi.ProtocolAcceptanceReporter;
 import org.metaform.certo.protocol.ProtocolVersion;
 import org.springframework.stereotype.Component;
 

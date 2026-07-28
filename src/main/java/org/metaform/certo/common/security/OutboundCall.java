@@ -1,6 +1,6 @@
 package org.metaform.certo.common.security;
 
-import org.metaform.certo.common.pc.ParticipantContext;
+import org.metaform.certo.common.pc.domain.ParticipantContext;
 
 /**
  * The tenant context for one outbound CCM call, threaded explicitly (no ambient state): the {@code sender}

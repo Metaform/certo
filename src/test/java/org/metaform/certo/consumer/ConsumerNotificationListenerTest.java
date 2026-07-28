@@ -1,11 +1,12 @@
 package org.metaform.certo.consumer;
 
+import org.metaform.certo.testsupport.MockMvcTokenConfig;
+
 import org.junit.jupiter.api.Test;
 import org.metaform.certo.consumer.spi.InboundCcmEvent;
 import org.metaform.certo.consumer.spi.InboundNotificationListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.metaform.certo.MockMvcTokenConfig;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;

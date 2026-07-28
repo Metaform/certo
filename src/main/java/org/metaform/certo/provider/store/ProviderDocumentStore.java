@@ -1,6 +1,6 @@
 package org.metaform.certo.provider.store;
 
-import org.metaform.certo.provider.model.Document;
+import org.metaform.certo.provider.domain.Document;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**

@@ -1,6 +1,6 @@
 package org.metaform.certo.consumer.store;
 
-import org.metaform.certo.consumer.model.ConsumerCertificateExchange;
+import org.metaform.certo.consumer.domain.ConsumerCertificateExchange;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;

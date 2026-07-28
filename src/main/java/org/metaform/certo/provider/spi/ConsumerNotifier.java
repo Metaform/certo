@@ -3,7 +3,7 @@ package org.metaform.certo.provider.spi;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.protocol.ExchangeBinding;
+import org.metaform.certo.protocol.domain.ExchangeBinding;
 
 /**
  * Outbound port for provider &rarr; consumer notifications. The {@code @Primary} implementation

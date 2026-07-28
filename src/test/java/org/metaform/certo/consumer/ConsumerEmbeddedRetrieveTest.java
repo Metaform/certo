@@ -1,11 +1,12 @@
 package org.metaform.certo.consumer;
 
+import org.metaform.certo.testsupport.MockMvcTokenConfig;
+import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.TestTenants;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.metaform.certo.MockMvcTokenConfig;
-import org.metaform.certo.MockSiglet;
-import org.metaform.certo.TestTenants;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;

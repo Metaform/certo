@@ -13,7 +13,7 @@ import org.metaform.certo.provider.dto.CertificateQuery;
 import org.metaform.certo.provider.dto.CertificateRequest;
 import org.metaform.certo.provider.dto.CertificateRequestResponse;
 import org.metaform.certo.provider.dto.CertificateRequestStatus;
-import org.metaform.certo.provider.model.Document;
+import org.metaform.certo.provider.domain.Document;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

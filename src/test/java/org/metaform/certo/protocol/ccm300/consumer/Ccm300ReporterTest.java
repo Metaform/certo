@@ -1,18 +1,19 @@
 package org.metaform.certo.protocol.ccm300.consumer;
 
+import org.metaform.certo.testsupport.MockSiglet;
+
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.metaform.certo.MockSiglet;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.security.OutboundCall;
 import org.metaform.certo.common.security.OutboundTokenCache;
-import org.metaform.certo.common.pc.ParticipantContext;
+import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.testsupport.InMemoryParticipantContextStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

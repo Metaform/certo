@@ -1,15 +1,16 @@
 package org.metaform.certo.consumer;
 
+import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.MockSigletConfig;
+import org.metaform.certo.testsupport.TestTenants;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.metaform.certo.MockSiglet;
-import org.metaform.certo.MockSigletConfig;
-import org.metaform.certo.TestTenants;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LocationRole;
-import org.metaform.certo.provider.model.Certificate;
+import org.metaform.certo.provider.domain.Certificate;
 import org.metaform.certo.provider.model.CertificateRevision;
-import org.metaform.certo.provider.model.Document;
+import org.metaform.certo.provider.domain.Document;
 import org.metaform.certo.provider.store.ProviderCertificateStore;
 import org.metaform.certo.provider.store.ProviderDocumentStore;
 import org.springframework.beans.factory.annotation.Autowired;

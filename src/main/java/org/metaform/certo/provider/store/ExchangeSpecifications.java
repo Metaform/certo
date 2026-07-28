@@ -3,7 +3,7 @@ package org.metaform.certo.provider.store;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import org.metaform.certo.common.model.FulfillmentStatus;
-import org.metaform.certo.provider.model.ProviderCertificateExchange;
+import org.metaform.certo.provider.domain.ProviderCertificateExchange;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;

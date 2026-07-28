@@ -1,7 +1,7 @@
 package org.metaform.certo.testsupport;
 
-import org.metaform.certo.common.pc.ParticipantContext;
-import org.metaform.certo.common.pc.ParticipantContextStore;
+import org.metaform.certo.common.pc.domain.ParticipantContext;
+import org.metaform.certo.common.pc.store.ParticipantContextStore;
 
 import java.util.Collection;
 import java.util.List;

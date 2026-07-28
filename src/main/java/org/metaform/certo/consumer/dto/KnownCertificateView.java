@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LifecycleStatus;
-import org.metaform.certo.consumer.model.KnownCertificate;
+import org.metaform.certo.consumer.domain.KnownCertificate;
 
 import java.time.LocalDate;
 import java.util.List;

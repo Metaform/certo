@@ -1,5 +1,8 @@
 package org.metaform.certo;
 
+import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.MockSigletConfig;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

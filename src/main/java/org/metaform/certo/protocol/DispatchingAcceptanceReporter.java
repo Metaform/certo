@@ -1,5 +1,8 @@
 package org.metaform.certo.protocol;
 
+import org.metaform.certo.protocol.spi.ProtocolAcceptanceReporter;
+import org.metaform.certo.protocol.store.ExchangeBindingStore;
+
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;

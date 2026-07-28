@@ -1,6 +1,6 @@
 package org.metaform.certo.provider.store;
 
-import org.metaform.certo.provider.model.Certificate;
+import org.metaform.certo.provider.domain.Certificate;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 

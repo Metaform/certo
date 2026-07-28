@@ -4,15 +4,15 @@ import org.metaform.certo.protocol.ccm240.Ccm240Envelope;
 import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import org.metaform.certo.common.cloudevent.ProcessedEventStore;
+import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
 import org.metaform.certo.common.security.SecurityTokenInterceptor;
 import org.metaform.certo.common.security.VerifiedRequestContext;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.ConsumerCatalogService;
 import org.metaform.certo.consumer.ConsumerExchangeService;
 import org.metaform.certo.protocol.CounterpartyRole;
-import org.metaform.certo.protocol.ExchangeBinding;
-import org.metaform.certo.protocol.ExchangeBindingStore;
+import org.metaform.certo.protocol.domain.ExchangeBinding;
+import org.metaform.certo.protocol.store.ExchangeBindingStore;
 import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateAvailable;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificatePush;

@@ -1,13 +1,14 @@
 package org.metaform.certo.protocol.ccm240;
 
+import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.MockSigletConfig;
+
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.metaform.certo.MockSiglet;
-import org.metaform.certo.MockSigletConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;

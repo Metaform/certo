@@ -1,5 +1,7 @@
 package org.metaform.certo.common.cloudevent;
 
+import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

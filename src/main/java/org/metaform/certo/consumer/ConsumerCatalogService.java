@@ -2,7 +2,7 @@ package org.metaform.certo.consumer;
 
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.web.ApiException;
-import org.metaform.certo.consumer.model.KnownCertificate;
+import org.metaform.certo.consumer.domain.KnownCertificate;
 import org.metaform.certo.consumer.store.ConsumerCertificateStore;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

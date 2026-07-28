@@ -3,7 +3,7 @@ package org.metaform.certo.consumer.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.consumer.model.ConsumerCertificateExchange;
+import org.metaform.certo.consumer.domain.ConsumerCertificateExchange;
 
 import java.util.List;
 

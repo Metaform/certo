@@ -1,6 +1,6 @@
 package org.metaform.certo.consumer.store;
 
-import org.metaform.certo.consumer.model.KnownCertificate;
+import org.metaform.certo.consumer.domain.KnownCertificate;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
