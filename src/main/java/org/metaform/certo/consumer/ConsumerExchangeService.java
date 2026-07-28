@@ -358,7 +358,7 @@ public class ConsumerExchangeService {
             // the receiving tenant (the verified audience) and the provider (the verified caller) so a later
             // management-driven retrieve/accept can address the right provider on behalf of the right tenant.
             var exchange = ensureExchange(data.exchangeId(), cert.certificateId(), cert.revision(),
-                    requestContext.participantContextId(), requestContext.bpnOrSubject(),
+                    requestContext.participantContextId(), requestContext.bpn(),
                     requestContext.subject());
             if (cert.hasEmbeddedContent()) {
                 exchange.attachEmbeddedContent(embeddedToRetrieved(cert));
@@ -369,11 +369,15 @@ public class ConsumerExchangeService {
         // Record + emit only. A provider-initiated push has no live flowId, so the consumer never reacts
         // inline; a plugged-in client drives retrieve/accept via the management API with its own flowId.
         emit(new InboundCcmEvent(InboundCcmEvent.Kind.LIFECYCLE, data.exchangeId(), cert.certificateId(),
-                cert.revision(), data.status().name(), requestContext.bpnOrSubject()));
+                cert.revision(), data.status().name(), requestContext.bpn()));
     }
 
-    private ConsumerCertificateExchange ensureExchange(String exchangeId, String certificateId, Integer revision,
-                                                       String contextId, String providerBpn, String providerDid) {
+    private ConsumerCertificateExchange ensureExchange(String exchangeId,
+                                                       String certificateId,
+                                                       Integer revision,
+                                                       String contextId,
+                                                       String providerBpn,
+                                                       String providerDid) {
         // Runs inside the caller's transaction; a concurrent insert of the same id fails the primary-key
         // constraint (that transaction rolls back and retries), so no JVM lock is needed.
         return exchangeStore.findById(exchangeId).map(existing -> {
@@ -436,7 +440,7 @@ public class ConsumerExchangeService {
         exchangeStore.save(exchange);
         // Record + emit only; a plugged-in client drives retrieve/accept via management with its own flowId.
         emit(new InboundCcmEvent(InboundCcmEvent.Kind.FULFILLMENT, exchange.exchangeId(), exchange.certificateId(),
-                exchange.revision(), data.status().name(), requestContext.bpnOrSubject()));
+                exchange.revision(), data.status().name(), requestContext.bpn()));
     }
 
     /**

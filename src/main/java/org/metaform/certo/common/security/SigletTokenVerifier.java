@@ -69,7 +69,11 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
         if (subject == null) {
             throw ApiException.unauthorized("Token is missing a subject (sub)");
         }
-        return new VerifiedRequestContext(subject, context.participantContextId(), claims);
+        var bpn = claims.get("bpn") instanceof String b && !b.isBlank() ? b : null;
+        if (bpn == null) {
+            throw ApiException.unauthorized("Token is missing a bpn claim");
+        }
+        return new VerifiedRequestContext(subject, bpn, context.participantContextId(), claims);
     }
 
     /** Reads the token's audience locally (no signature check) to tell siglet which tenant DID it targets. */

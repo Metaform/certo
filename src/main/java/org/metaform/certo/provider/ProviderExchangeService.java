@@ -125,7 +125,7 @@ public class ProviderExchangeService {
         // the token audience, so it is non-null and known to exist — no re-check needed.
         var contextId = requestContext.participantContextId();
         // The counterparty's BPN and DID both come from the verified token — never resolved later.
-        var counterparty = requestContext.bpnOrSubject();
+        var counterparty = requestContext.bpn();
         var counterpartyDid = requestContext.subject();
         var requestedLocations = request.certifiedLocations();
         // "req:"-namespaced so a consumer-open key can never collide with a provider-publish key in the shared

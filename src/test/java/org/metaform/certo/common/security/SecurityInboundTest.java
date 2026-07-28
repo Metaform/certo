@@ -116,6 +116,13 @@ class SecurityInboundTest {
     }
 
     @Test
+    void protocolCall_withoutBpnClaim_isUnauthorized() throws Exception {
+        // A CCM participant is identified on the wire by its BPN; a verified token that omits the bpn claim is
+        // not acceptable for a protocol call (the BPN must always be conveyable to the counterparty).
+        assertThat(post("/certificate-requests", REQUEST, tokenWithoutBpn(AUDIENCE)).statusCode()).isEqualTo(401);
+    }
+
+    @Test
     void managementCall_isNotTokenProtected() throws Exception {
         // No token, yet the management surface answers normally (never siglet-secured).
         assertThat(post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query", "{}", null).statusCode()).isEqualTo(200);
@@ -123,8 +130,8 @@ class SecurityInboundTest {
 
     @Test
     void verifiedCaller_becomesExchangeCounterparty() throws Exception {
-        // A request under a valid token opens a pending exchange whose counterparty is the verified caller
-        // (the token subject), not the configured BPN.
+        // A request under a valid token opens a pending exchange whose counterparty identity comes from the
+        // verified token — its DID (sub) drives correlation, and its bpn claim is stored as the conveyed BPN.
         assertThat(post("/certificate-requests", "{\"certificateType\":\"P5-IDENTITY-TYPE\"}",
                 token(SIGNING_KEY, AUDIENCE)).statusCode()).isEqualTo(202);
 
@@ -132,7 +139,8 @@ class SecurityInboundTest {
                 "{\"certificateType\":\"P5-IDENTITY-TYPE\"}", null);
         var items = mapper.readTree(page.body()).get("items");
         assertThat(items.size()).isEqualTo(1);
-        assertThat(items.get(0).get("consumerBpn").asString()).isEqualTo("did:web:consumer.test");
+        // The stored counterparty BPN is the token's bpn claim (never the DID) — no more bpn/DID conflation.
+        assertThat(items.get(0).get("consumerBpn").asString()).isEqualTo("BPNL0000000002CD");
     }
 
     private static final String REQUEST = "{\"certificateType\":\"SEC-TEST-TYPE\"}";
@@ -148,16 +156,27 @@ class SecurityInboundTest {
     }
 
     private static String token(OctetKeyPair key, String audience) {
+        return token(key, audience, "BPNL0000000002CD");
+    }
+
+    /** A validly-signed token that carries no bpn claim (for the missing-bpn rejection case). */
+    private static String tokenWithoutBpn(String audience) {
+        return token(SIGNING_KEY, audience, null);
+    }
+
+    private static String token(OctetKeyPair key, String audience, String bpn) {
         try {
-            var claims = new JWTClaimsSet.Builder()
+            var builder = new JWTClaimsSet.Builder()
                     .subject("did:web:consumer.test")
                     .audience(audience)
                     .issuer("siglet")
                     .issueTime(new Date())
-                    .expirationTime(Date.from(Instant.now().plusSeconds(300)))
-                    .build();
+                    .expirationTime(Date.from(Instant.now().plusSeconds(300)));
+            if (bpn != null) {
+                builder.claim("bpn", bpn);
+            }
             var jwt = new SignedJWT(
-                    new JWSHeader.Builder(JWSAlgorithm.EdDSA).keyID(key.getKeyID()).build(), claims);
+                    new JWSHeader.Builder(JWSAlgorithm.EdDSA).keyID(key.getKeyID()).build(), builder.build());
             jwt.sign(new Ed25519Signer(key));
             return jwt.serialize();
         } catch (Exception e) {

@@ -93,7 +93,11 @@ public class MockSiglet {
                     ? null : claims.getAudience().get(0);
             var context = contexts.findByDid(audience)
                     .orElseThrow(() -> ApiException.unauthorized("Token audience is not a known participant context"));
-            return new VerifiedRequestContext(claims.getSubject(), context.participantContextId(), claims.getClaims());
+            var bpn = claims.getClaim("bpn") instanceof String b && !b.isBlank() ? b : null;
+            if (bpn == null) {
+                throw ApiException.unauthorized("Token is missing a bpn claim");
+            }
+            return new VerifiedRequestContext(claims.getSubject(), bpn, context.participantContextId(), claims.getClaims());
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {

@@ -140,6 +140,7 @@ class SecurityRoundTripTest {
             var claims = new JWTClaimsSet.Builder()
                     .subject("did:web:consumer.test")
                     .audience("did:web:provider")
+                    .claim("bpn", "BPNL0000000002CD")
                     .issuer("siglet")
                     .issueTime(new Date())
                     .expirationTime(Date.from(Instant.now().plusSeconds(300)))

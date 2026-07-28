@@ -32,7 +32,7 @@ class ProviderRequestIdempotencyTest {
     ProviderCertificateExchangeStore exchangeStore;
 
     private static VerifiedRequestContext consumer() {
-        return new VerifiedRequestContext("did:web:consumer", "pctx-seed-provider",
+        return new VerifiedRequestContext("did:web:consumer", "BPNL0000000002CD", "pctx-seed-provider",
                 Map.of("bpn", "BPNL0000000002CD"));
     }
 
@@ -61,7 +61,7 @@ class ProviderRequestIdempotencyTest {
         var request = new CertificateRequest("ISO-DEDUP-D", List.of());
         var mine = exchanges.requestCertificate(request, consumer());
         var theirs = exchanges.requestCertificate(request,
-                new VerifiedRequestContext("did:web:other", "pctx-seed-provider", Map.of("bpn", "BPNL0000000009ZZ")));
+                new VerifiedRequestContext("did:web:other", "BPNL0000000009ZZ", "pctx-seed-provider", Map.of("bpn", "BPNL0000000009ZZ")));
 
         assertThat(theirs.exchangeId()).isNotEqualTo(mine.exchangeId());
     }
