@@ -197,7 +197,7 @@ public class ProviderExchangeService {
                 .distinct()
                 .sorted()
                 .toList();
-        return certificateType + ' ' + String.join(",", normalized);
+        return certificateType + ' ' + String.join(",", normalized);
     }
 
     /**

@@ -73,7 +73,9 @@ public class KnownCertificate {
         this.certificateType = certificateType;
         this.validFrom = validFrom;
         this.validUntil = validUntil;
-        this.certifiedLocations = certifiedLocations;
+        // Own a mutable copy: apply() mutates this collection in place, so it must not alias a caller's
+        // immutable list (e.g. List.of(...)).
+        this.certifiedLocations = certifiedLocations == null ? null : new ArrayList<>(certifiedLocations);
     }
 
     /** Applies a lifecycle update; null fields are left unchanged (e.g. WITHDRAWN carries id only). */
