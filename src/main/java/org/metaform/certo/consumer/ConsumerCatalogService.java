@@ -1,6 +1,5 @@
 package org.metaform.certo.consumer;
 
-import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.model.KnownCertificate;
@@ -52,7 +51,7 @@ public class ConsumerCatalogService {
      * same certificate gets its own row rather than mutating this one.
      */
     public void recordKnownCertificate(LifecycleStatusData data, String contextId) {
-        CertificateRecord c = data.certificate();
+        var c = data.certificate();
         certificateStore.findByParticipantContextIdAndCertificateId(contextId, c.certificateId())
                 .ifPresentOrElse(
                         known -> {

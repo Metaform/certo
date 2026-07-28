@@ -33,13 +33,12 @@ import java.util.ArrayList;
  */
 @RestController
 public class Ccm300ProviderController {
+    private final ProviderCatalogService catalogService;
+    private final ProviderExchangeService exchangeService;
 
-    private final ProviderCatalogService catalog;
-    private final ProviderExchangeService exchanges;
-
-    public Ccm300ProviderController(ProviderCatalogService catalog, ProviderExchangeService exchanges) {
-        this.catalog = catalog;
-        this.exchanges = exchanges;
+    public Ccm300ProviderController(ProviderCatalogService catalogService, ProviderExchangeService exchangeService) {
+        this.catalogService = catalogService;
+        this.exchangeService = exchangeService;
     }
 
     /** {@code POST /certificate-requests} — open a consumer-initiated exchange (CX-0135 &sect;3.3.1). */
@@ -50,7 +49,7 @@ public class Ccm300ProviderController {
             @Valid @RequestBody CertificateRequest request,
             @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
             VerifiedRequestContext requestContext) {
-        return ResponseEntity.accepted().body(exchanges.requestCertificate(request, requestContext));
+        return ResponseEntity.accepted().body(exchangeService.requestCertificate(request, requestContext));
     }
 
     /** {@code GET /certificate-requests/{id}} — poll fulfillment status (CX-0135 &sect;3.3.1.1). */
@@ -58,7 +57,7 @@ public class Ccm300ProviderController {
     public CertificateRequestStatus getRequestStatus(@PathVariable("id") String exchangeId,
             @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
             VerifiedRequestContext requestContext) {
-        return exchanges.getRequestStatus(requestContext.participantContextId(), exchangeId);
+        return exchangeService.getRequestStatus(requestContext.participantContextId(), exchangeId);
     }
 
     /**
@@ -71,7 +70,7 @@ public class Ccm300ProviderController {
     public Object getCertificate(@PathVariable("id") String certificateId,
             @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
             VerifiedRequestContext requestContext) {
-        var result = catalog.getCertificate(requestContext.participantContextId(), certificateId);
+        var result = catalogService.getCertificate(requestContext.participantContextId(), certificateId);
         // Serialize the neutral domain record through the v3 wire codec; leave the withdrawn body as-is.
         return result instanceof CertificateRecord record ? Ccm300CertificateCodec.toWire(record) : result;
     }
@@ -84,7 +83,7 @@ public class Ccm300ProviderController {
     public ResponseEntity<byte[]> getDocument(@PathVariable("id") String documentId,
             @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
             VerifiedRequestContext requestContext) {
-        Document document = catalog.getDocument(documentId, requestContext.participantContextId());
+        Document document = catalogService.getDocument(documentId, requestContext.participantContextId());
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, document.mediaType())
                 .body(document.content());
@@ -99,7 +98,7 @@ public class Ccm300ProviderController {
     public ResponseEntity<Void> postAcceptance(@RequestBody byte[] body,
             @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
             VerifiedRequestContext requestContext) {
-        exchanges.recordAcceptance(body, requestContext);
+        exchangeService.recordAcceptance(body, requestContext);
         return ResponseEntity.noContent().build();
     }
 
@@ -117,7 +116,7 @@ public class Ccm300ProviderController {
                                     @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
                                     VerifiedRequestContext requestContext,
                                     UriComponentsBuilder uriBuilder) {
-        var page = catalog.search(requestContext.participantContextId(), query, limit, cursor);
+        var page = catalogService.search(requestContext.participantContextId(), query, limit, cursor);
         var builder = ResponseEntity.ok();
         var link = buildLinkHeader(page, limit, uriBuilder);
         if (link != null) {

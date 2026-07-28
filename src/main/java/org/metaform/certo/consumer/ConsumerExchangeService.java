@@ -64,7 +64,9 @@ public class ConsumerExchangeService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ConsumerExchangeService.class);
 
-    /** Upper bound on a single reconciliation-query result set (the client acts on a batch, then re-queries). */
+    /**
+     * Upper bound on a single reconciliation-query result set (the client acts on a batch, then re-queries).
+     */
     private static final int MAX_QUERY_RESULTS = 500;
 
     private final ConsumerCertificateExchangeStore exchangeStore;
@@ -135,7 +137,9 @@ public class ConsumerExchangeService {
         return exchange;
     }
 
-    /** Polls the provider for the latest fulfillment status of a consumer-initiated request (CX-0135 &sect;3.3.1.1). */
+    /**
+     * Polls the provider for the latest fulfillment status of a consumer-initiated request (CX-0135 &sect;3.3.1.1).
+     */
     // Non-transactional: load the exchange, poll the provider outside any transaction, then save the mirrored
     // status — so no DB connection is held across the outbound call.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -239,7 +243,7 @@ public class ConsumerExchangeService {
      * Consumer-side reconciliation query: the exchanges awaiting the caller's action — {@code FULFILLED} but
      * not yet accepted (outstanding retrieve/accept), or accepted but not confirmed reported (needs
      * re-reporting). The safety net for a dropped notification callback or a lost acceptance report. Pass
-     * {@code awaitingAcceptanceOnly=false} for all of the tenant's exchanges. Scoped and bounded in the
+     * {@code awaitingAcceptanceOnly=false} for all tenant exchanges. Scoped and bounded in the
      * database; results are capped at {@value #MAX_QUERY_RESULTS} (a client that hits the cap acts on the
      * returned batch, which shrinks it, and queries again).
      */
@@ -287,8 +291,11 @@ public class ConsumerExchangeService {
      * surfaces such exchanges for a re-drive, and the provider can pull the verdict via its
      * {@code poll-acceptance} op ({@code GET /certificate-acceptance-status/{id}}).
      */
-    public void accept(String contextId, String exchangeId, AcceptanceStatus status,
-                       List<StatusError> errors, String flowId) {
+    public void accept(String contextId,
+                       String exchangeId,
+                       AcceptanceStatus status,
+                       List<StatusError> errors,
+                       String flowId) {
         var exchange = requireOwnedExchange(contextId, exchangeId);
         // A re-drive with the same verdict (e.g. reconciling an acceptance that was recorded but whose report
         // was lost) is not a fresh transition — skip it (avoid a 409) and just re-report over the new flowId.
@@ -302,7 +309,7 @@ public class ConsumerExchangeService {
         // on success mark it reported (in its own transaction) so the reconciliation query stops surfacing it.
         afterCommit(() -> {
             acceptanceClient.report(exchangeId, exchange.certificateId(), status, call, errors);
-            tx.executeWithoutResult(s -> exchangeStore.findById(exchangeId)
+            tx.executeWithoutResult(_ -> exchangeStore.findById(exchangeId)
                     .ifPresent(ConsumerCertificateExchange::markAcceptanceReported));
         });
     }
@@ -325,7 +332,7 @@ public class ConsumerExchangeService {
 
     private void validateLifecycle(LifecycleStatusData data) {
         if (data == null || data.status() == null || data.certificate() == null
-                || data.certificate().certificateId() == null) {
+            || data.certificate().certificateId() == null) {
             throw ApiException.badRequest("Lifecycle event is missing status or certificate.certificateId");
         }
         if (data.status() == LifecycleStatus.CREATED && data.exchangeId() == null) {
@@ -366,7 +373,7 @@ public class ConsumerExchangeService {
             // A reused exchangeId must belong to this tenant AND the calling provider (verified DID); otherwise
             // a different caller is addressing — and would overwrite — an exchange that is not theirs.
             if (!contextId.equals(existing.participantContextId())
-                    || !providerDid.equals(existing.providerDid())) {
+                || !providerDid.equals(existing.providerDid())) {
                 throw ApiException.notFound("Unknown exchangeId: " + exchangeId);
             }
             return existing;
@@ -378,7 +385,9 @@ public class ConsumerExchangeService {
         });
     }
 
-    /** Builds a {@link RetrievedCertificate} from an embedded push's inline content (decoding each document). */
+    /**
+     * Builds a {@link RetrievedCertificate} from an embedded push's inline content (decoding each document).
+     */
     private static RetrievedCertificate embeddedToRetrieved(CertificateRecord cert) {
         var documents = cert.documents().stream()
                 .map(d -> new RetrievedDocument(d.documentId(), d.mediaType(),
@@ -423,20 +432,26 @@ public class ConsumerExchangeService {
                 exchange.revision(), data.status().name(), requestContext.bpnOrSubject()));
     }
 
-    /** An exchange that must exist within the tenant's scope, else 404 (existence not revealed across tenants). */
+    /**
+     * An exchange that must exist within the tenant's scope, else 404 (existence not revealed across tenants).
+     */
     private ConsumerCertificateExchange requireOwnedExchange(String contextId, String exchangeId) {
         return exchangeStore.findById(exchangeId)
                 .filter(e -> contextId.equals(e.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown exchangeId: " + exchangeId));
     }
 
-    /** Builds an {@link OutboundCall} to the exchange's provider on behalf of the exchange's own tenant. */
+    /**
+     * Builds an {@link OutboundCall} to the exchange's provider on behalf of the exchange's own tenant.
+     */
     private OutboundCall outboundCall(ConsumerCertificateExchange exchange, String flowId) {
         return new OutboundCall(requireContext(exchange.participantContextId()),
                 exchange.providerBpn(), exchange.providerDid(), flowId);
     }
 
-    /** Resolves a participant context, failing the request when the named tenant does not exist. */
+    /**
+     * Resolves a participant context, failing the request when the named tenant does not exist.
+     */
     private ParticipantContext requireContext(String contextId) {
         if (contextId == null) {
             throw ApiException.badRequest("A contextId is required");

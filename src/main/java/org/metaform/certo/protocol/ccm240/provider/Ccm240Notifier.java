@@ -9,7 +9,7 @@ import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatus;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolNotifier;
 import org.metaform.certo.protocol.ProtocolVersion;
@@ -44,14 +44,14 @@ public class Ccm240Notifier implements ProtocolNotifier {
     private static final Logger LOG = LoggerFactory.getLogger(Ccm240Notifier.class);
 
     private final OutboundJsonClient outbound;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
     private final HeldCertificateLookup certificates;
     private final Clock clock;
 
-    public Ccm240Notifier(OutboundJsonClient outbound, OutboundTokens outboundTokens,
+    public Ccm240Notifier(OutboundJsonClient outbound, OutboundTokenCache outboundTokenCache,
                           HeldCertificateLookup certificates, Clock clock) {
         this.outbound = outbound;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
         this.certificates = certificates;
         this.clock = clock;
     }
@@ -64,7 +64,7 @@ public class Ccm240Notifier implements ProtocolNotifier {
     @Override
     public boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data, OutboundCall call) {
         // Token + counterparty endpoint from the siglet cache (keyed by the flow).
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         var base = resolved.baseUrl();
         var bearer = resolved.bearer();
         var peerBpn = call.counterpartyBpn();
@@ -103,7 +103,7 @@ public class Ccm240Notifier implements ProtocolNotifier {
                     data.status(), call.counterpartyBpn());
             return true;
         }
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         // By-reference availability: the v2.4.0 documentId is the certificateId (a UUID); the consumer pulls
         // the content and then reports acceptance via /companycertificate/status. Enrich with the certificate's
         // type + locations (the fulfillment event carries only the id) so the notice is self-describing.

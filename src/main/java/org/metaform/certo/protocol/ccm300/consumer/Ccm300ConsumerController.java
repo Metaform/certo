@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 public class Ccm300ConsumerController {
-
     private final ConsumerExchangeService service;
 
     public Ccm300ConsumerController(ConsumerExchangeService service) {

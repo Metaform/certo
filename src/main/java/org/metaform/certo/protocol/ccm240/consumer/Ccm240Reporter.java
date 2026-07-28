@@ -7,7 +7,7 @@ import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
 import org.metaform.certo.protocol.ProtocolVersion;
@@ -33,12 +33,12 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
 
 
     private final OutboundJsonClient outbound;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
     private final Clock clock;
 
-    public Ccm240Reporter(OutboundJsonClient outbound, OutboundTokens outboundTokens, Clock clock) {
+    public Ccm240Reporter(OutboundJsonClient outbound, OutboundTokenCache outboundTokenCache, Clock clock) {
         this.outbound = outbound;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
         this.clock = clock;
     }
 
@@ -51,7 +51,7 @@ public class Ccm240Reporter implements ProtocolAcceptanceReporter {
     public void report(ExchangeBinding binding, String exchangeId, String certificateId,
                        AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
         // Token + provider endpoint from the siglet cache (keyed by the flow).
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         var v240Status = Ccm240Translation.toCcm240StatusValue(status);
         var content = new Ccm240CertificateStatus.Content(
                 certificateId, v240Status, toReportedErrors(errors), null, null);

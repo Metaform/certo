@@ -7,7 +7,7 @@ import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.consumer.spi.CertificateRetriever;
 import org.metaform.certo.consumer.spi.RetrievedCertificate;
 import org.metaform.certo.consumer.spi.RetrievedDocument;
@@ -33,12 +33,12 @@ public class Ccm300Retriever implements CertificateRetriever {
 
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
 
-    public Ccm300Retriever(RetryingHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
+    public Ccm300Retriever(RetryingHttpClient httpClient, ObjectMapper mapper, OutboundTokenCache outboundTokenCache) {
         this.http = httpClient;
         this.mapper = mapper;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
     }
 
     /**
@@ -49,7 +49,7 @@ public class Ccm300Retriever implements CertificateRetriever {
      * @throws IOException on transport failure or a non-2xx response
      */
     public RetrievedCertificate fetch(String certificateId, OutboundCall call) throws IOException {
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         var base = HttpUrl.parse(resolved.baseUrl());
         if (base == null) {
             throw new IOException("Invalid provider base URL: " + resolved.baseUrl());

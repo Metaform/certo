@@ -11,21 +11,21 @@ import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatus;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.VerifiedRequestContext;
 import org.metaform.certo.common.pc.ParticipantContext;
 import org.metaform.certo.common.pc.ParticipantContextStore;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.VerifiedRequestContext;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.protocol.CounterpartyRole;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ExchangeBindingStore;
 import org.metaform.certo.protocol.ProtocolVersion;
+import org.metaform.certo.provider.dto.CertificatePublication;
 import org.metaform.certo.provider.dto.CertificateRequest;
 import org.metaform.certo.provider.dto.CertificateRequestPage;
 import org.metaform.certo.provider.dto.CertificateRequestQuery;
 import org.metaform.certo.provider.dto.CertificateRequestResponse;
 import org.metaform.certo.provider.dto.CertificateRequestStatus;
-import org.metaform.certo.provider.dto.CertificatePublication;
 import org.metaform.certo.provider.dto.ExchangeView;
 import org.metaform.certo.provider.dto.PendingRequestView;
 import org.metaform.certo.provider.dto.PublishRequest;
@@ -51,16 +51,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.util.UUID.randomUUID;
 import static org.metaform.certo.common.TransactionSupport.afterCommit;
 import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATION_REQUESTED;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FAILED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
 import static org.metaform.certo.common.web.ApiException.badRequest;
+import static org.metaform.certo.common.web.ApiException.requireText;
 
 /**
  * The provider's <b>certificate exchange</b> lifecycle (CX-0135 &sect;2.1): opening consumer-initiated
@@ -118,7 +119,7 @@ public class ProviderExchangeService {
      * only once the prior one reaches a terminal outcome (a re-attempt).
      */
     public CertificateRequestResponse requestCertificate(CertificateRequest request, VerifiedRequestContext requestContext) {
-        ApiException.requireText(request.certificateType(), "A certificate request must specify a certificateType");
+        requireText(request.certificateType(), "A certificate request must specify a certificateType");
         // The addressed provider tenant (the verified audience) owns the exchange; the verified caller is the
         // requesting consumer (the counterparty). The verifier already resolved this participant context from
         // the token audience, so it is non-null and known to exist — no re-check needed.
@@ -149,7 +150,7 @@ public class ProviderExchangeService {
         var held = catalog.findCertificateForLocations(contextId, request.certificateType(), requestedLocations);
         if (held.isPresent()) {
             var certificate = held.get();
-            var exchange = new ProviderCertificateExchange(UUID.randomUUID().toString(),
+            var exchange = new ProviderCertificateExchange(randomUUID().toString(),
                     contextId,
                     certificate.certificateId(),
                     certificate.latestRevision().revision(),
@@ -162,7 +163,7 @@ public class ProviderExchangeService {
             return toResponse(exchange);
         }
 
-        var exchange = ProviderCertificateExchange.pending(UUID.randomUUID().toString(),
+        var exchange = ProviderCertificateExchange.pending(randomUUID().toString(),
                 contextId,
                 counterparty,
                 counterpartyDid,
@@ -324,8 +325,9 @@ public class ProviderExchangeService {
     public ExchangeView pollAcceptance(String contextId, String exchangeId, String flowId) {
         requireFlow(flowId);
         var exchange = requireExchange(contextId, exchangeId);
-        var binding = bindingStore.resolve(exchangeId, CounterpartyRole.CONSUMER).orElse(null);
-        if (binding != null && binding.version() != ProtocolVersion.NATIVE) {
+        // Polling is a v3-only capability (there is no v2.4.0 acceptance-status pull — see AcceptancePoller),
+        // so it applies only to a native/v3 consumer: a non-native binding means the counterparty can't be polled.
+        if (!isNativeConsumer(exchangeId)) {
             throw ApiException.conflict("Cannot poll acceptance for a v2.4.0 consumer (it pushes /status)");
         }
         var call = new OutboundCall(requireContext(contextId),
@@ -341,7 +343,7 @@ public class ProviderExchangeService {
             var errors = polled.errors();
             // Record the verdict pulled from the authoritative consumer endpoint (no forgery risk — the
             // provider polled its own exchange's known consumer) in its own transaction; skip if already set.
-            tx.executeWithoutResult(s -> {
+            tx.executeWithoutResult(_ -> {
                 var current = requireExchange(contextId, exchangeId);
                 if (current.acceptanceStatus() != status) {
                     current.recordAcceptance(status, errors);
@@ -439,12 +441,11 @@ public class ProviderExchangeService {
         int revision;
         boolean reuseExisting = false;
         LifecycleStatusData data;
+        var certificate = catalog.resolveCertificate(sender.participantContextId(), certificateId);
         if (lifecycle == LifecycleStatus.WITHDRAWN) {
-            var certificate = catalog.resolveCertificate(sender.participantContextId(), certificateId);
             revision = certificate.latestRevision().revision();
             data = new LifecycleStatusData(LifecycleStatus.WITHDRAWN, null, CertificateRecord.idOnly(certificateId));
         } else {
-            var certificate = catalog.resolveCertificate(sender.participantContextId(), certificateId);
             if (certificate.lifecycleStatus() == LifecycleStatus.WITHDRAWN) {
                 throw ApiException.conflict("Certificate " + certificateId + " has been withdrawn");
             }
@@ -465,7 +466,7 @@ public class ProviderExchangeService {
                     exchangeId = existing.get().exchangeId();
                     reuseExisting = true;
                 } else {
-                    exchangeId = UUID.randomUUID().toString();
+                    exchangeId = randomUUID().toString();
                 }
             }
             data = new LifecycleStatusData(lifecycle, exchangeId, certData);
@@ -474,18 +475,17 @@ public class ProviderExchangeService {
         var target = new ExchangeBinding(exchangeId, certificateId, version, CounterpartyRole.CONSUMER,
                 req.consumerBpn(), req.consumerDid(), null);
         // Persist a newly-opened exchange and its binding in one transaction, then notify once committed so the
-        // DB connection is not held across the outbound push. Reuse skips the persist (the existing row stands);
+        // DB connection is not held across the outbound push. Reuse skips persist (the existing row stands);
         // a concurrent duplicate open loses the liveDedupKey unique constraint and its transaction rolls back.
         // Only a CREATED push opens an exchange; a non-native consumer's binding lets its /status correlate back.
         if (!reuseExisting) {
             var openedExchangeId = exchangeId;
-            var openedRevision = revision;
-            tx.executeWithoutResult(status -> {
+            tx.executeWithoutResult(_ -> {
                 if (openedExchangeId != null) {
                     var opened = new ProviderCertificateExchange(openedExchangeId,
                             sender.participantContextId(),
                             certificateId,
-                            openedRevision,
+                            revision,
                             req.consumerBpn(),
                             req.consumerDid(),
                             FULFILLED);
@@ -536,6 +536,13 @@ public class ProviderExchangeService {
                 exchange.exchangeId(), exchange.certificateId(), status, exchange.fulfillmentErrors()), call);
     }
 
+    /** Whether the exchange's consumer speaks native v3 — no binding, or a {@code NATIVE} one — the only pollable case. */
+    private boolean isNativeConsumer(String exchangeId) {
+        return bindingStore.resolve(exchangeId, CounterpartyRole.CONSUMER)
+                .map(binding -> binding.version() == ProtocolVersion.NATIVE)
+                .orElse(true);
+    }
+
     /** An exchange that must exist within the tenant's scope, else 404 (existence not revealed across tenants). */
     private ProviderCertificateExchange requireExchange(String contextId, String exchangeId) {
         return exchangeStore.findById(exchangeId)
@@ -545,14 +552,14 @@ public class ProviderExchangeService {
 
     /** Resolves a participant context (loaded, e.g. as an outbound-call sender), else 400 if unknown. */
     private ParticipantContext requireContext(String contextId) {
-        ApiException.requireText(contextId, "A contextId is required");
+        requireText(contextId, "A contextId is required");
         return contextStore.find(contextId)
                 .orElseThrow(() -> badRequest("Unknown participantContextId: " + contextId));
     }
 
     /** Fails the request when the named tenant does not exist — an existence check that does not load it. */
     private void requireContextExists(String contextId) {
-        ApiException.requireText(contextId, "A contextId is required");
+        requireText(contextId, "A contextId is required");
         if (!contextStore.exists(contextId)) {
             throw badRequest("Unknown participantContextId: " + contextId);
         }
@@ -577,6 +584,6 @@ public class ProviderExchangeService {
     }
 
     private static void requireFlow(String flowId) {
-        ApiException.requireText(flowId, "This operation requires a flowId");
+        requireText(flowId, "This operation requires a flowId");
     }
 }

@@ -28,56 +28,62 @@ import org.springframework.web.bind.annotation.RestController;
  * trigger is CX-0135 &sect;4.4.1 / &sect;4.4.2.
  *
  * <p>Every operation is scoped to a consumer tenant named in the path — {@code
- * /management/v1/participant-contexts/{participantContextId}/consumer/…} (siglet's
- * {@code /tokens/{participant_context_id}/…} convention). An exchange or certificate addressed by id must
+ * /management/v1/participant-contexts/{participantContextId}/consumer/…} An exchange or certificate addressed by id must
  * belong to the path tenant, or it is 404; queries return only that tenant's exchanges.
  */
 @RestController
 @RequestMapping("/management/v1/participant-contexts/{participantContextId}/consumer")
 public class ConsumerManagementController {
+    private final ConsumerExchangeService exchangeService;
+    private final ConsumerCatalogService catalogService;
 
-    private final ConsumerExchangeService service;
-    private final ConsumerCatalogService catalog;
-
-    public ConsumerManagementController(ConsumerExchangeService service, ConsumerCatalogService catalog) {
-        this.service = service;
-        this.catalog = catalog;
+    public ConsumerManagementController(ConsumerExchangeService exchangeService, ConsumerCatalogService catalogService) {
+        this.exchangeService = exchangeService;
+        this.catalogService = catalogService;
     }
 
-    /** {@code POST /consumer/certificate-requests} — open a certificate request on the provider. */
+    /**
+     * {@code POST /consumer/certificate-requests} — open a certificate request on the provider.
+     */
     @PostMapping(path = "/certificate-requests",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ConsumerRequestView> initiate(@PathVariable("participantContextId") String participantContextId,
                                                         @Valid @RequestBody InitiateRequest request) {
-        var opened = service.initiateRequest(participantContextId, request.providerBpn(), request.providerDid(),
-                request.certificateType(), request.flowId(), request.certifiedLocations());
+        var opened = exchangeService.initiateRequest(participantContextId,
+                request.providerBpn(), request.providerDid(),
+                request.certificateType(),
+                request.flowId(),
+                request.certifiedLocations());
         return ResponseEntity.accepted().body(ConsumerRequestView.of(opened));
     }
 
-    /** {@code GET /consumer/certificate-requests/{id}} — the consumer's tracked fulfillment status. */
+    /**
+     * {@code GET /consumer/certificate-requests/{id}} — the consumer's tracked fulfillment status.
+     */
     @GetMapping(path = "/certificate-requests/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ConsumerRequestView getRequest(@PathVariable("participantContextId") String participantContextId,
                                           @PathVariable("id") String exchangeId) {
-        return ConsumerRequestView.of(service.getRequest(participantContextId, exchangeId));
+        return ConsumerRequestView.of(exchangeService.getRequest(participantContextId, exchangeId));
     }
 
-    /** {@code POST /consumer/certificate-requests/{id}/poll} — poll the provider for fulfillment status. */
+    /**
+     * {@code POST /consumer/certificate-requests/{id}/poll} — poll the provider for fulfillment status.
+     */
     @PostMapping(path = "/certificate-requests/{id}/poll", produces = MediaType.APPLICATION_JSON_VALUE)
     public ConsumerRequestView pollRequest(@PathVariable("participantContextId") String participantContextId,
                                            @PathVariable("id") String exchangeId,
-                                           @RequestParam(value = "flowId", required = false) String flowId) {
-        return ConsumerRequestView.of(service.pollRequest(participantContextId, exchangeId, flowId));
+                                           @RequestParam(value = "flowId", required = true) String flowId) {
+        return ConsumerRequestView.of(exchangeService.pollRequest(participantContextId, exchangeId, flowId));
     }
 
     /**
      * {@code POST /consumer/exchanges/query} — the consumer-side reconciliation query: exchanges awaiting the
-     * caller's action (by default those {@code FULFILLED} but not yet accepted). The safety net for a dropped
-     * inbound-notification callback.
+     * caller's action (by default those {@code FULFILLED} but not yet accepted).
      */
     @PostMapping(path = "/exchanges/query", produces = MediaType.APPLICATION_JSON_VALUE)
     public ConsumerExchangePage queryExchanges(@PathVariable("participantContextId") String participantContextId,
                                                @RequestBody(required = false) ConsumerExchangeQuery query) {
-        return service.queryExchanges(participantContextId, query);
+        return exchangeService.queryExchanges(participantContextId, query);
     }
 
     /**
@@ -88,8 +94,10 @@ public class ConsumerManagementController {
     @PostMapping(path = "/exchanges/{id}/retrieve", produces = MediaType.APPLICATION_JSON_VALUE)
     public RetrievedCertificateView retrieve(@PathVariable("participantContextId") String participantContextId,
                                              @PathVariable("id") String exchangeId,
+                                             // Optional: embedded content is returned inline (no pull), so no flow is
+                                             // needed; a by-reference retrieve needs it and fails clearly without one.
                                              @RequestParam(value = "flowId", required = false) String flowId) {
-        return RetrievedCertificateView.of(service.retrieve(participantContextId, exchangeId, flowId));
+        return RetrievedCertificateView.of(exchangeService.retrieve(participantContextId, exchangeId, flowId));
     }
 
     /**
@@ -98,8 +106,9 @@ public class ConsumerManagementController {
      */
     @PostMapping(path = "/exchanges/{id}/accept", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> accept(@PathVariable("participantContextId") String participantContextId,
-                                       @PathVariable("id") String exchangeId, @RequestBody AcceptRequest request) {
-        service.accept(participantContextId, exchangeId, request.status(), request.errors(), request.flowId());
+                                       @PathVariable("id") String exchangeId,
+                                       @RequestBody AcceptRequest request) {
+        exchangeService.accept(participantContextId, exchangeId, request.status(), request.errors(), request.flowId());
         return ResponseEntity.accepted().build();
     }
 
@@ -110,6 +119,6 @@ public class ConsumerManagementController {
     @GetMapping(path = "/certificates/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public KnownCertificateView getKnownCertificate(@PathVariable("participantContextId") String participantContextId,
                                                     @PathVariable("id") String certificateId) {
-        return KnownCertificateView.of(catalog.getKnownCertificate(participantContextId, certificateId));
+        return KnownCertificateView.of(catalogService.getKnownCertificate(participantContextId, certificateId));
     }
 }

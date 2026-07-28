@@ -5,17 +5,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 /**
- * The outbound adapters' single entry point for security. For an {@link OutboundCall} it asks siglet for a
+ * The outbound adapters' single entry point for security. For an {@link OutboundCall} it asks the token cache for a
  * token scoped to the counterparty (whose DID the call carries — never resolved here), on behalf of the
  * sender's participant context. Siglet returns both the token <b>and</b> the counterparty endpoint; there is
  * no configured-URL fallback.
  */
 @Component
-public class OutboundTokens {
-
+public class OutboundTokenCache {
     private final SecurityTokenSource source;
 
-    public OutboundTokens(SecurityTokenSource source) {
+    public OutboundTokenCache(SecurityTokenSource source) {
         this.source = source;
     }
 

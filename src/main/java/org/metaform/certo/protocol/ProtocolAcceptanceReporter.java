@@ -23,6 +23,10 @@ public interface ProtocolAcceptanceReporter {
      * {@code call} carries the sender participant context, the provider (counterparty) BPN, and the live
      * outbound flow the secured adapter resolves its token + endpoint from.
      */
-    void report(ExchangeBinding binding, String exchangeId, String certificateId,
-                AcceptanceStatus status, List<StatusError> errors, OutboundCall call);
+    void report(ExchangeBinding binding,
+                String exchangeId,
+                String certificateId,
+                AcceptanceStatus status,
+                List<StatusError> errors,
+                OutboundCall call);
 }

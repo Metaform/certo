@@ -8,7 +8,7 @@ import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolAcceptanceReporter;
 import org.metaform.certo.protocol.ProtocolVersion;
@@ -35,12 +35,12 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
 
     private final OutboundJsonClient outbound;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
     private final Clock clock;
 
-    public Ccm300Reporter(OutboundJsonClient outbound, OutboundTokens outboundTokens, Clock clock) {
+    public Ccm300Reporter(OutboundJsonClient outbound, OutboundTokenCache outboundTokenCache, Clock clock) {
         this.outbound = outbound;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
         this.clock = clock;
     }
 
@@ -71,7 +71,7 @@ public class Ccm300Reporter implements ProtocolAcceptanceReporter {
                 call.sender().bpn(),
                 data);
 
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         outbound.postTo(resolved.baseUrl(), "certificate-acceptance-notifications", event, CLOUDEVENTS_JSON,
                 resolved.bearer(), "report acceptance " + status + " for exchange " + exchangeId);
     }

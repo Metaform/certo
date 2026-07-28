@@ -19,6 +19,8 @@ import java.util.Collection;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import static org.metaform.certo.common.web.ApiException.requireText;
+
 /**
  * Management operations for {@link ParticipantContext}s.
  */
@@ -29,10 +31,10 @@ public class ParticipantContextController {
     /** URL-safe id characters (unreserved per RFC 3986), so the id travels cleanly in siglet/management paths. */
     private static final Pattern ID_PATTERN = Pattern.compile("[A-Za-z0-9._~-]{1,128}");
 
-    private final ParticipantContextStore contexts;
+    private final ParticipantContextStore contextStore;
 
-    public ParticipantContextController(ParticipantContextStore contexts) {
-        this.contexts = contexts;
+    public ParticipantContextController(ParticipantContextStore contextStore) {
+        this.contextStore = contextStore;
     }
 
     /**
@@ -50,11 +52,11 @@ public class ParticipantContextController {
         requirePresent("source", request.source());
         requirePresent("did", request.did());
         var id = resolveId(request.participantContextId());
-        if (contexts.existsByDid(request.did())) {
+        if (contextStore.existsByDid(request.did())) {
             throw ApiException.conflict("A participant context with did " + request.did() + " already exists");
         }
         var context = new ParticipantContext(id, request.bpn(), request.source(), request.did());
-        contexts.save(context);
+        contextStore.save(context);
         return ResponseEntity.status(HttpStatus.CREATED).body(context);
     }
 
@@ -66,7 +68,7 @@ public class ParticipantContextController {
         if (!ID_PATTERN.matcher(requested).matches()) {
             throw ApiException.badRequest("participantContextId must match " + ID_PATTERN.pattern());
         }
-        if (contexts.exists(requested)) {
+        if (contextStore.exists(requested)) {
             throw ApiException.conflict("A participant context with id " + requested + " already exists");
         }
         return requested;
@@ -75,17 +77,17 @@ public class ParticipantContextController {
     /** {@code GET /participant-contexts/{id}} — one tenant. */
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ParticipantContext get(@PathVariable("id") String participantContextId) {
-        return contexts.find(participantContextId)
+        return contextStore.find(participantContextId)
                 .orElseThrow(() -> ApiException.notFound("Unknown participantContextId: " + participantContextId));
     }
 
     /** {@code GET /participant-contexts} — all tenants. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public Collection<ParticipantContext> list() {
-        return contexts.all();
+        return contextStore.all();
     }
 
     private static void requirePresent(String field, String value) {
-        ApiException.requireText(value, "A participant context must include " + field);
+        requireText(value, "A participant context must include " + field);
     }
 }

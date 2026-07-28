@@ -8,7 +8,7 @@ import okhttp3.Response;
 import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.RetryingHttpClient;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.consumer.spi.CertificateRequester;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
 import org.springframework.stereotype.Component;
@@ -30,18 +30,18 @@ public class Ccm300Requester implements CertificateRequester {
 
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
 
-    public Ccm300Requester(RetryingHttpClient httpClient, ObjectMapper mapper, OutboundTokens outboundTokens) {
+    public Ccm300Requester(RetryingHttpClient httpClient, ObjectMapper mapper, OutboundTokenCache outboundTokenCache) {
         this.http = httpClient;
         this.mapper = mapper;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
     }
 
     /** Opens a certificate request and returns the opened exchange's identity and fulfillment status. */
     public ProviderRequestResult request(String certificateType, List<String> certifiedLocations, OutboundCall call)
             throws IOException {
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         var payload = (certifiedLocations == null || certifiedLocations.isEmpty())
                 ? Map.<String, Object>of("certificateType", certificateType)
                 : Map.<String, Object>of("certificateType", certificateType, "certifiedLocations", certifiedLocations);
@@ -57,7 +57,7 @@ public class Ccm300Requester implements CertificateRequester {
 
     /** Polls the fulfillment status of a previously opened exchange. */
     public ProviderRequestResult pollStatus(String exchangeId, OutboundCall call) throws IOException {
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         var builder = new Request.Builder()
                 .url(url(resolved.baseUrl(), "certificate-requests").newBuilder().addPathSegment(exchangeId).build())
                 .get();

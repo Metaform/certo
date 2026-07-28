@@ -9,7 +9,7 @@ import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.AcceptanceStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.provider.spi.AcceptancePoller;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -29,17 +29,17 @@ public class Ccm300AcceptancePoller implements AcceptancePoller {
 
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
 
-    public Ccm300AcceptancePoller(RetryingHttpClient http, ObjectMapper mapper, OutboundTokens outboundTokens) {
+    public Ccm300AcceptancePoller(RetryingHttpClient http, ObjectMapper mapper, OutboundTokenCache outboundTokenCache) {
         this.http = http;
         this.mapper = mapper;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
     }
 
     @Override
     public Optional<AcceptanceStatusData> pollAcceptance(String exchangeId, OutboundCall call) throws IOException {
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         var base = HttpUrl.parse(resolved.baseUrl());
         if (base == null) {
             throw new IOException("Invalid consumer base URL: " + resolved.baseUrl());
@@ -60,14 +60,17 @@ public class Ccm300AcceptancePoller implements AcceptancePoller {
             if (parsed.status() == null) {
                 return Optional.empty();
             }
-            return Optional.of(new AcceptanceStatusData(parsed.exchangeId(), parsed.certificateId(),
+            return Optional.of(new AcceptanceStatusData(parsed.exchangeId(),
+                    parsed.certificateId(),
                     parsed.status(), parsed.errors()));
         }
     }
 
     /** Mirrors the consumer's {@code CertificateAcceptanceStatusResponse} (only the fields we consume). */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record AcceptanceStatusResponse(String exchangeId, String certificateId,
-                                            AcceptanceStatus status, List<StatusError> errors) {
+    private record AcceptanceStatusResponse(String exchangeId,
+                                            String certificateId,
+                                            AcceptanceStatus status,
+                                            List<StatusError> errors) {
     }
 }

@@ -10,6 +10,8 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 
+import static org.metaform.certo.common.web.ApiException.requireText;
+
 /**
  * Resolves an outbound token + endpoint from this runtime's siglet cache:
  * {@code GET /tokens/{participant_context_id}/{flow_id}} returns {@code { token, endpoint }} — the bearer
@@ -32,8 +34,8 @@ public class SigletTokenSource implements SecurityTokenSource {
 
     @Override
     public ResolvedToken resolve(String participantContextId, String counterpartyDid, String flowId) {
-        ApiException.requireText(participantContextId, "A secured outbound call requires a participantContextId");
-        ApiException.requireText(flowId, "A secured outbound call requires a flowId");
+        requireText(participantContextId, "A secured outbound call requires a participantContextId");
+        requireText(flowId, "A secured outbound call requires a flowId");
         // The cached token is already scoped to the counterparty, so counterpartyDid is not needed here.
         var url = baseUrl + "/tokens/" + participantContextId + "/" + flowId;
         var request = new Request.Builder().url(url).get().build();

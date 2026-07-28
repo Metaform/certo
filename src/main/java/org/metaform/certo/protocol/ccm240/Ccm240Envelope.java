@@ -8,6 +8,8 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import static org.metaform.certo.common.web.ApiException.requireText;
+
 /**
  * Validates the CX-0135 <b>v2.4.0</b> message {@code Header} against the spec schema: the required fields
  * ({@code context}, {@code messageId}, {@code senderBpn}, {@code receiverBpn}, {@code sentDateTime},
@@ -72,14 +74,14 @@ public final class Ccm240Envelope {
     }
 
     private static void requireMatch(String field, String value, Pattern pattern) {
-        ApiException.requireText(value, "Header is missing required field '" + field + "'");
+        requireText(value, "Header is missing required field '" + field + "'");
         if (!pattern.matcher(value).matches()) {
             throw ApiException.badRequest("Header field '" + field + "' is malformed: " + value);
         }
     }
 
     private static void requireDateTime(String field, String value) {
-        ApiException.requireText(value, "Header is missing required field '" + field + "'");
+        requireText(value, "Header is missing required field '" + field + "'");
         try {
             OffsetDateTime.parse(value);
         } catch (DateTimeParseException e) {

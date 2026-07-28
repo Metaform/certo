@@ -6,19 +6,24 @@ import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
-import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
 import org.metaform.certo.common.pc.ParticipantContext;
+import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.protocol.ExchangeBinding;
 import org.metaform.certo.protocol.ProtocolNotifier;
 import org.metaform.certo.protocol.ProtocolVersion;
-import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+
+import static org.metaform.certo.common.cloudevent.CcmEvents.SCHEMA_FULFILLMENT_STATUS;
+import static org.metaform.certo.common.cloudevent.CcmEvents.SCHEMA_LIFECYCLE_STATUS;
+import static org.metaform.certo.common.cloudevent.CcmEvents.TYPE_FULFILLMENT_STATUS;
+import static org.metaform.certo.common.cloudevent.CcmEvents.TYPE_LIFECYCLE_STATUS;
+import static org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec.toWire;
 
 /**
  * Pushes certificate lifecycle events to a Certificate Consumer's notification API
@@ -35,12 +40,12 @@ public class Ccm300Notifier implements ProtocolNotifier {
     private static final MediaType CLOUDEVENTS_JSON = MediaType.get(CcmEvents.CONTENT_TYPE);
 
     private final OutboundJsonClient outbound;
-    private final OutboundTokens outboundTokens;
+    private final OutboundTokenCache outboundTokenCache;
     private final Clock clock;
 
-    public Ccm300Notifier(OutboundJsonClient outbound, OutboundTokens outboundTokens, Clock clock) {
+    public Ccm300Notifier(OutboundJsonClient outbound, OutboundTokenCache outboundTokenCache, Clock clock) {
         this.outbound = outbound;
-        this.outboundTokens = outboundTokens;
+        this.outboundTokenCache = outboundTokenCache;
         this.clock = clock;
     }
 
@@ -57,16 +62,14 @@ public class Ccm300Notifier implements ProtocolNotifier {
     @Override
     public boolean notifyLifecycle(ExchangeBinding binding, LifecycleStatusData data, OutboundCall call) {
         // Token + counterparty endpoint from the siglet cache (scoped to the counterparty, keyed by the flow).
-        var resolved = outboundTokens.forCall(call);
+        var resolved = outboundTokenCache.forCall(call);
         // Render the neutral domain event to the v3 wire payload (the certificate goes through the codec).
-        var wire = new Ccm300LifecycleStatus(data.status(), data.exchangeId(),
-                Ccm300CertificateCodec.toWire(data.certificate()));
-        var event = event(CcmEvents.TYPE_LIFECYCLE_STATUS, CcmEvents.SCHEMA_LIFECYCLE_STATUS, wire,
-                call.sender(), call.counterpartyBpn());
+        var wire = new Ccm300LifecycleStatus(data.status(), data.exchangeId(), toWire(data.certificate()));
+        var event = event(TYPE_LIFECYCLE_STATUS, SCHEMA_LIFECYCLE_STATUS, wire, call.sender(), call.counterpartyBpn());
         var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
         return outbound.postTo(resolved.baseUrl(), "certificate-notifications", event, CLOUDEVENTS_JSON,
                 resolved.bearer(), "notify " + data.status() + " certificate " + certificateId
-                        + " for exchange " + data.exchangeId());
+                                   + " for exchange " + data.exchangeId());
     }
 
     /**
@@ -78,9 +81,8 @@ public class Ccm300Notifier implements ProtocolNotifier {
     @Override
     public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data, OutboundCall call) {
         // Token + counterparty endpoint from the siglet cache (keyed by the flow).
-        var resolved = outboundTokens.forCall(call);
-        var event = event(CcmEvents.TYPE_FULFILLMENT_STATUS, CcmEvents.SCHEMA_FULFILLMENT_STATUS, data,
-                call.sender(), call.counterpartyBpn());
+        var resolved = outboundTokenCache.forCall(call);
+        var event = event(TYPE_FULFILLMENT_STATUS, SCHEMA_FULFILLMENT_STATUS, data, call.sender(), call.counterpartyBpn());
         return outbound.postTo(resolved.baseUrl(), "certificate-notifications", event, CLOUDEVENTS_JSON,
                 resolved.bearer(), "notify fulfillment " + data.status() + " for exchange " + data.exchangeId());
     }

@@ -11,7 +11,7 @@ import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.OutboundJsonClient;
 import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.OutboundTokens;
+import org.metaform.certo.common.security.OutboundTokenCache;
 import org.metaform.certo.common.pc.ParticipantContext;
 import org.metaform.certo.testsupport.InMemoryParticipantContextStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,7 +59,7 @@ class Ccm300ReporterTest {
                 "urn:bpn:BPNL0000000001AB", "did:web:provider"));
         // The mock siglet returns the (mock) provider's URL as the outbound endpoint for this flow.
         var siglet = new MockSiglet(contexts, provider.url("/").toString());
-        var outboundTokens = new OutboundTokens(siglet::resolve);
+        var outboundTokens = new OutboundTokenCache(siglet::resolve);
         client = new Ccm300Reporter(outbound, outboundTokens, clock);
         // Sender = the consumer tenant; counterparty = the provider (BPN + DID supplied on the call).
         call = new OutboundCall(consumer, "BPNL0000000001AB", "did:web:provider", "flow-1");

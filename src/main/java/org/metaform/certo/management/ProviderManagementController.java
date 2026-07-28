@@ -39,13 +39,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/management/v1/participant-contexts/{participantContextId}")
 public class ProviderManagementController {
+    private final ProviderCatalogService catalogService;
+    private final ProviderExchangeService exchangeService;
 
-    private final ProviderCatalogService catalog;
-    private final ProviderExchangeService exchanges;
-
-    public ProviderManagementController(ProviderCatalogService catalog, ProviderExchangeService exchanges) {
-        this.catalog = catalog;
-        this.exchanges = exchanges;
+    public ProviderManagementController(ProviderCatalogService catalogService, ProviderExchangeService exchangeService) {
+        this.catalogService = catalogService;
+        this.exchangeService = exchangeService;
     }
 
     /**
@@ -56,7 +55,7 @@ public class ProviderManagementController {
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<StoredDocument> addDocument(@PathVariable("participantContextId") String participantContextId,
                                                       @RequestBody NewDocument request) {
-        var stored = catalog.addDocument(participantContextId,
+        var stored = catalogService.addDocument(participantContextId,
                 request.mediaType(),
                 request.language(),
                 request.contentBase64());
@@ -73,7 +72,7 @@ public class ProviderManagementController {
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CertificateAdded> addCertificate(@PathVariable("participantContextId") String participantContextId,
                                                            @RequestBody NewCertificate request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(catalog.addCertificate(participantContextId, request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addCertificate(participantContextId, request));
     }
 
     /**
@@ -84,7 +83,7 @@ public class ProviderManagementController {
     @GetMapping(path = "/certificates/{id}/fulfillable-requests", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestPage fulfillableRequests(@PathVariable("participantContextId") String participantContextId,
                                                       @PathVariable("id") String certificateId) {
-        return exchanges.fulfillableRequests(participantContextId, certificateId);
+        return exchangeService.fulfillableRequests(participantContextId, certificateId);
     }
 
     /**
@@ -95,7 +94,7 @@ public class ProviderManagementController {
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestPage queryRequests(@PathVariable("participantContextId") String participantContextId,
                                                 @RequestBody(required = false) CertificateRequestQuery query) {
-        return exchanges.queryRequests(participantContextId, query);
+        return exchangeService.queryRequests(participantContextId, query);
     }
 
     /**
@@ -105,8 +104,8 @@ public class ProviderManagementController {
     @PostMapping(path = "/certificate-requests/{id}/fulfill", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus fulfillRequest(@PathVariable("participantContextId") String participantContextId,
                                                    @PathVariable("id") String exchangeId,
-                                                   @RequestParam(value = "flowId", required = false) String flowId) {
-        return exchanges.fulfill(participantContextId, exchangeId, flowId);
+                                                   @RequestParam(value = "flowId", required = true) String flowId) {
+        return exchangeService.fulfill(participantContextId, exchangeId, flowId);
     }
 
     /**
@@ -119,7 +118,7 @@ public class ProviderManagementController {
     public ResponseEntity<CertificateLifecycleResult> addRevision(@PathVariable("participantContextId") String participantContextId,
                                                                   @PathVariable("id") String certificateId,
                                                                   @RequestBody NewRevision request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(catalog.addRevision(participantContextId, certificateId, request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addRevision(participantContextId, certificateId, request));
     }
 
     /**
@@ -129,9 +128,9 @@ public class ProviderManagementController {
     @PostMapping(path = "/certificate-requests/{id}/fail", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus failRequest(@PathVariable("participantContextId") String participantContextId,
                                                 @PathVariable("id") String exchangeId,
-                                                @RequestParam(value = "flowId", required = false) String flowId,
+                                                @RequestParam(value = "flowId", required = true) String flowId,
                                                 @RequestParam(value = "reason", required = false) String reason) {
-        return exchanges.failRequest(participantContextId, exchangeId, flowId, reason);
+        return exchangeService.failRequest(participantContextId, exchangeId, flowId, reason);
     }
 
     /**
@@ -141,9 +140,9 @@ public class ProviderManagementController {
     @PostMapping(path = "/certificate-requests/{id}/decline", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus declineRequest(@PathVariable("participantContextId") String participantContextId,
                                                    @PathVariable("id") String exchangeId,
-                                                   @RequestParam(value = "flowId", required = false) String flowId,
+                                                   @RequestParam(value = "flowId", required = true) String flowId,
                                                    @RequestParam(value = "reason", required = false) String reason) {
-        return exchanges.declineRequest(participantContextId, exchangeId, flowId, reason);
+        return exchangeService.declineRequest(participantContextId, exchangeId, flowId, reason);
     }
 
     /**
@@ -157,7 +156,7 @@ public class ProviderManagementController {
     public ResponseEntity<CertificatePublication> publish(@PathVariable("participantContextId") String participantContextId,
                                                           @PathVariable("id") String certificateId,
                                                           @RequestBody(required = false) PublishRequest request) {
-        return ResponseEntity.accepted().body(exchanges.publish(participantContextId, certificateId, request));
+        return ResponseEntity.accepted().body(exchangeService.publish(participantContextId, certificateId, request));
     }
 
     /**
@@ -167,7 +166,7 @@ public class ProviderManagementController {
     @PostMapping(path = "/certificates/{id}/withdraw", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateLifecycleResult withdraw(@PathVariable("participantContextId") String participantContextId,
                                                @PathVariable("id") String certificateId) {
-        return catalog.withdraw(participantContextId, certificateId);
+        return catalogService.withdraw(participantContextId, certificateId);
     }
 
     /**
@@ -176,7 +175,7 @@ public class ProviderManagementController {
     @GetMapping(path = "/certificate-exchanges/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ExchangeView getExchange(@PathVariable("participantContextId") String participantContextId,
                                     @PathVariable("id") String exchangeId) {
-        return exchanges.getExchangeView(participantContextId, exchangeId);
+        return exchangeService.getExchangeView(participantContextId, exchangeId);
     }
 
     /**
@@ -187,7 +186,7 @@ public class ProviderManagementController {
     @PostMapping(path = "/certificate-exchanges/{id}/poll-acceptance", produces = MediaType.APPLICATION_JSON_VALUE)
     public ExchangeView pollAcceptance(@PathVariable("participantContextId") String participantContextId,
                                        @PathVariable("id") String exchangeId,
-                                       @RequestParam(value = "flowId", required = false) String flowId) {
-        return exchanges.pollAcceptance(participantContextId, exchangeId, flowId);
+                                       @RequestParam(value = "flowId", required = true) String flowId) {
+        return exchangeService.pollAcceptance(participantContextId, exchangeId, flowId);
     }
 }
