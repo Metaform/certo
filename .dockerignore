@@ -1,0 +1,11 @@
+# Keep the Docker build context small and reproducible (the image builds from source in a multi-stage build).
+.git
+.gradle
+build
+**/build
+.idea
+*.iml
+.vscode
+*.log
+docs
+assets

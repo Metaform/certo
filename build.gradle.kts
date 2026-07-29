@@ -57,3 +57,12 @@ tasks.withType<Test> {
     // Sample certificate seeding is off by default; the tests rely on the seeded certificates.
     systemProperty("certo.seed-sample-data", "true")
 }
+
+// Build the container image from the Dockerfile via Gradle: `./gradlew dockerBuild`.
+// The multi-stage Dockerfile compiles the app itself (bootJar), so this task only invokes `docker build`.
+// (Spring Boot's plugin also provides `bootBuildImage` — a buildpacks image with no Dockerfile — for free.)
+tasks.register<Exec>("dockerBuild") {
+    group = "docker"
+    description = "Builds the certo image (metaform/certo:$version and :latest) from the Dockerfile."
+    commandLine("docker", "build", "-t", "metaform/certo:$version", "-t", "metaform/certo:latest", ".")
+}
