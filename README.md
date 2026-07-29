@@ -1,16 +1,18 @@
-# Certo
+![certo](/assets/certo-logo-tagline-dark.svg)
 
-A Spring Boot implementation of the **Catena-X CX-0135 Company Certificate Management (CCM)**
-data-plane wire protocol (**v3.0.0**). A certificate is **JSON metadata** that references one or more **document
-binaries** (e.g. a PDF), exchanged between a **Certificate Provider** and a **Certificate Consumer**.
+A Spring Boot implementation of **Catena-X CX-0135 Company Certificate Management (CCM)**: the current **v3.0.0**
+data-plane wire protocol (CloudEvents), **and** the legacy **v2.4.0** Company Certificate Management message API
+(`/companycertificate/*`). A certificate is **JSON metadata** that references one or more **document binaries** (e.g. a
+PDF), exchanged between a **Certificate Provider** and a **Certificate Consumer**.
 
-The app hosts **both roles' REST APIs in a single runtime** — one instance can act as a Certificate
-Provider, a Certificate Consumer, or both at once:
+The app hosts **both roles' REST APIs in a single runtime** — one instance can act as a Certificate Provider, a
+Certificate Consumer, or both at once:
 
-| API                                                                | Spec         | Role                                                                                                              |
-|--------------------------------------------------------------------|--------------|-------------------------------------------------------------------------------------------------------------------|
-| [Certificate Provider API](docs/ccm/certificate-provider-api.yaml) | CX-0135 §3.3 | Accepts requests, serves certificate metadata + document binaries, answers searches, receives acceptance feedback |
-| [Certificate Consumer API](docs/ccm/certificate-consumer-api.yaml) | CX-0135 §3.2 | Receives lifecycle / fulfillment notifications, exposes acceptance status                                         |
+| API                                                                | Spec                | Role                                                                                                                                   |
+|--------------------------------------------------------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| [Certificate Provider API](docs/ccm/certificate-provider-api.yaml) | CX-0135 v3.0.0 §3.3 | Accepts requests, serves certificate metadata + document binaries, answers searches, receives acceptance feedback                      |
+| [Certificate Consumer API](docs/ccm/certificate-consumer-api.yaml) | CX-0135 v3.0.0 §3.2 | Receives lifecycle / fulfillment notifications, exposes acceptance status                                                              |
+| Company Certificate API (`/companycertificate/*`)                  | CX-0135 v2.4.0      | Legacy message API — provider `request` / `status`, consumer `push` / `available`; every message up-converts to the canonical v3 model |
 
 > **Scope.** Only the **data plane** is implemented. The Dataspace Protocol (DSP) control plane —
 > catalog, contract negotiation and the token-refresh authorization of CX-0000 §4 — is **out of
@@ -22,8 +24,16 @@ Provider, a Certificate Consumer, or both at once:
 > (push-pull). With **embedded-document** push (`…ConsumerEmbeddedDocumentApi`,
 > `documents[].contentBase64` inline) the notification carries the full certificate and its document
 > content, and the consumer accepts **without a pull** — trigger it with
-> `POST /management/v1/participant-contexts/{pc}/certificates/{id}/publish` and body `{"embedded":true}`. Metadata retrieval
+> `POST /management/v1/participant-contexts/{pc}/certificates/{id}/publish` and body `{"embedded":true}`. Metadata
+> retrieval
 > (`GET /certificates/{id}`) never includes `contentBase64` (CX-0135 §3.3.2).
+>
+> **Protocol versions.** The native protocol is **v3.0.0** (CloudEvents). Certo also interoperates with the legacy
+> **v2.4.0** message-envelope protocol as a bridge — it can **receive** v2.4.0 (`/companycertificate/request`, `/push`,
+> `/available`, `/status`) up-converting each message to the canonical v3 model, and **send** it (a `publish` with
+> `protocolVersion: 2.4.0`, or a v2.4.0-bound consumer's fulfillment). The canonical model is version-neutral; each
+> exchange records which version its counterparty speaks, and outbound routing selects that version's adapter — adding
+> a future version is a new adapter, not a change to the core.
 
 The spec this implements is vendored under [`docs/ccm/`](docs/ccm). For a walkthrough of every supported interaction
 with sequence diagrams, see [`docs/FLOWS.md`](docs/FLOWS.md).
@@ -49,17 +59,17 @@ java -jar build/libs/certo-0.1.0.jar     # requires java 25+ on PATH
 ```
 
 Certificate seeding is **off by default**. Enable it with `certo.seed-sample-data=true` (e.g.
-`./gradlew bootRun --args='--certo.seed-sample-data=true'`) to populate the search/retrieval endpoints
-with sample data; the test suite enables it automatically. When enabled, the provider seeds these sample
-certificates on startup (each revision references one generated PDF document):
+`./gradlew bootRun --args='--certo.seed-sample-data=true'`) to populate the search/retrieval endpoints with sample data;
+the test suite enables it automatically. When enabled, the provider seeds these sample certificates on startup (each
+revision references one generated PDF document):
 
 Certificate ids are UUIDs (the same value is the v2.4.0 `documentId`); the seeder uses fixed UUIDs:
 
-| certificateId (fixed UUID)               | type      | revisions                 | validUntil (latest)  |
-|------------------------------------------|-----------|---------------------------|----------------------|
-| `00000000-0000-0000-0000-000000009001`   | ISO9001   | 1, 2 (CREATED → MODIFIED) | 2027-01-24           |
-| `00000000-0000-0000-0000-000000014001`   | ISO14001  | 1                         | 2027-05-31           |
-| `00000000-0000-0000-0000-000000000001`   | IATF16949 | 1                         | 2020-01-01 (expired) |
+| certificateId (fixed UUID)             | type      | revisions                 | validUntil (latest)  |
+|----------------------------------------|-----------|---------------------------|----------------------|
+| `00000000-0000-0000-0000-000000009001` | ISO9001   | 1, 2 (CREATED → MODIFIED) | 2027-01-24           |
+| `00000000-0000-0000-0000-000000014001` | ISO14001  | 1                         | 2027-05-31           |
+| `00000000-0000-0000-0000-000000000001` | IATF16949 | 1                         | 2020-01-01 (expired) |
 
 Any certificate type is accepted (the seeded sample certificates happen to be `ISO9001`, `ISO14001`,
 `IATF16949`). A request for a type the provider doesn't yet hold waits for the backend, which may issue it,
@@ -83,12 +93,14 @@ only be reported once an exchange is `FULFILLED` (illegal attempts → `409 Conf
 provider **already holds** (covering the requested
 `certifiedLocations`) is fulfilled immediately (`FULFILLED`); otherwise the request is
 `CERTIFICATION_REQUESTED` and the exchange waits for the certification-authority backend to issue the certificate — the
-`certificateId`/`revision` are assigned only then. Each request opens a **new** exchange, so a re-attempt after a
-terminal outcome is a distinct exchange.
+`certificateId`/`revision` are assigned only then. Request-open is **idempotent** (CX-0135 §2.1.1): a repeated request
+from the **same counterparty** for the same `certificateType` + locations (order-insensitive) **reuses the still-live
+exchange** — pending or already `FULFILLED` — rather than opening a duplicate, so a retried open returns the same
+`exchangeId`. A new exchange is opened only once the prior one reaches a **terminal** outcome (a genuine re-attempt).
 
-The certification-authority backend is driven through the management API: it uploads the
-issued document(s) with `POST /management/v1/participant-contexts/{pc}/documents`, then `POST …/{pc}/certificates` (referencing
-them by `documentIds`) issues the certificate and fulfils every waiting exchange it covers;
+The certification-authority backend is driven through the management API: it uploads the issued document (s) with
+`POST /management/v1/participant-contexts/{pc}/documents`, then `POST …/{pc}/certificates` (referencing them by
+`documentIds`) issues the certificate and fulfils every waiting exchange it covers;
 `POST /management/v1/participant-contexts/{pc}/certificate-requests/{id}/fail` ends a waiting exchange in `FAILED`.
 
 ## Certificate Provider API (CX-0135 §3.3)
@@ -153,14 +165,15 @@ stay retrievable — `GET /certificates/{id}` returns
 
 ### Provider-initiated push — the full loop in one call
 
-`POST /management/v1/participant-contexts/{pc}/certificates/{id}/publish` opens an exchange and pushes a lifecycle `CREATED` event to the consumer, which pulls
-the certificate + its documents, evaluates them, and posts its acceptance **back**
-to the provider — all in this one runtime. `GET /management/v1/participant-contexts/{pc}/certificate-exchanges/{id}` is a management/inspection endpoint (not in
-CX-0135) showing the provider's recorded view of both phases.
+`POST /management/v1/participant-contexts/{pc}/certificates/{id}/publish` opens an exchange and pushes a lifecycle
+`CREATED` event to the consumer, which pulls the certificate + its documents, evaluates them, and posts its acceptance
+**back**
+to the provider — all in this one runtime. `GET /management/v1/participant-contexts/{pc}/certificate-exchanges/{id}` is
+a management/inspection endpoint (not in CX-0135) showing the provider's recorded view of both phases.
 
 The `publish` body selects the target: `protocolVersion` (`3.0.0`, the configured native consumer, or `2.4.0`, a
-caller-named one), `embedded` (full content inline vs by-reference), and `revision`. An empty body publishes
-the latest revision to the native consumer, by reference.
+caller-named one), `embedded` (full content inline vs by-reference), and `revision`. An empty body publishes the latest
+revision to the native consumer, by reference.
 
 ```bash
 B=http://localhost:8080
@@ -211,7 +224,8 @@ Both notification endpoints accept a **single CloudEvent or a batch** (a JSON ar
 
 The consumer can open its **own** request on the provider and then be **pushed** the fulfillment status when the
 certificate is ready — at which point it pulls and accepts automatically.
-`POST …/participant-contexts/{pcid}/consumer/certificate-requests` is a management trigger; the request/poll it performs are CX-0135 §3.3.
+`POST …/participant-contexts/{pcid}/consumer/certificate-requests` is a management trigger; the request/poll it performs
+are CX-0135 §3.3.
 
 ```bash
 B=http://localhost:8080
@@ -246,11 +260,12 @@ curl -s -X POST $CM/certificate-requests/$EX/poll
 ### Certificate lifecycle — revise / withdraw + publish (the consumer reacts)
 
 **State** and **notification** are separate. A state change updates the artifact but tells no one:
-`POST /management/v1/participant-contexts/{pc}/certificates/{id}/revisions` creates a **new version** (a revision carrying the
-caller's issued validity + documents, lifecycle `CREATED → MODIFIED`); `POST …/{pc}/certificates/{id}/withdraw`
+`POST /management/v1/participant-contexts/{pc}/certificates/{id}/revisions` creates a **new version** (a revision
+carrying the caller's issued validity + documents, lifecycle `CREATED → MODIFIED`);
+`POST …/{pc}/certificates/{id}/withdraw`
 revokes it (`WITHDRAWN`). To inform a consumer you then `publish` that lifecycle status to **one named target**
-(`{"lifecycleStatus":"MODIFIED"|"WITHDRAWN"}`) — the client determines its own interest, so reaching several
-consumers is several publishes.
+(`{"lifecycleStatus":"MODIFIED"|"WITHDRAWN"}`) — the client determines its own interest, so reaching several consumers
+is several publishes.
 
 ```bash
 B=http://localhost:8080; C=00000000-0000-0000-0000-000000014001
@@ -286,8 +301,8 @@ rejects an unsupported field/operator with `501` and paginates via the RFC 8288 
 consumer **pulls the certificate from the provider's data plane** — an OkHttp
 `GET /certificates/{id}` (latest revision) for the metadata, then `GET /documents/{id}` for each referenced document,
 against the provider endpoint the siglet cache returns for the flow (no DSP catalog/negotiation) — and concludes
-directly: `ACCEPTED` if a document is present and the certificate is within its
-validity window, `REJECTED` ("Certificate has expired") if past
+directly: `ACCEPTED` if a document is present and the certificate is within its validity window, `REJECTED` (
+"Certificate has expired") if past
 `validUntil`, or `ERRORED` if it can't be retrieved or has no document. Reporting the non-terminal
 `RETRIEVED` status is **optional** (CX-0135 §2.1.3), so the consumer transitions straight from
 `FULFILLED` to the terminal verdict — a single best-effort OkHttp
@@ -319,18 +334,23 @@ to: a request fulfils only from that tenant's holdings, a retrieval or search ne
 
 ## Security & the consumer extension point
 
-Security tokens on the CCM protocol layer are **always on** and always come from a **siglet** STS; the management API
-is never token-secured. A deployment must point at a siglet — `certo.security.siglet-base-url` is required (dev/test
-point at a mock siglet).
+Security tokens on the CCM protocol layer are **always on** and always come from a **siglet** STS; the management API is
+never token-secured. A deployment must point at a siglet — `certo.security.siglet-base-url` is required (dev/test point
+at a mock siglet).
 
 - **Inbound** protocol calls must present a `Bearer` token; it is verified by calling siglet's revocation-aware
-  verification endpoint `POST /tokens/verify`, the authenticated caller (token `sub`/`bpn`) becomes the exchange
-  counterparty, and the token **audience** resolves to the receiving tenant's participant context.
+  verification endpoint `POST /tokens/verify`. Both a subject (`sub`, the caller's **DID**) and a `bpn` claim are
+  **required** — a token missing either is rejected `401`. The **DID** is the identity used for all correlation (it
+  becomes the exchange counterparty); the **BPN** is only a value conveyed to the counterparty on the wire, never used
+  for a lookup or match. The token **audience** (a tenant DID) resolves to the receiving tenant's participant context.
 - **Outbound** calls are made on behalf of the sender's participant context, addressed to the counterparty. The token
   **and the counterparty endpoint** come from the siglet cache (`GET /tokens/{participantContextId}/{flowId}`), so the
-  endpoint travels with the token — there is no configured-URL fallback.
-- `flowId` is **ephemeral**: supplied fresh on each management request that triggers an outbound call
-  (`publish`, `fulfill`/`fail`/`decline`, consumer `initiate`/`poll`/`retrieve`/`accept`), never persisted.
+  endpoint travels with the token — there is no configured-URL fallback. Outbound HTTP runs through a **retrying
+  client**
+  (Failsafe, as in EDC's `EdcHttpClient`) that retries a transient `IOException`/`5xx` with backoff; every outbound call
+  is idempotent, so retries are safe. A lost acceptance report leaves the exchange flagged for a re-drive (below).
+- `flowId` is **ephemeral**: supplied fresh on each management request that triggers an outbound call (`publish`,
+  `fulfill`/`fail`/`decline`, consumer `initiate`/`poll`/`retrieve`/`accept`), never persisted.
 
 Inbound consumer notifications are **recorded, then emitted** to `InboundNotificationListener` beans (a neutral
 `InboundCcmEvent`, fire-and-forget). The consumer never decides acceptance itself: a plugged-in client drives the
@@ -343,13 +363,30 @@ CM=$B/management/v1/participant-contexts/$CPC/consumer   # CPC = the consumer te
 curl -s -X POST "$CM/exchanges/$EX/retrieve?flowId=<flowId>"   # -> {certificate, documents[]}
 curl -s -X POST $CM/exchanges/$EX/accept -H 'Content-Type: application/json' \
   -d '{"status":"ACCEPTED","flowId":"<flowId>"}'
-# Reconcile after a dropped callback: what's still awaiting the client's action?
-curl -s -X POST $CM/exchanges/query -H 'Content-Type: application/json' -d '{}'
+# Reconcile after a dropped callback or a lost acceptance report: what still needs the client's action?
+# awaitingAcceptanceOnly surfaces exchanges FULFILLED-but-not-yet-accepted, plus any whose acceptance was
+# recorded but whose report to the provider was not confirmed delivered — re-drive accept to resend it.
+curl -s -X POST $CM/exchanges/query -H 'Content-Type: application/json' -d '{"awaitingAcceptanceOnly":true}'
 ```
 
 This is the consumer-side analogue of the provider's certification-authority backend. An *unsolicited* provider push
-still needs the client to hold (or establish) a consumer→provider flow to retrieve/report over — the control plane's
-job (DSP is out of scope).
+still needs the client to hold (or establish) a consumer→provider flow to retrieve/report over — the control plane's job
+(DSP is out of scope).
+
+## Operational endpoints
+
+Public, token-free endpoints (they are not CCM protocol paths, so the siglet interceptor never applies) for container
+probes and inspection — they expose no tenant data:
+
+| Endpoint         | Purpose                                                                                                                         |
+|------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `GET /health`    | **Liveness** — the process is up. Dependency-free by design; wire the k8s `livenessProbe` here.                                 |
+| `GET /readiness` | **Readiness** — up **and** the database is reachable; `200 {status:UP}` or `503 {status:DOWN}`. Wire the `readinessProbe` here. |
+| `GET /info`      | Static service descriptor (`{name, description}`).                                                                              |
+
+`/health` never touches the database on purpose: a liveness failure restarts the pod, so a transient DB blip must not
+trigger a restart storm — that concern belongs to `/readiness`, which only removes the pod from rotation until the
+dependency recovers.
 
 ## Tests
 
@@ -360,6 +397,12 @@ job (DSP is out of scope).
 `ProviderCertificateApiTest` and `ConsumerCertificateApiTest` drive both APIs through MockMvc and a real running server,
 covering request/decline, polling, JSON metadata retrieval (incl. a specific revision), the separate document API, the
 search grammar (incl. unsupported-field `501` and pagination), withdrawn-status retrieval, acceptance recording (incl.
-per-site `specifier` errors), lifecycle/fulfillment notifications (single and batch), and the 404/400 paths.
+per-site `specifier` errors), lifecycle/fulfillment notifications (single and batch), and the 404/400 paths. Alongside
+them the suite covers: **multi-tenant isolation** (no cross-tenant read/fulfil); **security** (inbound verification,
+missing-`sub`/`bpn` → `401`, wrong audience, outbound token+endpoint, full round-trip); **request-open and publish
+idempotency**; the **v2.4.0 bridge** (inbound push/request/status, up-convert, `messageId` dedup) and **protocol-version
+dispatch routing** (v3 vs v2.4.0 to the right wire endpoint); **durable acceptance reconciliation** (a lost report stays
+surfaced until re-driven) and **outbound retry** (a transient `5xx` recovers); the **operational endpoints**; plus a
+fast unit layer over the status machines, CloudEvent codec, JPA converters, and the retrying HTTP client.
 
 ```
