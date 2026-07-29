@@ -28,7 +28,7 @@ Certificate Consumer, or both at once:
 > retrieval
 > (`GET /certificates/{id}`) never includes `contentBase64` (CX-0135 §3.3.2).
 >
-> **Protocol versions.** The native protocol is **v3.0.0** (CloudEvents). Certo also interoperates with the legacy
+> **Protocol versions.** The default protocol is **v3.0.0** (CloudEvents). Certo also interoperates with the legacy
 > **v2.4.0** message-envelope protocol as a bridge — it can **receive** v2.4.0 (`/companycertificate/request`, `/push`,
 > `/available`, `/status`) up-converting each message to the canonical v3 model, and **send** it (a `publish` with
 > `protocolVersion: 2.4.0`, or a v2.4.0-bound consumer's fulfillment). The canonical model is version-neutral; each
@@ -353,8 +353,8 @@ at a mock siglet).
   `fulfill`/`fail`/`decline`, consumer `initiate`/`poll`/`retrieve`/`accept`), never persisted.
 
 Inbound consumer notifications are **recorded, then emitted** to `InboundNotificationListener` beans (a neutral
-`InboundCcmEvent`, fire-and-forget). The consumer never decides acceptance itself: a plugged-in client drives the
-consumer management API on its own timeline, supplying its live `flowId`:
+`InboundCcmEvent`, fire-and-forget). The consumer never decides acceptance itself: a client drives the consumer
+management API on its own timeline, supplying its live `flowId`:
 
 ```bash
 CM=$B/management/v1/participant-contexts/$CPC/consumer   # CPC = the consumer tenant's participantContextId
@@ -384,25 +384,12 @@ probes and inspection — they expose no tenant data:
 | `GET /readiness` | **Readiness** — up **and** the database is reachable; `200 {status:UP}` or `503 {status:DOWN}`. Wire the `readinessProbe` here. |
 | `GET /info`      | Static service descriptor (`{name, description}`).                                                                              |
 
-`/health` never touches the database on purpose: a liveness failure restarts the pod, so a transient DB blip must not
-trigger a restart storm — that concern belongs to `/readiness`, which only removes the pod from rotation until the
-dependency recovers.
-
 ## Tests
 
 ```bash
 ./gradlew test
 ```
 
-`ProviderCertificateApiTest` and `ConsumerCertificateApiTest` drive both APIs through MockMvc and a real running server,
-covering request/decline, polling, JSON metadata retrieval (incl. a specific revision), the separate document API, the
-search grammar (incl. unsupported-field `501` and pagination), withdrawn-status retrieval, acceptance recording (incl.
-per-site `specifier` errors), lifecycle/fulfillment notifications (single and batch), and the 404/400 paths. Alongside
-them the suite covers: **multi-tenant isolation** (no cross-tenant read/fulfil); **security** (inbound verification,
-missing-`sub`/`bpn` → `401`, wrong audience, outbound token+endpoint, full round-trip); **request-open and publish
-idempotency**; the **v2.4.0 bridge** (inbound push/request/status, up-convert, `messageId` dedup) and **protocol-version
-dispatch routing** (v3 vs v2.4.0 to the right wire endpoint); **durable acceptance reconciliation** (a lost report stays
-surfaced until re-driven) and **outbound retry** (a transient `5xx` recovers); the **operational endpoints**; plus a
-fast unit layer over the status machines, CloudEvent codec, JPA converters, and the retrying HTTP client.
+`ProviderCertificateApiTest` and `ConsumerCertificateApiTest` drive both APIs through MockMvc and a real running server.
 
 ```
