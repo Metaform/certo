@@ -1,6 +1,6 @@
 package org.metaform.certo.testsupport;
 
-import org.metaform.certo.provider.ProviderCertificateSeeder;
+import org.metaform.certo.provider.seed.ProviderCertificateSeeder;
 
 /**
  * Shared identities for the test suite's seeded tenants. The {@link ProviderCertificateSeeder} (enabled for

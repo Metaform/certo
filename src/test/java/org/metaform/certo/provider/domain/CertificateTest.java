@@ -1,6 +1,5 @@
 package org.metaform.certo.provider.domain;
 
-import org.metaform.certo.provider.model.CertificateRevision;
 
 
 import org.junit.jupiter.api.Test;

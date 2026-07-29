@@ -9,8 +9,8 @@ import com.nimbusds.jose.jwk.OctetKeyPair;
 import com.nimbusds.jose.jwk.gen.OctetKeyPairGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import org.metaform.certo.common.security.ResolvedToken;
-import org.metaform.certo.common.security.VerifiedRequestContext;
+import org.metaform.certo.common.security.outbound.ResolvedToken;
+import org.metaform.certo.common.security.inbound.VerifiedRequestContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.common.web.ApiException;
 

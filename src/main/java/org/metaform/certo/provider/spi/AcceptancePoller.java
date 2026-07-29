@@ -1,7 +1,7 @@
 package org.metaform.certo.provider.spi;
 
 import org.metaform.certo.common.model.AcceptanceStatusData;
-import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.outbound.OutboundCall;
 
 import java.io.IOException;
 import java.util.Optional;

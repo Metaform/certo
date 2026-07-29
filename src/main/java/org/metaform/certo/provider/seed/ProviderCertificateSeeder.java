@@ -1,4 +1,4 @@
-package org.metaform.certo.provider;
+package org.metaform.certo.provider.seed;
 
 import org.metaform.certo.common.config.CertoProperties;
 import org.metaform.certo.common.model.CertificateIssuer;
@@ -8,7 +8,7 @@ import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.provider.domain.Certificate;
-import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.domain.CertificateRevision;
 import org.metaform.certo.provider.domain.Document;
 import org.metaform.certo.provider.store.ProviderCertificateStore;
 import org.metaform.certo.provider.store.ProviderDocumentStore;

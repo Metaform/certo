@@ -1,4 +1,6 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.outbound;
+
+import org.metaform.certo.common.security.SecurityProperties;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import okhttp3.Request;

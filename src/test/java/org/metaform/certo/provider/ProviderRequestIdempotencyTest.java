@@ -2,7 +2,7 @@ package org.metaform.certo.provider;
 
 import org.junit.jupiter.api.Test;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.common.security.VerifiedRequestContext;
+import org.metaform.certo.common.security.inbound.VerifiedRequestContext;
 import org.metaform.certo.provider.dto.CertificateRequest;
 import org.metaform.certo.provider.store.ProviderCertificateExchangeStore;
 import org.springframework.beans.factory.annotation.Autowired;

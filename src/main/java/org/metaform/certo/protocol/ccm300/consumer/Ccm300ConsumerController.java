@@ -1,8 +1,8 @@
 package org.metaform.certo.protocol.ccm300.consumer;
 
 import org.metaform.certo.common.cloudevent.CcmEvents;
-import org.metaform.certo.common.security.SecurityTokenInterceptor;
-import org.metaform.certo.common.security.VerifiedRequestContext;
+import org.metaform.certo.common.security.inbound.SecurityTokenInterceptor;
+import org.metaform.certo.common.security.inbound.VerifiedRequestContext;
 import org.metaform.certo.consumer.ConsumerExchangeService;
 import org.metaform.certo.consumer.dto.CertificateAcceptanceStatusResponse;
 import org.springframework.http.MediaType;

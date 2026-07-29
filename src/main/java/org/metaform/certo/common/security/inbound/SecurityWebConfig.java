@@ -1,4 +1,4 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.inbound;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;

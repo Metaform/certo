@@ -5,7 +5,7 @@ import org.metaform.certo.protocol.store.ExchangeBindingStore;
 
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.outbound.OutboundCall;
 import org.metaform.certo.consumer.spi.AcceptanceReporter;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;

@@ -16,7 +16,7 @@ import org.metaform.certo.provider.dto.NewRevision;
 import org.metaform.certo.provider.dto.StoredDocument;
 import org.metaform.certo.provider.dto.WithdrawnCertificate;
 import org.metaform.certo.provider.domain.Certificate;
-import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.domain.CertificateRevision;
 import org.metaform.certo.provider.domain.Document;
 import org.metaform.certo.provider.store.CertificateSpecifications;
 import org.metaform.certo.provider.store.OffsetLimitPageable;

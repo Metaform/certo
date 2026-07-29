@@ -2,7 +2,7 @@ package org.metaform.certo.consumer.spi;
 
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.outbound.OutboundCall;
 
 import java.util.List;
 

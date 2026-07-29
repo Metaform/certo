@@ -1,4 +1,4 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.outbound;
 
 import org.metaform.certo.common.pc.domain.ParticipantContext;
 

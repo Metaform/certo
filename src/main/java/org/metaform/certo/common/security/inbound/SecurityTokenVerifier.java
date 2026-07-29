@@ -1,4 +1,4 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.inbound;
 
 /**
  * Verifies an inbound CCM security token via the configured token backend: the in-process backend checks the

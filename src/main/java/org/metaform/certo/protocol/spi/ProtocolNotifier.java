@@ -6,7 +6,7 @@ import org.metaform.certo.protocol.domain.ExchangeBinding;
 
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
-import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.outbound.OutboundCall;
 
 /**
  * A version-specific renderer/sender for provider &rarr; consumer notifications. One implementation per

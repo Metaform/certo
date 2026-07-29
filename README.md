@@ -351,40 +351,6 @@ This is the consumer-side analogue of the provider's certification-authority bac
 still needs the client to hold (or establish) a consumer→provider flow to retrieve/report over — the control plane's
 job (DSP is out of scope).
 
-## Project layout
-
-```
-src/main/java/org/metaform/certo
-├── CertoApplication.java
-├── common/                 # shared across both roles
-│   ├── cloudevent/         # CloudEvent envelope, event-type constants, codec (single/batch)
-│   ├── model/              # status enums, StatusError, event payloads, shared certificate records
-│   │                       #   (CertificateRecord, CertifiedLocation, CertificateDocument, LocationRole, …)
-│   ├── pdf/                # minimal PDF generator for document binaries
-│   └── web/                # error handling, application/cloudevents+json media type
-├── provider/               # Certificate Provider API (§3.3)
-│   ├── api/                # controller + DTOs (CertificateQuery grammar, WithdrawnCertificate, …)
-│   ├── client/             # Ccm300Notifier (OkHttp push to the consumer)
-│   ├── model/ store/       # Certificate, CertificateRevision, Document, ProviderCertificateExchange,
-│   │                       #   ProviderCertificateStore, ProviderDocumentStore, ProviderCertificateExchangeStore
-│   ├── ProviderCertificateService.java
-│   └── ProviderCertificateSeeder.java
-└── consumer/               # Certificate Consumer API (§3.2)
-    ├── api/                # controller + DTOs
-    ├── client/             # OkHttp clients: Ccm300Requester (pull), Ccm300Retriever
-    │                       #   (metadata + documents), Ccm300Reporter (callback)
-    ├── model/ store/       # ConsumerCertificateExchange (both phases), KnownCertificate (lifecycle view)
-    └── ConsumerCertificateService.java
-```
-
-Naming: side-specific stateful classes carry a `Provider*` / `Consumer*` prefix (`ProviderCertificateExchange` ↔
-`ConsumerCertificateExchange`, `ProviderCertificateStore` ↔
-`ConsumerCertificateStore`, …). Classes that work on both sides keep neutral names (the `common`
-package, the CloudEvents types, the status enums, the shared certificate records). `Certificate` /
-`CertificateRevision` / `Document` keep bare names — they're the provider's domain entities (the consumer's lifecycle
-analog is the differently-named `KnownCertificate`). The OkHttp client names are **directional** (a consumer's
-`Ccm300Retriever` calls the provider), so they're left as-is.
-
 ## Tests
 
 ```bash

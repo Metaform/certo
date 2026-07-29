@@ -3,7 +3,7 @@ package org.metaform.certo.common.persistence;
 import org.junit.jupiter.api.Test;
 import org.metaform.certo.common.model.CertificateIssuer;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.domain.CertificateRevision;
 
 import java.time.LocalDate;
 import java.util.List;

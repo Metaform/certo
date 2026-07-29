@@ -1,6 +1,6 @@
 package org.metaform.certo.management;
 
-import org.metaform.certo.common.pc.model.NewParticipantContext;
+import org.metaform.certo.common.pc.dto.NewParticipantContext;
 import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.common.web.ApiException;

@@ -1,4 +1,4 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.outbound;
 
 /**
  * Resolves the token and endpoint for an outbound CCM call. The token is scoped to the counterparty

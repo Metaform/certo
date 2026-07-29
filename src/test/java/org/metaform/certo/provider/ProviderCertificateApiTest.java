@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.provider.domain.Certificate;
-import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.domain.CertificateRevision;
 import org.metaform.certo.provider.domain.Document;
 import org.metaform.certo.provider.store.ProviderCertificateStore;
 import org.metaform.certo.provider.store.ProviderDocumentStore;

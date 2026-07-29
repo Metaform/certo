@@ -1,4 +1,4 @@
-package org.metaform.certo.provider.model;
+package org.metaform.certo.provider.domain;
 
 import java.time.LocalDate;
 import java.util.List;

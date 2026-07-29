@@ -1,7 +1,7 @@
 package org.metaform.certo.common.persistence;
 
 import jakarta.persistence.Converter;
-import org.metaform.certo.provider.model.CertificateRevision;
+import org.metaform.certo.provider.domain.CertificateRevision;
 import tools.jackson.core.type.TypeReference;
 
 import java.util.List;

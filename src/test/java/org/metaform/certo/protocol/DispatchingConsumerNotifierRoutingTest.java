@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
-import org.metaform.certo.common.security.OutboundCall;
+import org.metaform.certo.common.security.outbound.OutboundCall;
 import org.metaform.certo.protocol.domain.ExchangeBinding;
 import org.metaform.certo.protocol.store.ExchangeBindingStore;
 import org.metaform.certo.provider.spi.ConsumerNotifier;

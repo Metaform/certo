@@ -1,4 +1,4 @@
-package org.metaform.certo.common.pc.model;
+package org.metaform.certo.common.pc.dto;
 
 /**
  * Body of {@code POST /management/v1/participant-contexts} — the identity of a new tenant. {@code bpn},

@@ -1,4 +1,4 @@
-package org.metaform.certo.provider;
+package org.metaform.certo.provider.seed;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;

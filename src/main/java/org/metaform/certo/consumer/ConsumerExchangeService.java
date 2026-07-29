@@ -1,26 +1,23 @@
 package org.metaform.certo.consumer;
 
-import org.metaform.certo.common.cloudevent.CcmEvents;
 import org.metaform.certo.common.cloudevent.CloudEventCodec;
 import org.metaform.certo.common.cloudevent.EventBatch;
 import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.CertificateRecord;
-import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.FulfillmentStatusData;
-import org.metaform.certo.common.model.LifecycleStatus;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
-import org.metaform.certo.common.security.OutboundCall;
-import org.metaform.certo.common.security.VerifiedRequestContext;
+import org.metaform.certo.common.security.outbound.OutboundCall;
+import org.metaform.certo.common.security.inbound.VerifiedRequestContext;
 import org.metaform.certo.common.web.ApiException;
+import org.metaform.certo.consumer.domain.ConsumerCertificateExchange;
 import org.metaform.certo.consumer.dto.CertificateAcceptanceStatusResponse;
 import org.metaform.certo.consumer.dto.ConsumerExchangePage;
 import org.metaform.certo.consumer.dto.ConsumerExchangeQuery;
 import org.metaform.certo.consumer.dto.ConsumerExchangeView;
-import org.metaform.certo.consumer.domain.ConsumerCertificateExchange;
 import org.metaform.certo.consumer.spi.AcceptanceReporter;
 import org.metaform.certo.consumer.spi.CertificateRequester;
 import org.metaform.certo.consumer.spi.CertificateRetriever;
@@ -38,9 +35,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
@@ -48,7 +45,12 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
+import static org.metaform.certo.common.cloudevent.CcmEvents.TYPE_FULFILLMENT_STATUS;
+import static org.metaform.certo.common.cloudevent.CcmEvents.TYPE_LIFECYCLE_STATUS;
+import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
+import static org.metaform.certo.common.model.LifecycleStatus.CREATED;
 import static org.metaform.certo.common.util.TransactionSupport.afterCommit;
+import static org.metaform.certo.common.web.ApiException.badRequest;
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 
 /**
@@ -185,19 +187,19 @@ public class ConsumerExchangeService {
         for (var node : codec.toEventNodes(body)) {
             var type = codec.typeOf(node);
             switch (type) {
-                case CcmEvents.TYPE_LIFECYCLE_STATUS -> {
+                case TYPE_LIFECYCLE_STATUS -> {
                     // Decode the v3 wire payload and map the certificate back to the neutral domain.
                     var event = codec.decode(node, Ccm300LifecycleStatus.class);
                     var data = toDomainLifecycle(event.data());
                     validateLifecycle(data);
                     pending.add(new EventBatch.PendingEvent(codec.dedupKey(event), () -> applyLifecycle(data, requestContext)));
                 }
-                case CcmEvents.TYPE_FULFILLMENT_STATUS -> {
+                case TYPE_FULFILLMENT_STATUS -> {
                     var event = codec.decode(node, FulfillmentStatusData.class);
                     validateFulfillment(event.data());
                     pending.add(new EventBatch.PendingEvent(codec.dedupKey(event), () -> applyFulfillment(event.data(), requestContext)));
                 }
-                default -> throw ApiException.badRequest("Unsupported notification event type: " + type);
+                default -> throw badRequest("Unsupported notification event type: " + type);
             }
         }
         // Claim + apply each event in this transaction: a throw rolls the whole batch back (claims included),
@@ -330,7 +332,7 @@ public class ConsumerExchangeService {
      */
     @Transactional
     public void receivePushedCertificate(String exchangeId, CertificateRecord certificate, VerifiedRequestContext requestContext) {
-        applyLifecycle(new LifecycleStatusData(LifecycleStatus.CREATED, exchangeId, certificate), requestContext);
+        applyLifecycle(new LifecycleStatusData(CREATED, exchangeId, certificate), requestContext);
     }
 
     private static LifecycleStatusData toDomainLifecycle(Ccm300LifecycleStatus wire) {
@@ -340,10 +342,10 @@ public class ConsumerExchangeService {
     private void validateLifecycle(LifecycleStatusData data) {
         if (data == null || data.status() == null || data.certificate() == null
             || data.certificate().certificateId() == null) {
-            throw ApiException.badRequest("Lifecycle event is missing status or certificate.certificateId");
+            throw badRequest("Lifecycle event is missing status or certificate.certificateId");
         }
-        if (data.status() == LifecycleStatus.CREATED && data.exchangeId() == null) {
-            throw ApiException.badRequest("A CREATED lifecycle event must carry data.exchangeId");
+        if (data.status() == CREATED && data.exchangeId() == null) {
+            throw badRequest("A CREATED lifecycle event must carry data.exchangeId");
         }
     }
 
@@ -353,12 +355,15 @@ public class ConsumerExchangeService {
         catalog.recordKnownCertificate(data, requestContext.participantContextId());
         var cert = data.certificate();
 
-        if (data.status() == LifecycleStatus.CREATED) {
+        if (data.status() == CREATED) {
             // Record the consumer-side exchange now so it can be retrieved/accepted later. It is stamped with
             // the receiving tenant (the verified audience) and the provider (the verified caller) so a later
             // management-driven retrieve/accept can address the right provider on behalf of the right tenant.
-            var exchange = ensureExchange(data.exchangeId(), cert.certificateId(), cert.revision(),
-                    requestContext.participantContextId(), requestContext.bpn(),
+            var exchange = ensureExchange(data.exchangeId(),
+                    cert.certificateId(),
+                    cert.revision(),
+                    requestContext.participantContextId(),
+                    requestContext.bpn(),
                     requestContext.subject());
             if (cert.hasEmbeddedContent()) {
                 exchange.attachEmbeddedContent(embeddedToRetrieved(cert));
@@ -368,8 +373,12 @@ public class ConsumerExchangeService {
 
         // Record + emit only. A provider-initiated push has no live flowId, so the consumer never reacts
         // inline; a plugged-in client drives retrieve/accept via the management API with its own flowId.
-        emit(new InboundCcmEvent(InboundCcmEvent.Kind.LIFECYCLE, data.exchangeId(), cert.certificateId(),
-                cert.revision(), data.status().name(), requestContext.bpn()));
+        emit(new InboundCcmEvent(InboundCcmEvent.Kind.LIFECYCLE,
+                data.exchangeId(),
+                cert.certificateId(),
+                cert.revision(),
+                data.status().name(),
+                requestContext.bpn()));
     }
 
     private ConsumerCertificateExchange ensureExchange(String exchangeId,
@@ -379,7 +388,7 @@ public class ConsumerExchangeService {
                                                        String providerBpn,
                                                        String providerDid) {
         // Runs inside the caller's transaction; a concurrent insert of the same id fails the primary-key
-        // constraint (that transaction rolls back and retries), so no JVM lock is needed.
+        // constraint (that transaction rolls back and retries)
         return exchangeStore.findById(exchangeId).map(existing -> {
             // A reused exchangeId must belong to this tenant AND the calling provider (verified DID); otherwise
             // a different caller is addressing — and would overwrite — an exchange that is not theirs.
@@ -390,7 +399,7 @@ public class ConsumerExchangeService {
             return existing;
         }).orElseGet(() -> {
             var created = new ConsumerCertificateExchange(exchangeId, certificateId, revision != null ? revision : 1,
-                    false, FulfillmentStatus.FULFILLED, null, contextId, providerBpn, providerDid);
+                    false, FULFILLED, null, contextId, providerBpn, providerDid);
             exchangeStore.save(created);
             return created;
         });
@@ -409,11 +418,11 @@ public class ConsumerExchangeService {
 
     private void validateFulfillment(FulfillmentStatusData data) {
         if (data == null || data.exchangeId() == null || data.status() == null) {
-            throw ApiException.badRequest("Fulfillment event is missing exchangeId or status");
+            throw badRequest("Fulfillment event is missing exchangeId or status");
         }
         var hasErrors = data.errors() != null && !data.errors().isEmpty();
-        if (data.status().isTerminal() && data.status() != FulfillmentStatus.FULFILLED && !hasErrors) {
-            throw ApiException.badRequest("Status " + data.status() + " requires a non-empty 'errors' array");
+        if (data.status().isTerminal() && data.status() != FULFILLED && !hasErrors) {
+            throw badRequest("Status " + data.status() + " requires a non-empty 'errors' array");
         }
     }
 
@@ -465,9 +474,9 @@ public class ConsumerExchangeService {
      */
     private ParticipantContext requireContext(String contextId) {
         if (contextId == null) {
-            throw ApiException.badRequest("A contextId is required");
+            throw badRequest("A contextId is required");
         }
         return contextStore.find(contextId)
-                .orElseThrow(() -> ApiException.badRequest("Unknown contextId: " + contextId));
+                .orElseThrow(() -> badRequest("Unknown contextId: " + contextId));
     }
 }

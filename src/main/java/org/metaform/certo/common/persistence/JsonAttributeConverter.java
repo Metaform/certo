@@ -1,6 +1,7 @@
 package org.metaform.certo.common.persistence;
 
 import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -18,6 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * @param <T> the attribute type (e.g. {@code List<StatusError>} or a single {@code CertificateIssuer})
  */
+@Converter
 public abstract class JsonAttributeConverter<T> implements AttributeConverter<T, String> {
 
     protected static final ObjectMapper MAPPER = JsonMapper.builder().build();

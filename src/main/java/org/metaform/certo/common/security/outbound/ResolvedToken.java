@@ -1,4 +1,4 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.outbound;
 
 /**
  * A token resolved from the siglet cache for an outbound CCM call: the {@code bearerToken} to present and the

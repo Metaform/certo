@@ -1,4 +1,4 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.inbound;
 
 import org.jetbrains.annotations.NotNull;
 

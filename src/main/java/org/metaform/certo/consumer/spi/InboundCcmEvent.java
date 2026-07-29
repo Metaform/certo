@@ -13,8 +13,12 @@ package org.metaform.certo.consumer.spi;
  * @param status          the status name ({@code LifecycleStatus} or {@code FulfillmentStatus})
  * @param counterpartyBpn the authenticated sender, when security established one (else null)
  */
-public record InboundCcmEvent(Kind kind, String exchangeId, String certificateId, Integer revision,
-                              String status, String counterpartyBpn) {
+public record InboundCcmEvent(Kind kind,
+                              String exchangeId,
+                              String certificateId,
+                              Integer revision,
+                              String status,
+                              String counterpartyBpn) {
 
     public enum Kind {
         LIFECYCLE,

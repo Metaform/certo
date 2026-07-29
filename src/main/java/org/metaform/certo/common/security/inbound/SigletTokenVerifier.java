@@ -1,4 +1,6 @@
-package org.metaform.certo.common.security;
+package org.metaform.certo.common.security.inbound;
+
+import org.metaform.certo.common.security.SecurityProperties;
 
 import com.nimbusds.jwt.SignedJWT;
 import okhttp3.MediaType;

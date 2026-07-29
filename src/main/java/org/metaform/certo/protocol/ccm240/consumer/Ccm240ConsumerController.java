@@ -5,8 +5,8 @@ import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
-import org.metaform.certo.common.security.SecurityTokenInterceptor;
-import org.metaform.certo.common.security.VerifiedRequestContext;
+import org.metaform.certo.common.security.inbound.SecurityTokenInterceptor;
+import org.metaform.certo.common.security.inbound.VerifiedRequestContext;
 import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.ConsumerCatalogService;
 import org.metaform.certo.consumer.ConsumerExchangeService;

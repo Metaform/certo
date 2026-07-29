@@ -1,7 +1,7 @@
 package org.metaform.certo.testsupport;
 
-import org.metaform.certo.common.security.SecurityTokenSource;
-import org.metaform.certo.common.security.SecurityTokenVerifier;
+import org.metaform.certo.common.security.outbound.SecurityTokenSource;
+import org.metaform.certo.common.security.inbound.SecurityTokenVerifier;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
