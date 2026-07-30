@@ -1,0 +1,55 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/metaform/certo
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Gateway API: when `name` is set, the chart renders an HTTPRoute binding the service to
+# that Gateway; when empty, no HTTPRoute is created.
+gateway:
+  # Name of the Gateway to attach to.
+  name: ""
+  # Namespace of the Gateway; defaults to the release namespace.
+  namespace: ""
+  # Optional listener (sectionName) on the Gateway.
+  sectionName: ""
+  # Hostnames to match; empty matches all hostnames of the listener.
+  hostnames: []
+  # Path prefix the route matches; forwarded to the service unchanged (no rewrite).
+  pathPrefix: /api/certo
+
+# Active Spring profile. `prod` (the image default) expects Postgres and an existing schema.
+springProfile: prod
+
+# Base URL of the siglet STS (certo.security.siglet-base-url). Required for the CCM protocol
+# layer; point it at a mock siglet for dev/test.
+sigletBaseUrl: ""
+
+database:
+  url: jdbc:postgresql://postgres:5432/certo
+  username: certo
+  password: ""
+  # Name of an existing Secret holding the DB password instead of `password` above.
+  existingSecret: ""
+  existingSecretKey: password
+  # Hibernate schema handling (spring.jpa.hibernate.ddl-auto): none, validate, update,
+  # create or create-drop. Empty keeps the app's profile default (`validate` under prod).
+  ddlAuto: ""
+
+# Additional environment variables for the container, in Kubernetes EnvVar format.
+extraEnv: []
+
+resources: {}
+  # limits:
+  #   memory: 1Gi
+  # requests:
+  #   cpu: 250m
+  #   memory: 512Mi
