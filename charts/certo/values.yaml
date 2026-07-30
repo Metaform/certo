@@ -12,9 +12,10 @@ service:
   type: ClusterIP
   port: 8080
 
-# Gateway API: the chart renders an HTTPRoute binding the service to this Gateway.
+# Gateway API: when `name` is set, the chart renders an HTTPRoute binding the service to
+# that Gateway; when empty, no HTTPRoute is created.
 gateway:
-  # Name of the Gateway to attach to. REQUIRED — rendering fails if unset.
+  # Name of the Gateway to attach to.
   name: ""
   # Namespace of the Gateway; defaults to the release namespace.
   namespace: ""

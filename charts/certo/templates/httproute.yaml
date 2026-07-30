@@ -1,3 +1,4 @@
+{{- if .Values.gateway.name }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -6,7 +7,7 @@ metadata:
     {{- include "certo.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - name: {{ required "gateway.name is required: the name of the Gateway to attach the HTTPRoute to" .Values.gateway.name }}
+    - name: {{ .Values.gateway.name }}
       {{- with .Values.gateway.namespace }}
       namespace: {{ . }}
       {{- end }}
@@ -31,3 +32,4 @@ spec:
       backendRefs:
         - name: {{ include "certo.fullname" . }}
           port: {{ .Values.service.port }}
+{{- end }}
