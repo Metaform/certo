@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "certo.fullname" . }}
+  labels:
+    {{- include "certo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "certo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "certo.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: certo
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ .Values.springProfile | quote }}
+            - name: CERTO_DB_URL
+              value: {{ .Values.database.url | quote }}
+            - name: CERTO_DB_USER
+              value: {{ .Values.database.username | quote }}
+            - name: CERTO_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | default (printf "%s-db" (include "certo.fullname" .)) }}
+                  key: {{ .Values.database.existingSecretKey }}
+            {{- with .Values.database.ddlAuto }}
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.sigletBaseUrl }}
+            - name: CERTO_SECURITY_SIGLETBASEURL
+              value: {{ .Values.sigletBaseUrl | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # No actuator in the app, so probe the server socket rather than an HTTP health endpoint.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: http
+          readinessProbe:
+            tcpSocket:
+              port: http
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
