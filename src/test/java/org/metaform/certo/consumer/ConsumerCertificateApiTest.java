@@ -1,6 +1,7 @@
 package org.metaform.certo.consumer;
 
 import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.metaform.certo.testsupport.MockSigletConfig;
 import org.metaform.certo.testsupport.TestTenants;
 
@@ -169,6 +170,7 @@ class ConsumerCertificateApiTest {
         var publish = http.send(
                 HttpRequest.newBuilder(URI.create(BASE + "/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/" + TestTenants.ISO14001_CERT_ID + "/publish"))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"embedded\":true,\"flowId\":\"flow-1\"," + SELF_TARGET + "}")).build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -375,6 +377,7 @@ class ConsumerCertificateApiTest {
         var publish = http.send(
                 HttpRequest.newBuilder(URI.create(BASE + "/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/" + TestTenants.ISO14001_CERT_ID + "/publish"))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                         .POST(HttpRequest.BodyPublishers.ofString("{\"flowId\":\"flow-1\"," + SELF_TARGET + "}")).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(publish.statusCode()).isEqualTo(202);
@@ -390,7 +393,8 @@ class ConsumerCertificateApiTest {
         assertThat(consumerView.get("status").asString()).isEqualTo("ACCEPTED");
 
         var providerView = mapper.readTree(http.send(
-                HttpRequest.newBuilder(URI.create(BASE + "/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-exchanges/" + exchangeId)).GET().build(),
+                HttpRequest.newBuilder(URI.create(BASE + "/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-exchanges/" + exchangeId))
+                        .header("Authorization", "Bearer " + ManagementTestAuth.adminToken()).GET().build(),
                 HttpResponse.BodyHandlers.ofString()).body());
         assertThat(providerView.get("fulfillmentStatus").asString()).isEqualTo("FULFILLED");
         assertThat(providerView.get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");

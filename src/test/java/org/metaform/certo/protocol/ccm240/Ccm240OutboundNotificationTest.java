@@ -1,6 +1,7 @@
 package org.metaform.certo.protocol.ccm240;
 
 import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.metaform.certo.testsupport.MockSigletConfig;
 
 import okhttp3.mockwebserver.MockResponse;
@@ -104,6 +105,7 @@ class Ccm240OutboundNotificationTest {
     private HttpResponse<String> post(String path, String body) throws Exception {
         return http.send(HttpRequest.newBuilder(URI.create(BASE + path))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build(), HttpResponse.BodyHandlers.ofString());
     }

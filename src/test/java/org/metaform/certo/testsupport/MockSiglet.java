@@ -54,7 +54,11 @@ public class MockSiglet {
                     .audience(aud)
                     .issuer("mock-siglet")
                     .issueTime(new Date())
-                    .expirationTime(Date.from(Instant.now().plusSeconds(300)));
+                    .expirationTime(Date.from(Instant.now().plusSeconds(300)))
+                    // The management surface is OAuth2-scope-protected; carrying the superseding admin
+                    // scope lets one default bearer serve both surfaces in tests (protocol verification
+                    // ignores the claim).
+                    .claim("scope", "certo-mgmt-api:admin");
             if (bpn != null) {
                 builder.claim("bpn", bpn);
             }

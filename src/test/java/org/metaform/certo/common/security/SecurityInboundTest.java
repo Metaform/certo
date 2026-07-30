@@ -17,7 +17,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -39,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "server.port=18085",
         "certo.security.siglet-base-url=http://localhost:18099"
 })
+@Import(ManagementTestAuth.class)
 class SecurityInboundTest {
 
     private static final String BASE = "http://localhost:18085";
@@ -123,9 +126,12 @@ class SecurityInboundTest {
     }
 
     @Test
-    void managementCall_isNotTokenProtected() throws Exception {
-        // No token, yet the management surface answers normally (never siglet-secured).
-        assertThat(post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query", "{}", null).statusCode()).isEqualTo(200);
+    void managementCall_isOauth2Protected_notSigletProtected() throws Exception {
+        // The management surface is not siglet-secured but an OAuth2 resource server: no bearer is 401,
+        // and a token scoped certo-mgmt-api:provider:read answers normally.
+        assertThat(post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query", "{}", null).statusCode()).isEqualTo(401);
+        assertThat(post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query", "{}",
+                ManagementTestAuth.token("certo-mgmt-api:provider:read")).statusCode()).isEqualTo(200);
     }
 
     @Test
@@ -136,7 +142,7 @@ class SecurityInboundTest {
                 token(SIGNING_KEY, AUDIENCE)).statusCode()).isEqualTo(202);
 
         var page = post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query",
-                "{\"certificateType\":\"P5-IDENTITY-TYPE\"}", null);
+                "{\"certificateType\":\"P5-IDENTITY-TYPE\"}", ManagementTestAuth.adminToken());
         var items = mapper.readTree(page.body()).get("items");
         assertThat(items.size()).isEqualTo(1);
         // The stored counterparty BPN is the token's bpn claim (never the DID) — no more bpn/DID conflation.
