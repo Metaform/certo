@@ -1,13 +1,17 @@
 package org.metaform.certo.management;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -21,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ManagementTestAuth.class)
+@ExtendWith(OutputCaptureExtension.class)
 class ManagementApiAuthorizationTest {
 
     private static final String PARTICIPANT_READ = "certo-mgmt-api:participant:read";
@@ -33,9 +38,10 @@ class ManagementApiAuthorizationTest {
     MockMvc mvc;
 
     @Test
-    void withoutToken_is401() throws Exception {
+    void withoutToken_is401_andLogged(CapturedOutput output) throws Exception {
         mvc.perform(get("/management/v1/participant-contexts"))
                 .andExpect(status().isUnauthorized());
+        assertThat(output).contains("401 GET /management/v1/participant-contexts");
     }
 
     @Test
@@ -53,10 +59,13 @@ class ManagementApiAuthorizationTest {
     }
 
     @Test
-    void foreignScope_is403() throws Exception {
+    void foreignScope_is403_andLoggedWithCallerAndScopes(CapturedOutput output) throws Exception {
         mvc.perform(get("/management/v1/participant-contexts")
                         .header("Authorization", bearer(CONSUMER_READ, PROVIDER_READ, PROVIDER_WRITE)))
                 .andExpect(status().isForbidden());
+        assertThat(output).contains("403 GET /management/v1/participant-contexts")
+                .contains("sub=mgmt-test-client")
+                .contains("SCOPE_" + CONSUMER_READ);
     }
 
     @Test

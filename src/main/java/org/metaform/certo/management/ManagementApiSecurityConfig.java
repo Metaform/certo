@@ -1,5 +1,7 @@
 package org.metaform.certo.management;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -9,7 +11,13 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 
 /**
  * OAuth2 security for the <b>management</b> surface only. {@code /management/**} is a JWT resource
@@ -29,6 +37,8 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableMethodSecurity
 public class ManagementApiSecurityConfig {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ManagementApiSecurityConfig.class);
+
     @Bean
     @Order(1)
     SecurityFilterChain managementApiChain(HttpSecurity http) throws Exception {
@@ -36,8 +46,34 @@ public class ManagementApiSecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults())
+                        .authenticationEntryPoint(loggingAuthenticationEntryPoint())
+                        .accessDeniedHandler(loggingAccessDeniedHandler()));
         return http.build();
+    }
+
+    /** The default bearer 401 (WWW-Authenticate with error details), plus a log line saying why. */
+    private static AuthenticationEntryPoint loggingAuthenticationEntryPoint() {
+        var delegate = new BearerTokenAuthenticationEntryPoint();
+        return (request, response, exception) -> {
+            LOG.warn("401 {} {}: {}", request.getMethod(), request.getRequestURI(),
+                    exception.getMessage() == null || exception.getMessage().isBlank()
+                            ? "no bearer token" : exception.getMessage());
+            delegate.commence(request, response, exception);
+        };
+    }
+
+    /** The default bearer 403 (insufficient_scope), plus a log line naming the caller and its scopes. */
+    private static AccessDeniedHandler loggingAccessDeniedHandler() {
+        var delegate = new BearerTokenAccessDeniedHandler();
+        return (request, response, exception) -> {
+            var authentication = SecurityContextHolder.getContext().getAuthentication();
+            LOG.warn("403 {} {}: sub={}, authorities={}", request.getMethod(), request.getRequestURI(),
+                    authentication == null ? "?" : authentication.getName(),
+                    authentication == null ? "[]" : authentication.getAuthorities().stream()
+                            .map(GrantedAuthority::getAuthority).toList());
+            delegate.handle(request, response, exception);
+        };
     }
 
     @Bean
