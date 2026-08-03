@@ -109,8 +109,10 @@ class ManagementApiJwksDecoderTest {
 
     @Test
     void insufficientScope_is403() throws Exception {
+        // provider scopes do not reach the participant surface (and write-includes-read makes any
+        // action-wide scope sufficient for reads, so a foreign resource scope is the 403 case)
         mvc.perform(get("/management/v1/participant-contexts")
-                        .header("Authorization", "Bearer " + mint(KEY, ISSUER, "certo-mgmt-api:write")))
+                        .header("Authorization", "Bearer " + mint(KEY, ISSUER, "certo-mgmt-api:provider:read")))
                 .andExpect(status().isForbidden());
     }
 

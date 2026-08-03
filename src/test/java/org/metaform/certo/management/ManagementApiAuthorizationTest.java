@@ -108,8 +108,33 @@ class ManagementApiAuthorizationTest {
                         .contentType("application/json")
                         .content("{\"bpn\":\"BPNL0000000006XX\",\"source\":\"urn:bpn:BPNL0000000006XX\",\"did\":\"did:web:authz-write-wide\"}"))
                 .andExpect(status().isCreated());
-        // write-wide is still not read
-        mvc.perform(get("/management/v1/participant-contexts").header("Authorization", write))
+    }
+
+    @Test
+    void actionWrite_includesRead() throws Exception {
+        var write = bearer("certo-mgmt-api:write");
+        mvc.perform(get("/management/v1/participant-contexts")
+                        .header("Authorization", write)
+                        .contentType("application/json"))
+                .andExpect(status().is2xxSuccessful());
+    }
+
+    @Test
+    void resourceWrite_includesItsRead_butNotOtherResources() throws Exception {
+        // provider:write covers provider:read...
+        mvc.perform(post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query")
+                        .header("Authorization", bearer(PROVIDER_WRITE))
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        // ...but neither reads nor writes of other resources
+        mvc.perform(get("/management/v1/participant-contexts")
+                        .header("Authorization", bearer(PROVIDER_WRITE)))
+                .andExpect(status().isForbidden());
+        // and read still does not imply write
+        mvc.perform(post("/management/v1/participant-contexts/pctx-seed-provider/documents")
+                        .header("Authorization", bearer(PROVIDER_READ))
+                        .contentType("application/json")
+                        .content("{\"mediaType\":\"application/pdf\",\"language\":\"en\",\"contentBase64\":\"aGk=\"}"))
                 .andExpect(status().isForbidden());
     }
 
