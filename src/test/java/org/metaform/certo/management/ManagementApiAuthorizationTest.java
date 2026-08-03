@@ -45,10 +45,13 @@ class ManagementApiAuthorizationTest {
     }
 
     @Test
-    void withMalformedToken_is401() throws Exception {
+    void withMalformedToken_is401_andDecodeFailureIsLogged(CapturedOutput output) throws Exception {
+        // Decode failures take a different path than missing tokens (the bearer filter's failure
+        // handler, not the chain entry point) — both must log.
         mvc.perform(get("/management/v1/participant-contexts")
                         .header("Authorization", "Bearer not-a-jwt"))
                 .andExpect(status().isUnauthorized());
+        assertThat(output).contains("401 GET /management/v1/participant-contexts");
     }
 
     @Test

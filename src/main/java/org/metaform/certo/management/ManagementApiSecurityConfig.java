@@ -1,7 +1,10 @@
 package org.metaform.certo.management;
 
+import com.nimbusds.jose.JWSAlgorithm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -13,11 +16,23 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * OAuth2 security for the <b>management</b> surface only. {@code /management/**} is a JWT resource
@@ -50,6 +65,38 @@ public class ManagementApiSecurityConfig {
                         .authenticationEntryPoint(loggingAuthenticationEntryPoint())
                         .accessDeniedHandler(loggingAccessDeniedHandler()));
         return http.build();
+    }
+
+    /**
+     * When {@code jwk-set-uri} is set, replace Boot's decoder with the EdDSA-capable {@link
+     * JwkSetJwtDecoder} — Boot's property path crashes on {@code jws-algorithms: EdDSA} ({@code
+     * SignatureAlgorithm} has no such entry) and its issuer-discovery decoder infers RS256 only, so
+     * neither accepts jwtlet/siglet (Ed25519) tokens. Claim validation is unchanged: {@code exp}/{@code
+     * nbf} always, {@code iss} when {@code issuer-uri} is set (as a plain expected value, no discovery),
+     * {@code aud} when {@code audiences} is set.
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "spring.security.oauth2.resourceserver.jwt", name = "jwk-set-uri")
+    JwtDecoder jwkSetJwtDecoder(
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}") String issuerUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.jws-algorithms:EdDSA,RS256,ES256}") String jwsAlgorithms,
+            @Value("${spring.security.oauth2.resourceserver.jwt.audiences:}") String audiences) {
+        var algorithms = splitCsv(jwsAlgorithms).stream().map(JWSAlgorithm::parse).collect(Collectors.toSet());
+        var validators = new ArrayList<OAuth2TokenValidator<Jwt>>();
+        validators.add(issuerUri.isBlank()
+                ? JwtValidators.createDefault()
+                : JwtValidators.createDefaultWithIssuer(issuerUri));
+        var expectedAudiences = splitCsv(audiences);
+        if (!expectedAudiences.isEmpty()) {
+            validators.add(new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
+                    aud -> aud != null && aud.stream().anyMatch(expectedAudiences::contains)));
+        }
+        return new JwkSetJwtDecoder(jwkSetUri, algorithms, new DelegatingOAuth2TokenValidator<>(validators));
+    }
+
+    private static List<String> splitCsv(String value) {
+        return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
     }
 
     /** The default bearer 401 (WWW-Authenticate with error details), plus a log line saying why. */

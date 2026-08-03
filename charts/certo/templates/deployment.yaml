@@ -14,6 +14,9 @@ spec:
       labels:
         {{- include "certo.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.serviceAccount.name }}
+      serviceAccountName: {{ . }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
