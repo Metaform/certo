@@ -20,5 +20,12 @@
  * here; protocol (counterparty-facing) is grouped under {@code protocol}. Every management operation is
  * scoped to a tenant named in the path
  * ({@code /management/v1/participant-contexts/{participantContextId}/…}, the EDC Management API scheme).
+ *
+ * <p>The two contracts also have two trust domains: protocol endpoints are verified against the siglet
+ * STS (see {@code common.security}), while this surface is an OAuth2 resource server
+ * ({@code ManagementApiSecurityConfig}) — bearer JWTs from the issuer configured under
+ * {@code spring.security.oauth2.resourceserver.jwt}, authorized per endpoint by
+ * {@code certo-mgmt-api:<resource>:<action>} scopes ({@code ManagementScopeAuthorization}), with
+ * {@code certo-mgmt-api:admin} superseding all of them.
  */
 package org.metaform.certo.management;

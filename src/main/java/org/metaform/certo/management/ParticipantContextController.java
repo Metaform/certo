@@ -6,6 +6,7 @@ import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +46,7 @@ public class ParticipantContextController {
      * did} constraints are the real guard, so two concurrent creates of the same tenant cannot both commit —
      * no application-level lock (which would not hold across a cluster) is needed.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'participant:write')")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @Transactional
     public ResponseEntity<ParticipantContext> create(@RequestBody NewParticipantContext request) {
@@ -75,6 +77,7 @@ public class ParticipantContextController {
     }
 
     /** {@code GET /participant-contexts/{id}} — one tenant. */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'participant:read')")
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ParticipantContext get(@PathVariable("id") String participantContextId) {
         return contextStore.find(participantContextId)
@@ -82,6 +85,7 @@ public class ParticipantContextController {
     }
 
     /** {@code GET /participant-contexts} — all tenants. */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'participant:read')")
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public Collection<ParticipantContext> list() {
         return contextStore.all();

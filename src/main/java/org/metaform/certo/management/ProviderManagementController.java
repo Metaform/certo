@@ -16,6 +16,7 @@ import org.metaform.certo.provider.dto.PublishRequest;
 import org.metaform.certo.provider.dto.StoredDocument;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,6 +52,7 @@ public class ProviderManagementController {
      * {@code POST /documents} — upload a certificate document binary the backend has produced, ahead of the
      * certificate that will reference it. Returns the assigned {@code documentId}.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/documents",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<StoredDocument> addDocument(@PathVariable("participantContextId") String participantContextId,
@@ -68,6 +70,7 @@ public class ProviderManagementController {
      * <b>state change only</b>: waiting consumers are notified separately via {@code fulfillable-requests} +
      * {@code fulfill}.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificates",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CertificateAdded> addCertificate(@PathVariable("participantContextId") String participantContextId,
@@ -80,6 +83,7 @@ public class ProviderManagementController {
      * certificate covers. The client iterates the result and calls {@code fulfill} on each with that
      * consumer's live {@code flowId}.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:read')")
     @GetMapping(path = "/certificates/{id}/fulfillable-requests", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestPage fulfillableRequests(@PathVariable("participantContextId") String participantContextId,
                                                       @PathVariable("id") String certificateId) {
@@ -90,6 +94,7 @@ public class ProviderManagementController {
      * {@code POST /certificate-requests/query} (UC1) — browse/reconcile the backlog of consumer-initiated
      * exchanges (by default those still {@code CERTIFICATION_REQUESTED}), filtered by the request body.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:read')")
     @PostMapping(path = "/certificate-requests/query",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestPage queryRequests(@PathVariable("participantContextId") String participantContextId,
@@ -101,6 +106,7 @@ public class ProviderManagementController {
      * {@code POST /certificate-requests/{id}/fulfill} — fulfill one waiting exchange with a now-held
      * certificate that covers it and push {@code FULFILLED} to that consumer over its live {@code flowId}.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificate-requests/{id}/fulfill", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus fulfillRequest(@PathVariable("participantContextId") String participantContextId,
                                                    @PathVariable("id") String exchangeId,
@@ -113,6 +119,7 @@ public class ProviderManagementController {
      * revision with the caller's issued validity + documents (lifecycle {@code MODIFIED}). A <b>state change
      * only</b>; notifying consumers is a separate {@code publish} of a {@code MODIFIED} event (CX-0135 &sect;2.2.4).
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificates/{id}/revisions",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CertificateLifecycleResult> addRevision(@PathVariable("participantContextId") String participantContextId,
@@ -125,6 +132,7 @@ public class ProviderManagementController {
      * {@code POST /certificate-requests/{id}/fail} — the backend could not issue the certificate: fail a
      * waiting exchange (optionally with a {@code reason}) and push the terminal status to the consumer.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificate-requests/{id}/fail", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus failRequest(@PathVariable("participantContextId") String participantContextId,
                                                 @PathVariable("id") String exchangeId,
@@ -137,6 +145,7 @@ public class ProviderManagementController {
      * {@code POST /certificate-requests/{id}/decline} — the provider declines the request (a business
      * decision, optionally with a {@code reason}): a waiting exchange &rarr; {@code DECLINED}, pushed to the consumer.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificate-requests/{id}/decline", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateRequestStatus declineRequest(@PathVariable("participantContextId") String participantContextId,
                                                    @PathVariable("id") String exchangeId,
@@ -152,6 +161,7 @@ public class ProviderManagementController {
      * (full content inline) or by reference, and the {@code revision}. An empty body publishes the latest
      * revision to the native consumer, by reference.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificates/{id}/publish", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CertificatePublication> publish(@PathVariable("participantContextId") String participantContextId,
                                                           @PathVariable("id") String certificateId,
@@ -163,6 +173,7 @@ public class ProviderManagementController {
      * {@code POST /certificates/{id}/withdraw} — withdraw a certificate (lifecycle {@code WITHDRAWN}). A
      * <b>state change only</b>; notifying consumers is a separate {@code publish} of a {@code WITHDRAWN} event.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificates/{id}/withdraw", produces = MediaType.APPLICATION_JSON_VALUE)
     public CertificateLifecycleResult withdraw(@PathVariable("participantContextId") String participantContextId,
                                                @PathVariable("id") String certificateId) {
@@ -172,6 +183,7 @@ public class ProviderManagementController {
     /**
      * {@code GET /certificate-exchanges/{id}} — the provider's full view of an exchange, both phases.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:read')")
     @GetMapping(path = "/certificate-exchanges/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ExchangeView getExchange(@PathVariable("participantContextId") String participantContextId,
                                     @PathVariable("id") String exchangeId) {
@@ -183,6 +195,7 @@ public class ProviderManagementController {
      * the consumer's acceptance-status over {@code flowId} and recording any verdict on the exchange (the pull
      * fallback to the consumer's best-effort push). Native v3 consumers only. Returns the refreshed view.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificate-exchanges/{id}/poll-acceptance", produces = MediaType.APPLICATION_JSON_VALUE)
     public ExchangeView pollAcceptance(@PathVariable("participantContextId") String participantContextId,
                                        @PathVariable("id") String exchangeId,

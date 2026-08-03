@@ -22,6 +22,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
+    // OAuth2/JWT authentication + scope authorization on the management API (/management/**). The CCM
+    // protocol surface keeps its own siglet-token interceptor and is untouched by Spring Security.
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+
     // Persistence: Spring Data JPA (Hibernate) over one datasource — H2 (embedded) for dev/test,
     // Postgres for the `prod` profile. Optimistic locking (@Version) + @Transactional provide the
     // concurrency control that replaces the former in-memory JVM locks.
@@ -49,6 +53,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-webmvc-test")
     // Fake provider endpoint for asserting the consumer's outbound acceptance callback.
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // MockMvc security integration (auto-applies the filter chain) for the management-API auth tests.
+    testImplementation("org.springframework.security:spring-security-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

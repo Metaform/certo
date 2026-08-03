@@ -17,7 +17,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -41,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "server.port=18089",
         "certo.security.siglet-base-url=http://localhost:18102"
 })
+@Import(ManagementTestAuth.class)
 class SecurityRoundTripTest {
 
     private static final String BASE = "http://localhost:18089";
@@ -114,6 +117,7 @@ class SecurityRoundTripTest {
     private HttpResponse<String> post(String path, String body) throws Exception {
         return http.send(HttpRequest.newBuilder(URI.create(BASE + path))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                 .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
     }
 

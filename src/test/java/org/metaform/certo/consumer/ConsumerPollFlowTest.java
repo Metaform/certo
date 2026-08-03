@@ -1,6 +1,7 @@
 package org.metaform.certo.consumer;
 
 import org.metaform.certo.testsupport.MockSiglet;
+import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.metaform.certo.testsupport.MockSigletConfig;
 import org.metaform.certo.testsupport.TestTenants;
 
@@ -100,7 +101,8 @@ class ConsumerPollFlowTest {
     }
 
     private HttpResponse<String> get(String path) throws Exception {
-        return http.send(HttpRequest.newBuilder(URI.create(BASE + path)).GET().build(),
+        return http.send(HttpRequest.newBuilder(URI.create(BASE + path))
+                .header("Authorization", "Bearer " + ManagementTestAuth.adminToken()).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
@@ -116,11 +118,13 @@ class ConsumerPollFlowTest {
     private HttpResponse<String> postJson(String path, String body) throws Exception {
         return http.send(HttpRequest.newBuilder(URI.create(BASE + path))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                 .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> postEmpty(String path) throws Exception {
         return http.send(HttpRequest.newBuilder(URI.create(BASE + path))
+                .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                 .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
     }
 }

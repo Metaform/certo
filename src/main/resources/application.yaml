@@ -1,6 +1,15 @@
 spring:
   application:
     name: certo
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Issuer of management-API access tokens (/management/** is an OAuth2 resource server. Validation follows
+          # the issuer's OIDC discovery/JWKS: signature, iss, exp/nbf. The decoder is resolved lazily,
+          # so an unreachable issuer does not block startup — management calls fail 401 until it is up.
+          issuer-uri: ${CERTO_MGMT_ISSUER_URI:http://localhost:8081}
+          # To additionally pin the audience claim, set: audiences: certo-mgmt-api
   # Persistence runs on Spring Data JPA. By default (dev/test) Spring Boot auto-configures an embedded
   # in-memory H2 database (a uniquely-named instance per application context, so tests are isolated); the
   # `prod` profile below swaps in Postgres. Concurrency control (unique constraints, @Version optimistic

@@ -7,7 +7,9 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.metaform.certo.testsupport.ManagementTestAuth;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "server.port=18087",
         "certo.security.siglet-base-url=http://localhost:18101"
 })
+@Import(ManagementTestAuth.class)
 class SecurityConsumerOutboundTest {
 
     private static final String BASE = "http://localhost:18087";
@@ -81,6 +84,7 @@ class SecurityConsumerOutboundTest {
     private HttpResponse<String> post(String path, String body) throws Exception {
         return http.send(HttpRequest.newBuilder(URI.create(BASE + path))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + ManagementTestAuth.adminToken())
                 .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
     }
 }

@@ -11,6 +11,7 @@ import org.metaform.certo.consumer.dto.InitiateRequest;
 import org.metaform.certo.consumer.dto.KnownCertificateView;
 import org.metaform.certo.consumer.dto.RetrievedCertificateView;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +46,7 @@ public class ConsumerManagementController {
     /**
      * {@code POST /consumer/certificate-requests} — open a certificate request on the provider.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:write')")
     @PostMapping(path = "/certificate-requests",
             consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ConsumerRequestView> initiate(@PathVariable("participantContextId") String participantContextId,
@@ -60,6 +62,7 @@ public class ConsumerManagementController {
     /**
      * {@code GET /consumer/certificate-requests/{id}} — the consumer's tracked fulfillment status.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:read')")
     @GetMapping(path = "/certificate-requests/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ConsumerRequestView getRequest(@PathVariable("participantContextId") String participantContextId,
                                           @PathVariable("id") String exchangeId) {
@@ -69,6 +72,7 @@ public class ConsumerManagementController {
     /**
      * {@code POST /consumer/certificate-requests/{id}/poll} — poll the provider for fulfillment status.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:write')")
     @PostMapping(path = "/certificate-requests/{id}/poll", produces = MediaType.APPLICATION_JSON_VALUE)
     public ConsumerRequestView pollRequest(@PathVariable("participantContextId") String participantContextId,
                                            @PathVariable("id") String exchangeId,
@@ -80,6 +84,7 @@ public class ConsumerManagementController {
      * {@code POST /consumer/exchanges/query} — the consumer-side reconciliation query: exchanges awaiting the
      * caller's action (by default those {@code FULFILLED} but not yet accepted).
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:read')")
     @PostMapping(path = "/exchanges/query", produces = MediaType.APPLICATION_JSON_VALUE)
     public ConsumerExchangePage queryExchanges(@PathVariable("participantContextId") String participantContextId,
                                                @RequestBody(required = false) ConsumerExchangeQuery query) {
@@ -91,6 +96,7 @@ public class ConsumerManagementController {
      * over {@code flowId}, for the caller to inspect before deciding acceptance. Typically driven by a
      * client reacting to an inbound-notification callback under security.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:write')")
     @PostMapping(path = "/exchanges/{id}/retrieve", produces = MediaType.APPLICATION_JSON_VALUE)
     public RetrievedCertificateView retrieve(@PathVariable("participantContextId") String participantContextId,
                                              @PathVariable("id") String exchangeId,
@@ -104,6 +110,7 @@ public class ConsumerManagementController {
      * {@code POST /consumer/exchanges/{id}/accept} — record the caller's acceptance decision and report it
      * to the provider over {@code flowId}.
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:write')")
     @PostMapping(path = "/exchanges/{id}/accept", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> accept(@PathVariable("participantContextId") String participantContextId,
                                        @PathVariable("id") String exchangeId,
@@ -116,6 +123,7 @@ public class ConsumerManagementController {
      * {@code GET /consumer/certificates/{id}} — the consumer's lifecycle view of a certificate it has
      * learned about (updated from CREATED/MODIFIED/WITHDRAWN events).
      */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:read')")
     @GetMapping(path = "/certificates/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public KnownCertificateView getKnownCertificate(@PathVariable("participantContextId") String participantContextId,
                                                     @PathVariable("id") String certificateId) {
