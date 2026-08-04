@@ -1,7 +1,11 @@
 # Build stage
 # Gradle 9.5 on JDK 21 runs the wrapper; certo's Gradle toolchain auto-provisions JDK 25 (Foojay) for the
 # actual compile, exactly as it builds locally.
-FROM gradle:9.5-jdk21 AS build
+# Pinned to $BUILDPLATFORM: the jar is architecture-independent, so in a multi-platform build
+# (linux/amd64 + linux/arm64) this stage runs ONCE on the builder's native arch instead of
+# repeating the whole Gradle build under QEMU emulation; only the runtime stage below is
+# per-platform.
+FROM --platform=$BUILDPLATFORM gradle:9.5-jdk21 AS build
 WORKDIR /app
 
 # Copy gradle files for dependency caching (Kotlin DSL)
