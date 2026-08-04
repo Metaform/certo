@@ -24,4 +24,7 @@ public interface ParticipantContextStore {
     boolean existsByDid(String did);
 
     Collection<ParticipantContext> all();
+
+    /** Removes the context with this id; a no-op when none exists (callers pre-check for a 404). */
+    void delete(String participantContextId);
 }

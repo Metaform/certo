@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -89,6 +90,22 @@ public class ParticipantContextController {
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public Collection<ParticipantContext> list() {
         return contextStore.all();
+    }
+
+    /**
+     * {@code DELETE /participant-contexts/{id}} — remove a tenant. Only the context itself is removed:
+     * resources it owns (exchanges, certificates, documents) are not cascaded, so calls addressing them
+     * afterwards 404 on the tenant lookup.
+     */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'participant:write')")
+    @DeleteMapping(path = "/{id}")
+    @Transactional
+    public ResponseEntity<Void> delete(@PathVariable("id") String participantContextId) {
+        if (!contextStore.exists(participantContextId)) {
+            throw ApiException.notFound("Unknown participantContextId: " + participantContextId);
+        }
+        contextStore.delete(participantContextId);
+        return ResponseEntity.noContent().build();
     }
 
     private static void requirePresent(String field, String value) {
