@@ -45,4 +45,11 @@ public class JpaParticipantContextStore implements ParticipantContextStore {
     public Collection<ParticipantContext> all() {
         return repository.findAll();
     }
+
+    @Override
+    public void delete(String participantContextId) {
+        if (participantContextId != null) {
+            repository.deleteById(participantContextId);
+        }
+    }
 }

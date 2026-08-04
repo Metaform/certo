@@ -78,6 +78,11 @@ class ManagementApiAuthorizationTest {
                         .contentType("application/json")
                         .content("{\"bpn\":\"BPNL0000000009XX\",\"source\":\"urn:bpn:BPNL0000000009XX\",\"did\":\"did:web:authz-test\"}"))
                 .andExpect(status().isForbidden());
+        // Deleting is a write, too.
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/management/v1/participant-contexts/{id}", "pctx-seed-provider")
+                        .header("Authorization", bearer(PARTICIPANT_READ)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

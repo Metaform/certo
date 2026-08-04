@@ -46,4 +46,11 @@ public class InMemoryParticipantContextStore implements ParticipantContextStore 
     public Collection<ParticipantContext> all() {
         return List.copyOf(contexts.values());
     }
+
+    @Override
+    public void delete(String participantContextId) {
+        if (participantContextId != null) {
+            contexts.remove(participantContextId);
+        }
+    }
 }

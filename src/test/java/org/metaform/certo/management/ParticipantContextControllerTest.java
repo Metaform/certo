@@ -9,6 +9,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -73,6 +74,31 @@ class ParticipantContextControllerTest {
                         .value(org.hamcrest.Matchers.hasItem("did:web:pctx-list-1")))
                 .andExpect(jsonPath("$[?(@.participantContextId=='tenant-list-2')].did")
                         .value(org.hamcrest.Matchers.hasItem("did:web:pctx-list-2")));
+    }
+
+    @Test
+    void delete_removesTheContext_andUnknownIdIs404() throws Exception {
+        mvc.perform(create("tenant-del", "BPNL000000000P07", "urn:bpn:BPNL000000000P07", "did:web:pctx-del"))
+                .andExpect(status().isCreated());
+
+        mvc.perform(delete("/management/v1/participant-contexts/{id}", "tenant-del"))
+                .andExpect(status().isNoContent());
+        // Gone: neither retrievable nor deletable again.
+        mvc.perform(get("/management/v1/participant-contexts/{id}", "tenant-del"))
+                .andExpect(status().isNotFound());
+        mvc.perform(delete("/management/v1/participant-contexts/{id}", "tenant-del"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deletedId_canBeRegisteredAgain() throws Exception {
+        mvc.perform(create("tenant-recycle", "BPNL000000000P08", "urn:bpn:BPNL000000000P08", "did:web:pctx-recycle-1"))
+                .andExpect(status().isCreated());
+        mvc.perform(delete("/management/v1/participant-contexts/{id}", "tenant-recycle"))
+                .andExpect(status().isNoContent());
+        // The id and the did are both free again.
+        mvc.perform(create("tenant-recycle", "BPNL000000000P08", "urn:bpn:BPNL000000000P08", "did:web:pctx-recycle-1"))
+                .andExpect(status().isCreated());
     }
 
     @Test
