@@ -33,6 +33,50 @@ springProfile: prod
 # layer; point it at a mock siglet for dev/test.
 sigletBaseUrl: ""
 
+# Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents on NATS JetStream,
+# on subjects events.certificate.exchange.* — the same shape and stream the platform's EDC runtimes
+# publish to, so consumers of `edc-events` see certo's events alongside the connector's.
+#
+# ON by default — emitting these events is part of what certo is for. Set `enabled: false` to run
+# certo with no broker dependency at all (it then makes no NATS connection and the publisher bean
+# does not exist). `url` must point at a reachable NATS server whenever this is on.
+events:
+  nats:
+    enabled: true
+    url: nats://nats:4222
+    # The stream events are expected to land on. Only used when createStream is set: a publish
+    # addresses a subject, and the server routes it to whichever stream captures that subject.
+    stream: edc-events
+    # Create the stream if missing. Standalone/dev only — in the platform the stream is owned by the
+    # nats-bootstrap job and certo's NATS user has no stream-management rights.
+    createStream: false
+
+# NKey authentication for the NATS connection. When enabled an init container logs into Vault with
+# the pod's ServiceAccount token and drops the seed on a pod-private in-memory volume, exactly as the
+# platform's other NATS clients do.
+#
+# ON by default, matching the platform's posture that every NATS client authenticates.
+#
+# It requires a certo NATS identity to already exist: a Vault k8s-auth role bound to this pod's
+# ServiceAccount, a seed under `vaultSecretPath`, and a users.conf entry permitting
+# `publish: ["events.>", "$JS.API.>"]`. Note the Core Platform Distribution provisions identities for
+# its own components from a fixed list (controlplane, identityhub, issuerservice, cfm-agents,
+# nats-admin) that does NOT yet include certo — against such a platform there is nothing to fetch,
+# the init container retries indefinitely and the pod stays in Init:0/1.
+#
+# Set `enabled: false` where NATS runs without authentication; publishing then still works, over an
+# unauthenticated connection. That is what the CX-VE install script does today.
+natsAuth:
+  enabled: true
+  vaultUrl: http://vault:8200
+  # Defaults to REUSING the platform's shared `edc-events` identity — certo publishes on events.>,
+  # which is that identity's profile — rather than requiring a user of its own. The deployment must
+  # add certo's ServiceAccount to that identity's serviceAccounts list on the platform side.
+  # Both are configurable so this also works against whatever else mints certo an identity.
+  vaultRole: nats-edc-events
+  vaultSecretPath: secret/nats/edc-events
+  image: hashicorp/vault:latest
+
 database:
   url: jdbc:postgresql://postgres:5432/certo
   username: certo

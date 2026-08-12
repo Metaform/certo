@@ -11,17 +11,26 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import org.jetbrains.annotations.NotNull;
+import org.metaform.certo.common.event.CertificateExchangeStatusChanged;
+import org.metaform.certo.common.event.ExchangeEventType;
+import org.metaform.certo.common.event.ExchangePhase;
+import org.metaform.certo.common.event.ExchangeRole;
 import org.metaform.certo.common.util.Validations;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.persistence.StatusErrorListConverter;
 import org.metaform.certo.common.web.ApiException;
+import org.springframework.data.domain.AfterDomainEventPublication;
+import org.springframework.data.domain.DomainEvents;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -121,6 +130,15 @@ public class ProviderCertificateExchange {
     @Version
     private long version;
 
+    /**
+     * Status changes recorded since this aggregate was last saved, drained by Spring Data's
+     * {@code @DomainEvents} support on {@code save()} (see {@link #domainEvents()}). Transient in every
+     * sense: never persisted, and never populated on an entity loaded from the database — only a
+     * mutation made in this JVM records one.
+     */
+    @Transient
+    private final transient List<Object> domainEvents = new ArrayList<>();
+
     protected ProviderCertificateExchange() {
         // for JPA
     }
@@ -151,6 +169,7 @@ public class ProviderCertificateExchange {
         this.counterpartyDid = Validations.requireNonBlank(counterpartyDid, "counterpartyDid");
         this.fulfillmentStatus = Objects.requireNonNull(initialStatus, "fulfillmentStatus");
         this.fulfillmentErrors = copyOrNull(initialErrors);
+        recordFulfillmentChange(null);
     }
 
     /**
@@ -187,9 +206,11 @@ public class ProviderCertificateExchange {
             throw ApiException.conflict("Illegal fulfillment transition " + fulfillmentStatus + " -> " + to
                                         + " for exchange " + exchangeId);
         }
+        var previous = fulfillmentStatus;
         this.fulfillmentStatus = to;
         this.fulfillmentErrors = copyOrNull(errors);
         releaseLiveKeyIfTerminal();
+        recordFulfillmentChange(previous);
     }
 
     /**
@@ -221,9 +242,11 @@ public class ProviderCertificateExchange {
             throw ApiException.conflict("Illegal acceptance transition " + acceptanceStatus + " -> " + to
                                         + " for exchange " + exchangeId);
         }
+        var previous = acceptanceStatus;
         this.acceptanceStatus = to;
         this.acceptanceErrors = copyOrNull(errors);
         releaseLiveKeyIfTerminal();
+        recordAcceptanceChange(previous);
     }
 
     /** Nulls the live-request key once the exchange is no longer live, so the unique constraint stops guarding it. */
@@ -260,6 +283,62 @@ public class ProviderCertificateExchange {
      */
     public boolean isLive() {
         return !fulfillmentStatus.isTerminal() && (acceptanceStatus == null || !acceptanceStatus.isTerminal());
+    }
+
+    // --- domain events -------------------------------------------------------------------------
+
+    /**
+     * Records the Fulfillment status now in effect. {@code previous} is null when the exchange was just
+     * opened, which is how a consumer tells "opened in state X" from "transitioned to X".
+     */
+    private void recordFulfillmentChange(FulfillmentStatus previous) {
+        domainEvents.add(new CertificateExchangeStatusChanged(
+                ExchangeRole.PROVIDER,
+                ExchangePhase.FULFILLMENT,
+                ExchangeEventType.of(fulfillmentStatus),
+                exchangeId,
+                participantContextId,
+                counterpartyBpn,
+                counterpartyDid,
+                certificateId,
+                certificateId == null ? null : revision,
+                previous == null ? null : previous.name(),
+                fulfillmentStatus.name(),
+                fulfillmentErrors,
+                OffsetDateTime.now()));
+    }
+
+    /** Records the Acceptance status now in effect; {@code previous} is null for the first verdict recorded. */
+    private void recordAcceptanceChange(AcceptanceStatus previous) {
+        domainEvents.add(new CertificateExchangeStatusChanged(
+                ExchangeRole.PROVIDER,
+                ExchangePhase.ACCEPTANCE,
+                ExchangeEventType.of(acceptanceStatus),
+                exchangeId,
+                participantContextId,
+                counterpartyBpn,
+                counterpartyDid,
+                certificateId,
+                certificateId == null ? null : revision,
+                previous == null ? null : previous.name(),
+                acceptanceStatus.name(),
+                acceptanceErrors,
+                OffsetDateTime.now()));
+    }
+
+    /**
+     * Drained by Spring Data on {@code save()} and handed to the {@code ApplicationEventPublisher}. The
+     * NATS publisher listens after commit, so a transaction that rolls back announces nothing.
+     */
+    @DomainEvents
+    Collection<Object> domainEvents() {
+        return List.copyOf(domainEvents);
+    }
+
+    /** Clears the recorded events after publication so a second {@code save()} does not re-publish them. */
+    @AfterDomainEventPublication
+    void clearDomainEvents() {
+        domainEvents.clear();
     }
 
     // --- accessors -----------------------------------------------------------------------------
