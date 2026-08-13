@@ -36,7 +36,20 @@ dependencies {
     // NATS/JetStream client for publishing certificate-exchange events onto the platform's shared
     // `edc-events` stream. Version-matched to the platform's EDC events-nats bridge and the CX-VE
     // onboarding API, so all three speak to the same server through the same client.
-    implementation("io.nats:jnats:2.25.3")
+    //
+    // jnats pulls BouncyCastle's LTS provider (bcprov-lts8on) for the Ed25519 maths behind NKey
+    // auth. That provider probes for JNI native libraries when CryptoServicesRegistrar initialises,
+    // and those .so files are glibc-linked — so on this app's musl runtime image
+    // (eclipse-temurin:*-jre-alpine) the probe dies with
+    //   UnsatisfiedLinkError: ... Error loading shared library ld-linux-<arch>.so.1
+    // from inside a static initialiser, taking the context down the first time an NKey is used.
+    // NOT arch-specific: it is musl vs glibc, so amd64 Alpine fails the same way.
+    // The standard provider has no native path at all and carries every class jnats touches
+    // (rfc8032.Ed25519, Ed25519PrivateKeyParameters, SHA512Digest), so swap it in.
+    implementation("io.nats:jnats:2.25.3") {
+        exclude(group = "org.bouncycastle", module = "bcprov-lts8on")
+    }
+    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     // HTTP client used by the consumer to retrieve certificates from a provider's data plane.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
