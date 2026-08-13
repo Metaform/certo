@@ -33,6 +33,11 @@ dependencies {
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")
 
+    // NATS/JetStream client for publishing certificate-exchange events onto the platform's shared
+    // `edc-events` stream. Version-matched to the platform's EDC events-nats bridge and the CX-VE
+    // onboarding API, so all three speak to the same server through the same client.
+    implementation("io.nats:jnats:2.25.3")
+
     // HTTP client used by the consumer to retrieve certificates from a provider's data plane.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Failsafe: retry with exponential backoff around outbound OkHttp calls — the same retry library
@@ -55,6 +60,10 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     // MockMvc security integration (auto-applies the filter chain) for the management-API auth tests.
     testImplementation("org.springframework.security:spring-security-test")
+    // A real NATS server for the event-publishing test: the @DomainEvents -> after-commit -> JetStream
+    // path spans Spring Data, the transaction manager and the NATS client, and only an end-to-end run
+    // proves it. Requires Docker; the test skips itself when none is available.
+    testImplementation("org.testcontainers:junit-jupiter:1.21.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

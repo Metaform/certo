@@ -40,6 +40,26 @@ certo:
   # GET /tokens/{participantContextId}/{flowId}. A siglet is required (point at a mock siglet for dev/test).
   security:
     siglet-base-url: http://localhost:8090
+  # Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents onto a NATS JetStream
+  # stream, the way the platform's EDC runtimes publish theirs — subjects events.certificate.exchange.*,
+  # so a consumer of the shared `edc-events` stream sees them alongside the connector's. OFF by default:
+  # with `enabled: false` no connection is made and the publisher bean does not exist, so certo runs
+  # exactly as before unless a deployment opts in.
+  events:
+    nats:
+      enabled: ${CERTO_EVENTS_NATS_ENABLED:false}
+      url: ${CERTO_EVENTS_NATS_URL:nats://localhost:4222}
+      stream: ${CERTO_EVENTS_NATS_STREAM:edc-events}
+      # Standalone development only: in the platform the stream is owned by the nats-bootstrap job and
+      # certo's NATS user has no stream-management rights.
+      create-stream: ${CERTO_EVENTS_NATS_CREATESTREAM:false}
+      # Vault-delivered ed25519 seed, e.g. /vault/secrets/nats.nk. Blank connects unauthenticated.
+      nkey-seed-path: ${CERTO_EVENTS_NATS_NKEYSEEDPATH:}
+      # CloudEvents `source`: the emitting APPLICATION, matching the EDC runtimes (whose events-nats
+      # bridge uses their Hostname service). Blank resolves to $HOSTNAME — the pod name in
+      # Kubernetes — or the local hostname. Set it for a stable logical name instead of a per-pod
+      # one. The emitting TENANT is carried by the sourcebpn extension, not here.
+      source: ${CERTO_EVENTS_NATS_SOURCE:}
   # Outbound OkHttp client, shared across all adapters (routed through RetryingHttpClient). Timeouts are in
   # seconds (0 disables a given timeout). Retry (Failsafe, like EDC's EdcHttpClient) retries a transient
   # IOException or 5xx with exponential backoff. Every outbound call is idempotent so retry is safe: reads;
