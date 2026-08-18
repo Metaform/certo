@@ -46,6 +46,19 @@ public final class Ccm240Translation {
         };
     }
 
+    /**
+     * Maps a v2.4.0 {@code /request} reply status onto a v3 Fulfillment status (the inbound direction of
+     * {@link #toReplyStatus}). {@code IN_PROGRESS} lands on {@code CERTIFICATION_REQUESTED} — the non-terminal
+     * "provider is working on it" state — since 2.4.0 does not distinguish the earlier in-progress states.
+     */
+    public static FulfillmentStatus toFulfillmentStatus(Ccm240RequestStatus status) {
+        return switch (status) {
+            case IN_PROGRESS -> FulfillmentStatus.CERTIFICATION_REQUESTED;
+            case COMPLETED -> FulfillmentStatus.FULFILLED;
+            case REJECTED -> FulfillmentStatus.DECLINED;
+        };
+    }
+
     /** Maps an inbound v2.4.0 {@code certificateStatus} onto a v3 Acceptance status. */
     public static AcceptanceStatus toAcceptanceStatus(Ccm240StatusValue value) {
         return switch (value) {

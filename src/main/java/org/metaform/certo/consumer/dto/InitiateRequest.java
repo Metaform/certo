@@ -1,6 +1,7 @@
 package org.metaform.certo.consumer.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import org.metaform.certo.protocol.ProtocolVersion;
 
 import java.util.List;
 
@@ -12,12 +13,14 @@ import java.util.List;
  * ({@code /management/v1/participant-contexts/{participantContextId}/consumer/certificate-requests}).
  * {@code providerBpn} and {@code providerDid} name the target provider — its BPN (message subject) and its DID
  * (the token audience), supplied so no component has to resolve the DID from the BPN. {@code flowId} is the
- * live outbound flow to call the provider over.
+ * live outbound flow to call the provider over. {@code protocolVersion} is the provider's wire version (e.g.
+ * {@code "2.4.0"}); defaults to native v3 when omitted.
  */
 public record InitiateRequest(
         @NotBlank String providerBpn,
         @NotBlank String providerDid,
         @NotBlank String certificateType,
         List<String> certifiedLocations,
-        String flowId) {
+        String flowId,
+        ProtocolVersion protocolVersion) {
 }

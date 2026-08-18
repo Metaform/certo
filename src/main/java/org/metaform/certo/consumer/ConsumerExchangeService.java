@@ -19,16 +19,20 @@ import org.metaform.certo.consumer.dto.ConsumerExchangePage;
 import org.metaform.certo.consumer.dto.ConsumerExchangeQuery;
 import org.metaform.certo.consumer.dto.ConsumerExchangeView;
 import org.metaform.certo.consumer.spi.AcceptanceReporter;
-import org.metaform.certo.consumer.spi.CertificateRequester;
-import org.metaform.certo.consumer.spi.CertificateRetriever;
 import org.metaform.certo.consumer.spi.InboundCcmEvent;
 import org.metaform.certo.consumer.spi.InboundNotificationListener;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
 import org.metaform.certo.consumer.spi.RetrievedCertificate;
 import org.metaform.certo.consumer.spi.RetrievedDocument;
 import org.metaform.certo.consumer.store.ConsumerCertificateExchangeStore;
+import org.metaform.certo.protocol.CounterpartyRole;
+import org.metaform.certo.protocol.DispatchingCertificateRequester;
+import org.metaform.certo.protocol.DispatchingCertificateRetriever;
+import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
+import org.metaform.certo.protocol.domain.ExchangeBinding;
+import org.metaform.certo.protocol.store.ExchangeBindingStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -75,22 +79,24 @@ public class ConsumerExchangeService {
     private final ConsumerCertificateExchangeStore exchangeStore;
     private final CloudEventCodec codec;
     private final ProcessedEventStore eventStore;
-    private final CertificateRetriever providerClient;
-    private final CertificateRequester requestClient;
+    private final DispatchingCertificateRetriever providerClient;
+    private final DispatchingCertificateRequester requestClient;
     private final AcceptanceReporter acceptanceClient;
     private final ParticipantContextStore contextStore;
     private final ConsumerCatalogService catalog;
+    private final ExchangeBindingStore bindings;
     private final List<InboundNotificationListener> listeners;
     private final TransactionTemplate tx;
 
     public ConsumerExchangeService(ConsumerCertificateExchangeStore exchangeStore,
                                    CloudEventCodec codec,
                                    ProcessedEventStore eventStore,
-                                   CertificateRetriever providerClient,
-                                   CertificateRequester requestClient,
+                                   DispatchingCertificateRetriever providerClient,
+                                   DispatchingCertificateRequester requestClient,
                                    AcceptanceReporter acceptanceClient,
                                    ParticipantContextStore contextStore,
                                    ConsumerCatalogService catalog,
+                                   ExchangeBindingStore bindings,
                                    List<InboundNotificationListener> listeners,
                                    PlatformTransactionManager txManager) {
         this.exchangeStore = exchangeStore;
@@ -101,6 +107,7 @@ public class ConsumerExchangeService {
         this.acceptanceClient = acceptanceClient;
         this.contextStore = contextStore;
         this.catalog = catalog;
+        this.bindings = bindings;
         this.listeners = listeners;
         // REQUIRES_NEW: this template is used from an afterCommit callback (the acceptance-report mark), where
         // the outer transaction has already committed; a plain REQUIRED template would join that completed
@@ -122,12 +129,14 @@ public class ConsumerExchangeService {
                                                        String providerDid,
                                                        String certificateType,
                                                        String flowId,
-                                                       List<String> certifiedLocations) {
+                                                       List<String> certifiedLocations,
+                                                       ProtocolVersion protocolVersion) {
         var sender = requireContext(contextId);
+        var version = protocolVersion != null ? protocolVersion : ProtocolVersion.NATIVE;
         var call = new OutboundCall(sender, providerBpn, providerDid, flowId);
         ProviderRequestResult result;
         try {
-            result = requestClient.request(certificateType, certifiedLocations, call);
+            result = requestClient.request(version, certificateType, certifiedLocations, call);
         } catch (IOException e) {
             throw new ApiException(BAD_GATEWAY, "Provider request failed: " + e.getMessage());
         }
@@ -141,6 +150,12 @@ public class ConsumerExchangeService {
                 providerBpn,
                 providerDid);
         exchangeStore.save(exchange);
+        // For a non-native provider, record the protocol binding so a later poll (and any other outbound on
+        // this exchange) routes to the right adapter — keyed by exchangeId, counterparty = the provider.
+        if (version != ProtocolVersion.NATIVE) {
+            bindings.record(new ExchangeBinding(result.exchangeId(), result.certificateId(), version,
+                    CounterpartyRole.PROVIDER, providerBpn, providerDid, null));
+        }
         return exchange;
     }
 
@@ -333,6 +348,50 @@ public class ConsumerExchangeService {
     @Transactional
     public void receivePushedCertificate(String exchangeId, CertificateRecord certificate, VerifiedRequestContext requestContext) {
         applyLifecycle(new LifecycleStatusData(CREATED, exchangeId, certificate), requestContext);
+    }
+
+    /**
+     * Receives an <b>availability notice</b> from an external provider through a protocol adapter (a v2.4.0
+     * {@code /companycertificate/available}): records the by-reference certificate as a {@code CREATED}
+     * exchange and emits the event, for a client to later {@code retrieve} — which, because no content was
+     * embedded, pulls it from the provider over a flow. The {@code certificate} carries only what the notice
+     * stated (id, type, locations); the full record is filled in on retrieval. The {@code exchangeId} is a
+     * consumer-local surrogate minted by the adapter (v2.4.0 has no exchange concept).
+     */
+    @Transactional
+    public void receiveAvailableCertificate(String exchangeId, CertificateRecord certificate, VerifiedRequestContext requestContext) {
+        applyLifecycle(new LifecycleStatusData(CREATED, exchangeId, certificate), requestContext);
+    }
+
+    /**
+     * Proactive discovery pull (CX-0135 v2 asset-based pull, consumer-initiated with no prior notification):
+     * pulls a partner's certificate over the caller-supplied live {@code flowId} in the stated
+     * {@code protocolVersion}, records it in the tenant's known-certificate view, and returns it for display.
+     * The flow (EDC catalog / negotiation / transfer) is established upstream by the caller; this performs the
+     * data-plane read and up-conversion. Used to satisfy a "retrieve &amp; display a partner's certificate"
+     * without a push.
+     */
+    // Non-transactional across the outbound call: pull outside any transaction, then record the known
+    // certificate in its own short transaction, so no DB connection is held across the provider read.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public RetrievedCertificate pullCertificate(String contextId,
+                                                String partnerBpn,
+                                                String partnerDid,
+                                                String flowId,
+                                                ProtocolVersion protocolVersion) {
+        var sender = requireContext(contextId);
+        var version = protocolVersion != null ? protocolVersion : ProtocolVersion.NATIVE;
+        var call = new OutboundCall(sender, partnerBpn, partnerDid, flowId);
+        RetrievedCertificate retrieved;
+        try {
+            // No exchange/certificateId is known ahead of a discovery pull; the retriever derives the id.
+            retrieved = providerClient.fetch(version, null, call);
+        } catch (IOException e) {
+            throw new ApiException(BAD_GATEWAY, "Certificate pull failed: " + e.getMessage());
+        }
+        tx.executeWithoutResult(_ ->
+                catalog.recordKnownCertificate(new LifecycleStatusData(CREATED, null, retrieved.metadata()), contextId));
+        return retrieved;
     }
 
     private static LifecycleStatusData toDomainLifecycle(Ccm300LifecycleStatus wire) {

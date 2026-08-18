@@ -5,6 +5,9 @@ import org.metaform.certo.protocol.ccm240.Ccm240Translation;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
+import org.metaform.certo.common.model.CertificateRecord;
+import org.metaform.certo.common.model.CertifiedLocation;
+import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.common.security.inbound.SecurityTokenInterceptor;
 import org.metaform.certo.common.security.inbound.VerifiedRequestContext;
 import org.metaform.certo.common.web.ApiException;
@@ -17,8 +20,6 @@ import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificateAvailable;
 import org.metaform.certo.protocol.ccm240.model.Ccm240CertificatePush;
 import org.metaform.certo.protocol.ccm240.model.Ccm240Contexts;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -48,24 +50,29 @@ import java.util.UUID;
 @RestController
 public class Ccm240ConsumerController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Ccm240ConsumerController.class);
-
-    private final ConsumerExchangeService consumer;
-    private final ConsumerCatalogService catalog;
-    private final ExchangeBindingStore bindings;
+    private final ConsumerExchangeService exchangeService;
+    private final ConsumerCatalogService catalogService;
+    private final ExchangeBindingStore bindingStore;
     private final ProcessedEventStore eventStore;
 
-    public Ccm240ConsumerController(ConsumerExchangeService consumer, ConsumerCatalogService catalog,
-                                    ExchangeBindingStore bindings, ProcessedEventStore eventStore) {
-        this.consumer = consumer;
-        this.catalog = catalog;
-        this.bindings = bindings;
+    public Ccm240ConsumerController(ConsumerExchangeService exchangeService,
+                                    ConsumerCatalogService catalogService,
+                                    ExchangeBindingStore bindingStore,
+                                    ProcessedEventStore eventStore) {
+        this.exchangeService = exchangeService;
+        this.catalogService = catalogService;
+        this.bindingStore = bindingStore;
         this.eventStore = eventStore;
     }
 
     /** A small ack body carrying the assigned v3 identifiers (a convenience; v2.4.0 clients ignore it). */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Ccm240PushAck(String certificateId, String exchangeId) {
+    }
+
+    /** Ack for an {@code /available} notice: the assigned identifiers a client uses to drive the pull. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Ccm240AvailableAck(String certificateId, String exchangeId) {
     }
 
     /**
@@ -117,36 +124,88 @@ public class Ccm240ConsumerController {
         // first delivery opened.
         var dedupKey = "ccm240-push:" + requestContext.subject() + ":" + header.messageId();
         if (!eventStore.claim(dedupKey)) {
-            var priorExchangeId = bindings.exchangeFor(certificateId, requestContext.subject()).orElse(null);
+            var priorExchangeId = bindingStore.exchangeFor(certificateId, requestContext.subject()).orElse(null);
             return ResponseEntity.ok(new Ccm240PushAck(certificateId, priorExchangeId));
         }
 
-        var revision = catalog.nextPushedRevision(requestContext.participantContextId(), certificateId);
+        var revision = catalogService.nextPushedRevision(requestContext.participantContextId(), certificateId);
         var certificate = Ccm240Translation.upConvert(content, certificateId, revision);
 
         // A v2.4.0 provider assigns no exchangeId; mint a consumer-local surrogate per delivery.
         var exchangeId = UUID.randomUUID().toString();
-        bindings.record(new ExchangeBinding(exchangeId, certificateId, ProtocolVersion.CCM_2_4_0,
+        bindingStore.record(new ExchangeBinding(exchangeId, certificateId, ProtocolVersion.CCM_2_4_0,
                 CounterpartyRole.PROVIDER, header.senderBpn(), requestContext.subject(), header.messageId()));
 
         // Hand the embedded certificate to our consumer as a CREATED; it accepts inline and reports the
         // outcome back to this v2.4.0 provider (routed by the binding above). No provider role is played.
-        consumer.receivePushedCertificate(exchangeId, certificate, requestContext);
+        exchangeService.receivePushedCertificate(exchangeId, certificate, requestContext);
 
         return ResponseEntity.ok(new Ccm240PushAck(certificateId, exchangeId));
     }
 
-    /** {@code POST /companycertificate/available} — availability notice by reference only. */
-    @PostMapping(path = "/companycertificate/available", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> available(@RequestBody Ccm240CertificateAvailable message) {
+    /**
+     * {@code POST /companycertificate/available} — availability notice, <b>by reference</b> (provider &rarr;
+     * consumer). Opens a by-reference Certificate Exchange keyed to the notice's {@code documentId} (which is
+     * the certificateId, a UUID) and emits it, so a client drives {@code retrieve} — a v2.4.0 asset pull of the
+     * content over a flow — then {@code accept}. No content is embedded, so the exchange holds only what the
+     * notice stated (id, type, locations) until the pull fills in the full record.
+     *
+     * <p>Because v2.4.0 assigns no {@code exchangeId}, the adapter mints a consumer-local surrogate per notice
+     * and records the provider's protocol (2.4.0) + verified DID against it, so the later pull routes to the
+     * v2.4.0 retriever and the acceptance reports back as a v2.4.0 {@code /status}. Idempotent on
+     * {@code header.messageId}: a re-notice returns the exchange the first opened.
+     */
+    @PostMapping(path = "/companycertificate/available",
+            consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Transactional
+    public ResponseEntity<Ccm240AvailableAck> available(@RequestBody Ccm240CertificateAvailable message,
+            @RequestAttribute(name = SecurityTokenInterceptor.VERIFIED_ATTRIBUTE, required = true)
+            VerifiedRequestContext requestContext) {
         Ccm240Envelope.validate(message.header(), Ccm240Contexts.AVAILABLE);
-        if (message.content() != null) {
-            Ccm240Envelope.requireUuid("documentId", message.content().documentId());
-            Ccm240Envelope.validateLocationBpns(message.content().locationBpns());
+        var content = message.content();
+        if (content == null || content.documentId() == null) {
+            throw ApiException.badRequest("v2.4.0 available is missing content.documentId");
         }
-        var documentId = message.content() == null ? null : message.content().documentId();
-        LOG.info("v2.4.0 'available' for documentId {} acknowledged; this adapter does not perform the v2.4.0 "
-                + "asset-pull for the content (old providers should use /companycertificate/push)", documentId);
-        return ResponseEntity.ok().build();
+        // The v2.4.0 documentId is the certificateId (a UUID); it doubles as the /status documentId later.
+        Ccm240Envelope.requireUuid("documentId", content.documentId());
+        Ccm240Envelope.validateLocationBpns(content.locationBpns());
+        var header = message.header();
+        var certificateId = content.documentId();
+
+        // Idempotency: a retransmission repeats header.messageId. Claim it (scoped to the verified caller) so a
+        // duplicate notice does not open a second exchange; a duplicate returns the exchange the first opened.
+        var dedupKey = "ccm240-available:" + requestContext.subject() + ":" + header.messageId();
+        if (!eventStore.claim(dedupKey)) {
+            var priorExchangeId = bindingStore.exchangeFor(certificateId, requestContext.subject()).orElse(null);
+            return ResponseEntity.ok(new Ccm240AvailableAck(certificateId, priorExchangeId));
+        }
+
+        // A v2.4.0 provider assigns no exchangeId; mint a consumer-local surrogate per notice.
+        var exchangeId = UUID.randomUUID().toString();
+        bindingStore.record(new ExchangeBinding(exchangeId, certificateId, ProtocolVersion.CCM_2_4_0,
+                CounterpartyRole.PROVIDER, header.senderBpn(), requestContext.subject(), header.messageId()));
+
+        exchangeService.receiveAvailableCertificate(exchangeId, byReferenceRecord(certificateId, content), requestContext);
+
+        return ResponseEntity.ok(new Ccm240AvailableAck(certificateId, exchangeId));
+    }
+
+    /**
+     * Builds the by-reference certificate stub an {@code /available} notice carries: the id plus whatever the
+     * notice stated (type, locations). Dates, issuer, documents and the rest are absent until the pull.
+     */
+    private static CertificateRecord byReferenceRecord(String certificateId, Ccm240CertificateAvailable.Content content) {
+        List<CertifiedLocation> locations = null;
+        if (content.locationBpns() != null && !content.locationBpns().isEmpty()) {
+            locations = content.locationBpns().stream()
+                    .map(bpn -> new CertifiedLocation(
+                            null,
+                            bpn != null && bpn.startsWith("BPNA") ? bpn : null,
+                            bpn != null && bpn.startsWith("BPNS") ? bpn : null,
+                            LocationRole.ENCLOSED_LOCATION))
+                    .toList();
+        }
+        return new CertificateRecord(certificateId, 1, content.certificateType(), null, null,
+                null, null, null, null, locations, null, null, null);
     }
 }

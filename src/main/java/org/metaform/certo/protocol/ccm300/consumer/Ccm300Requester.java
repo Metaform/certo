@@ -9,8 +9,9 @@ import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.http.RetryingHttpClient;
 import org.metaform.certo.common.security.outbound.OutboundCall;
 import org.metaform.certo.common.security.outbound.OutboundTokenCache;
-import org.metaform.certo.consumer.spi.CertificateRequester;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
+import org.metaform.certo.protocol.ProtocolVersion;
+import org.metaform.certo.protocol.spi.ProtocolRequester;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -24,7 +25,7 @@ import java.util.Map;
  * from the siglet cache (per flow).
  */
 @Component
-public class Ccm300Requester implements CertificateRequester {
+public class Ccm300Requester implements ProtocolRequester {
 
     private static final MediaType JSON = MediaType.get("application/json");
 
@@ -36,6 +37,11 @@ public class Ccm300Requester implements CertificateRequester {
         this.http = httpClient;
         this.mapper = mapper;
         this.outboundTokenCache = outboundTokenCache;
+    }
+
+    @Override
+    public ProtocolVersion version() {
+        return ProtocolVersion.CCM_3_0_0;
     }
 
     /** Opens a certificate request and returns the opened exchange's identity and fulfillment status. */

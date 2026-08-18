@@ -9,6 +9,7 @@ import org.metaform.certo.consumer.dto.ConsumerExchangeQuery;
 import org.metaform.certo.consumer.dto.ConsumerRequestView;
 import org.metaform.certo.consumer.dto.InitiateRequest;
 import org.metaform.certo.consumer.dto.KnownCertificateView;
+import org.metaform.certo.consumer.dto.PullRequest;
 import org.metaform.certo.consumer.dto.RetrievedCertificateView;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -55,7 +56,8 @@ public class ConsumerManagementController {
                 request.providerBpn(), request.providerDid(),
                 request.certificateType(),
                 request.flowId(),
-                request.certifiedLocations());
+                request.certifiedLocations(),
+                request.protocolVersion());
         return ResponseEntity.accepted().body(ConsumerRequestView.of(opened));
     }
 
@@ -117,6 +119,21 @@ public class ConsumerManagementController {
                                        @RequestBody AcceptRequest request) {
         exchangeService.accept(participantContextId, exchangeId, request.status(), request.errors(), request.flowId());
         return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * {@code POST /consumer/certificates/pull} — proactively pull a partner's certificate over a live flow
+     * (the CX-0135 v2 asset-based pull, consumer-initiated with no prior notification): retrieve, record it in
+     * the tenant's known-certificate view, and return it for display. Catalog discovery + flow setup are the
+     * caller's; this reads and up-converts one certificate.
+     */
+    @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:write')")
+    @PostMapping(path = "/certificates/pull",
+            consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public RetrievedCertificateView pull(@PathVariable("participantContextId") String participantContextId,
+                                         @Valid @RequestBody PullRequest request) {
+        return RetrievedCertificateView.of(exchangeService.pullCertificate(participantContextId,
+                request.partnerBpn(), request.partnerDid(), request.flowId(), request.protocolVersion()));
     }
 
     /**

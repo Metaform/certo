@@ -75,7 +75,7 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
     // A real NATS server for the event-publishing test: the @DomainEvents -> after-commit -> JetStream
     // path spans Spring Data, the transaction manager and the NATS client, and only an end-to-end run
-    // proves it. Requires Docker; the test skips itself when none is available.
+    // proves it. Opt-in (`-Dcerto.it.nats=true`) and Docker-backed; skipped otherwise.
     testImplementation("org.testcontainers:junit-jupiter:1.21.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -84,6 +84,9 @@ tasks.withType<Test> {
     useJUnitPlatform()
     // Sample certificate seeding is off by default; the tests rely on the seeded certificates.
     systemProperty("certo.seed-sample-data", "true")
+    // Opt-in gate for the Docker-backed NATS integration test — forwarded to the forked test JVM only when
+    // set on the CLI (`./gradlew test -Dcerto.it.nats=true`), so an ordinary build never runs (or probes) it.
+    System.getProperty("certo.it.nats")?.let { systemProperty("certo.it.nats", it) }
 }
 
 // Build the container image from the Dockerfile via Gradle: `./gradlew dockerBuild`.

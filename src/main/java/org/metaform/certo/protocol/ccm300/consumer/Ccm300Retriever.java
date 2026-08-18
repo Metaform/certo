@@ -8,11 +8,12 @@ import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.security.outbound.OutboundCall;
 import org.metaform.certo.common.security.outbound.OutboundTokenCache;
-import org.metaform.certo.consumer.spi.CertificateRetriever;
 import org.metaform.certo.consumer.spi.RetrievedCertificate;
 import org.metaform.certo.consumer.spi.RetrievedDocument;
+import org.metaform.certo.protocol.ProtocolVersion;
 import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
 import org.metaform.certo.protocol.ccm300.model.Ccm300Certificate;
+import org.metaform.certo.protocol.spi.ProtocolRetriever;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -28,7 +29,7 @@ import java.util.ArrayList;
  * <p>The provider endpoint comes from the siglet cache (per flow).
  */
 @Component
-public class Ccm300Retriever implements CertificateRetriever {
+public class Ccm300Retriever implements ProtocolRetriever {
 
 
     private final RetryingHttpClient http;
@@ -39,6 +40,11 @@ public class Ccm300Retriever implements CertificateRetriever {
         this.http = httpClient;
         this.mapper = mapper;
         this.outboundTokenCache = outboundTokenCache;
+    }
+
+    @Override
+    public ProtocolVersion version() {
+        return ProtocolVersion.CCM_3_0_0;
     }
 
     /**

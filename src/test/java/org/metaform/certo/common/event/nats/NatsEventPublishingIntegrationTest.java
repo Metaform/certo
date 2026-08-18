@@ -6,6 +6,7 @@ import io.nats.client.Nats;
 import io.nats.client.api.StorageType;
 import io.nats.client.api.StreamConfiguration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;
@@ -44,11 +45,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * the only test that would catch a subject the stream does not match — a publish that silently goes
  * nowhere.
  *
- * <p>Requires Docker. Testcontainers aborts (not fails) the class when none is available, so a
- * Docker-less machine still gets a green build.
+ * <p>Requires Docker and is <b>opt-in</b>: it runs only when {@code -Dcerto.it.nats=true} is set (e.g.
+ * {@code ./gradlew test -Dcerto.it.nats=true}), so an ordinary build never probes for Docker. When enabled
+ * but Docker is absent, {@code disabledWithoutDocker} aborts (not fails) the class, so it still stays green.
  */
 @SpringBootTest
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
+@EnabledIfSystemProperty(named = "certo.it.nats", matches = "true",
+        disabledReason = "Docker-backed NATS integration test; enable with -Dcerto.it.nats=true")
 class NatsEventPublishingIntegrationTest {
 
     private static final String STREAM = "edc-events";
