@@ -67,6 +67,10 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: {{ .Values.springProfile | quote }}
+            {{- if .Values.debug.enabled }}
+            - name: JAVA_TOOL_OPTIONS
+              value: "-agentlib:jdwp=transport=dt_socket,server=y,suspend={{ ternary "y" "n" .Values.debug.suspend }},address=*:{{ .Values.debug.port }}"
+            {{- end }}
             - name: CERTO_DB_URL
               value: {{ .Values.database.url | quote }}
             - name: CERTO_DB_USER
@@ -83,6 +87,24 @@ spec:
             {{- if .Values.sigletBaseUrl }}
             - name: CERTO_SECURITY_SIGLETBASEURL
               value: {{ .Values.sigletBaseUrl | quote }}
+            {{- end }}
+            {{- if .Values.tokenExchange.enabled }}
+            - name: CERTO_SECURITY_TOKENEXCHANGE_ENABLED
+              value: "true"
+            - name: CERTO_SECURITY_TOKENEXCHANGE_URL
+              value: {{ .Values.tokenExchange.url | quote }}
+            - name: CERTO_SECURITY_TOKENEXCHANGE_SCOPE
+              value: {{ .Values.tokenExchange.scope | quote }}
+            - name: CERTO_SECURITY_TOKENEXCHANGE_AUDIENCE
+              value: {{ .Values.tokenExchange.audience | quote }}
+            - name: CERTO_SECURITY_TOKENEXCHANGE_VERIFYRESOURCE
+              value: {{ .Values.tokenExchange.verifyResource | quote }}
+            {{- if .Values.tokenExchange.subjectTokenAudience }}
+            # Projected ServiceAccount token minted for the broker's expected audience; the default
+            # auto-mounted token is addressed to the API server and its TokenReview would reject it.
+            - name: CERTO_SECURITY_TOKENEXCHANGE_SUBJECTTOKENPATH
+              value: /var/run/secrets/certo/token-exchange/token
+            {{- end }}
             {{- end }}
             {{- if .Values.events.nats.enabled }}
             - name: CERTO_EVENTS_NATS_ENABLED
@@ -113,20 +135,40 @@ spec:
           readinessProbe:
             tcpSocket:
               port: http
-          {{- if and .Values.events.nats.enabled .Values.natsAuth.enabled }}
+          {{- if or (and .Values.events.nats.enabled .Values.natsAuth.enabled) (and .Values.tokenExchange.enabled .Values.tokenExchange.subjectTokenAudience) }}
           volumeMounts:
+            {{- if and .Values.events.nats.enabled .Values.natsAuth.enabled }}
             - name: nats-nkey
               mountPath: /vault/secrets
               readOnly: true
+            {{- end }}
+            {{- if and .Values.tokenExchange.enabled .Values.tokenExchange.subjectTokenAudience }}
+            - name: token-exchange-sa-token
+              mountPath: /var/run/secrets/certo/token-exchange
+              readOnly: true
+            {{- end }}
           {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if and .Values.events.nats.enabled .Values.natsAuth.enabled }}
+      {{- if or (and .Values.events.nats.enabled .Values.natsAuth.enabled) (and .Values.tokenExchange.enabled .Values.tokenExchange.subjectTokenAudience) }}
       volumes:
+        {{- if and .Values.events.nats.enabled .Values.natsAuth.enabled }}
         # Pod-private in-memory volume the NKey seed is delivered on (never hits disk)
         - name: nats-nkey
           emptyDir:
             medium: Memory
+        {{- end }}
+        {{- if and .Values.tokenExchange.enabled .Values.tokenExchange.subjectTokenAudience }}
+        # ServiceAccount token minted for the token-exchange broker's audience, which it checks with a
+        # TokenReview. The kubelet rotates it in place, so certo re-reads the file on every exchange.
+        - name: token-exchange-sa-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: {{ .Values.tokenExchange.subjectTokenAudience | quote }}
+                  expirationSeconds: 3600
+        {{- end }}
       {{- end }}

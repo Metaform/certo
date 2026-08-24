@@ -6,8 +6,10 @@ import com.nimbusds.jwt.SignedJWT;
 import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.http.RetryingHttpClient;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
+import org.metaform.certo.common.security.exchange.TokenExchangeClient;
 import org.metaform.certo.common.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,8 +32,13 @@ import java.util.Map;
  *
  * <p>The endpoint requires an {@code audience} in the request; it is read from the (unverified) token
  * locally — the local read only names the tenant DID to check against, while siglet remains the authority on
- * the signature. This runtime does not send a caller JWT, matching {@link SigletTokenSource}'s assumption
- * that siglet's token-API auth is disabled for this deployment.
+ * the signature.
+ *
+ * <p>When token exchange is enabled the verify call itself authenticates with a bearer from
+ * {@link TokenExchangeClient}. Unlike {@link SigletTokenSource}, verification is not bound to a participant
+ * context — the tenant is only known <em>after</em> siglet answers — so the RFC 8693 {@code resource} comes
+ * from configuration ({@code certo.security.token-exchange.verify-resource}) rather than from the call. With
+ * exchange disabled no caller JWT is sent, as before.
  */
 @Component
 public class SigletTokenVerifier implements SecurityTokenVerifier {
@@ -42,13 +49,15 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final ParticipantContextStore contexts;
+    private final TokenExchangeClient exchange;
     private final String verifyUrl;
 
     public SigletTokenVerifier(SecurityProperties properties, ParticipantContextStore contexts,
-                               RetryingHttpClient http, ObjectMapper mapper) {
+                               RetryingHttpClient http, ObjectMapper mapper, TokenExchangeClient exchange) {
         this.contexts = contexts;
         this.http = http;
         this.mapper = mapper;
+        this.exchange = exchange;
         var base = properties.sigletBaseUrl();
         if (base == null || base.isBlank()) {
             throw new IllegalStateException("certo.security.siglet-base-url must be set for the siglet backend");
@@ -97,8 +106,10 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Could not serialize siglet verify request");
         }
         var request = new Request.Builder().url(verifyUrl)
-                .post(RequestBody.create(requestBody, JSON)).build();
-        try (var response = http.execute(request)) {
+                .post(RequestBody.create(requestBody, JSON));
+        exchange.accessTokenFor(exchange.verifyResource())
+                .ifPresent(bearer -> OutboundJsonClient.authorize(request, bearer));
+        try (var response = http.execute(request.build())) {
             if (response.code() == HttpStatus.UNAUTHORIZED.value()) {
                 throw ApiException.unauthorized("Invalid security token: rejected by siglet (expired, revoked, or bad signature)");
             }

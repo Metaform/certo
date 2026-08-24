@@ -4,7 +4,9 @@ import org.metaform.certo.common.security.SecurityProperties;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import okhttp3.Request;
+import org.metaform.certo.common.http.OutboundJsonClient;
 import org.metaform.certo.common.http.RetryingHttpClient;
+import org.metaform.certo.common.security.exchange.TokenExchangeClient;
 import org.metaform.certo.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -19,17 +21,25 @@ import static org.metaform.certo.common.web.ApiException.requireText;
  * {@code GET /tokens/{participant_context_id}/{flow_id}} returns {@code { token, endpoint }} — the bearer
  * JWT (minted by the counterparty's siglet, already scoped to the counterparty) and the counterparty URL to
  * call. Siglet is the only token backend.
+ *
+ * <p>When token exchange is enabled the call authenticates with a bearer obtained from
+ * {@link TokenExchangeClient}, exchanged for the <b>calling participant context</b> as the RFC 8693
+ * {@code resource} — this lookup is per-tenant, so the token is too. With it disabled the call goes out
+ * unauthenticated.
  */
 @Component
 public class SigletTokenSource implements SecurityTokenSource {
 
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
+    private final TokenExchangeClient exchange;
     private final String baseUrl;
 
-    public SigletTokenSource(RetryingHttpClient http, ObjectMapper mapper, SecurityProperties properties) {
+    public SigletTokenSource(RetryingHttpClient http, ObjectMapper mapper, SecurityProperties properties,
+                             TokenExchangeClient exchange) {
         this.http = http;
         this.mapper = mapper;
+        this.exchange = exchange;
         var base = properties.sigletBaseUrl();
         this.baseUrl = (base != null && base.endsWith("/")) ? base.substring(0, base.length() - 1) : base;
     }
@@ -40,8 +50,10 @@ public class SigletTokenSource implements SecurityTokenSource {
         requireText(flowId, "A secured outbound call requires a flowId");
         // The cached token is already scoped to the counterparty, so counterpartyDid is not needed here.
         var url = baseUrl + "/tokens/" + participantContextId + "/" + flowId;
-        var request = new Request.Builder().url(url).get().build();
-        try (var response = http.execute(request)) {
+        var request = new Request.Builder().url(url).get();
+        exchange.accessTokenFor(participantContextId)
+                .ifPresent(token -> OutboundJsonClient.authorize(request, token));
+        try (var response = http.execute(request.build())) {
             if (!response.isSuccessful()) {
                 throw new ApiException(HttpStatus.BAD_GATEWAY,
                         "Siglet returned HTTP " + response.code() + " for flow " + flowId);
