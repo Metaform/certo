@@ -40,6 +40,25 @@ certo:
   # GET /tokens/{participantContextId}/{flowId}. A siglet is required (point at a mock siglet for dev/test).
   security:
     siglet-base-url: http://localhost:8090
+    # Authentication for the calls certo makes TO siglet (both /tokens/verify and the outbound token
+    # lookup). OFF by default, which keeps those calls unauthenticated exactly as before. When enabled,
+    # each siglet call first performs an RFC 8693 token exchange at `url`, sending the pod's Kubernetes
+    # ServiceAccount JWT as subject_token and receiving a short-lived bearer for siglet. Nothing is
+    # cached — one exchange per siglet call — and the subject token is re-read from disk each time
+    # because the kubelet rotates a projected ServiceAccount token in place.
+    #
+    # The exchange's `resource` names the participant context the token is for: outbound lookups are
+    # per-tenant and pass their own participantContextId, while /tokens/verify is not bound to a tenant
+    # (the tenant is only known after siglet answers) and so uses `verify-resource`.
+    #
+    # Enabling it requires url, scope, audience and verify-resource; a missing one fails at startup.
+    token-exchange:
+      enabled: ${CERTO_SECURITY_TOKENEXCHANGE_ENABLED:false}
+      url: ${CERTO_SECURITY_TOKENEXCHANGE_URL:}
+      scope: ${CERTO_SECURITY_TOKENEXCHANGE_SCOPE:}
+      audience: ${CERTO_SECURITY_TOKENEXCHANGE_AUDIENCE:}
+      verify-resource: ${CERTO_SECURITY_TOKENEXCHANGE_VERIFYRESOURCE:}
+      subject-token-path: ${CERTO_SECURITY_TOKENEXCHANGE_SUBJECTTOKENPATH:/var/run/secrets/kubernetes.io/serviceaccount/token}
   # Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents onto a NATS JetStream
   # stream, the way the platform's EDC runtimes publish theirs — subjects events.certificate.exchange.*,
   # so a consumer of the shared `edc-events` stream sees them alongside the connector's. OFF by default:

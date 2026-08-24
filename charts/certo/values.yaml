@@ -12,6 +12,19 @@ service:
   type: ClusterIP
   port: 8080
 
+# Remote JVM debugging (JDWP). When enabled the container starts the debug agent (via
+# JAVA_TOOL_OPTIONS, honored by any JVM launcher) and exposes the port on the pod only —
+# deliberately not on the Service. Attach with
+#   kubectl port-forward deploy/<fullname> 5005:5005
+# and an IDE "Remote JVM Debug" run configuration pointed at localhost:5005.
+debug:
+  enabled: false
+  port: 5005
+  # Suspend the JVM until a debugger attaches (to step through startup code). While suspended the
+  # app cannot answer health probes, so enabling this also disables liveness/readiness probes.
+  suspend: false
+
+
 # Gateway API: when `name` is set, the chart renders an HTTPRoute binding the service to
 # that Gateway; when empty, no HTTPRoute is created.
 gateway:
@@ -32,6 +45,34 @@ springProfile: prod
 # Base URL of the siglet STS (certo.security.siglet-base-url). Required for the CCM protocol
 # layer; point it at a mock siglet for dev/test.
 sigletBaseUrl: ""
+
+# Authentication for the calls certo makes TO siglet — both the inbound POST /tokens/verify and the
+# outbound token lookup. OFF by default, leaving those calls unauthenticated.
+#
+# When enabled, each siglet call first runs an RFC 8693 token exchange at `url`, sending the pod's
+# Kubernetes ServiceAccount JWT as subject_token and getting back a short-lived bearer for siglet.
+# The exchange's `resource` is the participant context the token is for: the outbound lookup passes
+# its own participantContextId, while /tokens/verify is not bound to a tenant and uses
+# `verifyResource`.
+#
+# `url`, `scope`, `audience` and `verifyResource` are all required once enabled — certo fails at
+# startup if one is missing.
+tokenExchange:
+  enabled: false
+  # The broker's RFC 8693 token endpoint, e.g. http://jwtlet:8080/token
+  url: ""
+  # Space-separated scopes requested for the exchanged token. Must be a subset of what the broker's
+  # resource mapping grants this ServiceAccount, or the exchange is rejected.
+  scope: ""
+  # The `aud` requested for the exchanged token — the siglet it is presented to.
+  audience: ""
+  # The participant context used as `resource` for the tenant-independent /tokens/verify call.
+  verifyResource: ""
+  # Audience of the ServiceAccount token sent as subject_token. The broker verifies it with a
+  # TokenReview against its own configured client audience, so the default auto-mounted token
+  # (addressed to the API server) is normally rejected. Setting this mounts a projected token minted
+  # for the given audience and points certo at it; leaving it empty falls back to the default mount.
+  subjectTokenAudience: ""
 
 # Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents on NATS JetStream,
 # on subjects events.certificate.exchange.* — the same shape and stream the platform's EDC runtimes
