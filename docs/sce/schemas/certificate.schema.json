@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Certificate",
+  "type": "object",
+  "required": [
+    "certificateId",
+    "revision",
+    "certificateType",
+    "validFrom",
+    "validUntil",
+    "certifiedLocations",
+    "issuer",
+    "documents"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "certificateId": {
+      "$ref": "./common.schema.json#/definitions/Uuid"
+    },
+    "revision": {
+      "$ref": "./common.schema.json#/definitions/Revision"
+    },
+    "certificateType": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+$"
+    },
+    "certificateTypeVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "registrationNumber": {
+      "type": "string",
+      "minLength": 1
+    },
+    "validFrom": {
+      "type": "string",
+      "format": "date"
+    },
+    "validUntil": {
+      "type": "string",
+      "format": "date"
+    },
+    "areaOfApplication": {
+      "type": "string",
+      "minLength": 1
+    },
+    "certifiedLocations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/CertifiedLocation"
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "required": [
+        "issuerName"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "issuerName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuerId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "validator": {
+      "type": "object",
+      "required": [
+        "validatorName"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "validatorName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validatorId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DocumentReference"
+      }
+    }
+  },
+  "definitions": {
+    "CertifiedLocation": {
+      "type": "object",
+      "required": [
+        "legalEntityId",
+        "locationRole"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "legalEntityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "siteId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "addressId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locationRole": {
+          "type": "string",
+          "enum": [
+            "MAIN_LOCATION",
+            "ENCLOSED_LOCATION",
+            "REMOTE_SUPPORT_LOCATION",
+            "EXTENDED_MANUFACTURING_SITE"
+          ]
+        },
+        "areaOfApplication": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "DocumentReference": {
+      "type": "object",
+      "required": [
+        "documentId",
+        "mediaType"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2}$"
+        }
+      }
+    }
+  }
+}

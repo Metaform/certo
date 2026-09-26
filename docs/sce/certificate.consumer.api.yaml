@@ -1,0 +1,160 @@
+openapi: 3.1.0
+info:
+  title: SCE Certificate Consumer API
+  version: 1.0.0
+  description: |
+    HTTP API exposed by a Certificate Consumer under the Supply Chain
+    Certificate Exchange (SCE) specification to receive certificate lifecycle
+    and fulfillment status notifications and to answer acceptance status
+    queries.
+
+    The API is OPTIONAL. A Certificate Consumer that implements it serves all
+    endpoints but MAY return `HTTP 501 Not Implemented` for endpoints it does
+    not wish to support.
+
+    All endpoints MUST use HTTPS (TLS 1.2 or higher). Authorization mechanisms,
+    including token formats and acquisition, are defined by deployment profiles
+    of the SCE specification.
+
+servers:
+  - url: '{baseUrl}'
+    description: |
+      The implementation-specific base URL, which may include additional
+      context information such as a sub-path that indicates a version.
+    variables:
+      baseUrl:
+        default: https://consumer.example.com/sce
+
+paths:
+  /notifications:
+    post:
+      summary: Receive certificate lifecycle and fulfillment status events
+      description: |
+        Invoked by a Certificate Provider to push certificate lifecycle events
+        (`CREATED`, `MODIFIED`, `WITHDRAWN`) and fulfillment status events for
+        exchanges opened by this Certificate Consumer. Notifications are purely
+        informational: they never open a Certificate Exchange and never carry
+        document content.
+      operationId: postNotifications
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              oneOf:
+                - $ref: './schemas/certificate.lifecycle.status.event.schema.json'
+                - $ref: './schemas/certificate.fulfillment.status.event.schema.json'
+          application/cloudevents-batch+json:
+            schema:
+              type: array
+              minItems: 1
+              items:
+                oneOf:
+                  - $ref: './schemas/certificate.lifecycle.status.event.schema.json'
+                  - $ref: './schemas/certificate.fulfillment.status.event.schema.json'
+      responses:
+        '204':
+          description: The events were accepted; the response body is empty.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /acceptance-status/{exchangeId}:
+    get:
+      summary: Query the acceptance status of a Certificate Exchange
+      description: |
+        Invoked by a Certificate Provider to query the current Acceptance-phase
+        status of a Certificate Exchange it fulfilled. This is the pull
+        counterpart of the `CertificateAcceptanceStatus` event.
+      operationId: getAcceptanceStatus
+      parameters:
+        - name: exchangeId
+          in: path
+          required: true
+          description: The `exchangeId` assigned when the exchange was opened.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The current acceptance status of the exchange.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/certificate.acceptance.status.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+components:
+  schemas:
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Human-readable error description.
+
+  responses:
+    BadRequest:
+      description: The request was malformed or failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: The request was not authenticated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller is not authorized to perform this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The referenced exchange does not exist or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotImplemented:
+      description: The Certificate Consumer does not implement this endpoint.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: An unexpected error occurred on the server.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token. The token format and acquisition are defined by deployment
+        profiles of the SCE specification.
+
+security:
+  - bearerAuth: []

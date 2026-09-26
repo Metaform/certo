@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CertificateRequest",
+  "type": "object",
+  "required": [
+    "certificateType"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "certificateType": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+$"
+    },
+    "certifiedLocations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "./common.schema.json#/definitions/LocationReference"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CertificateFulfillmentStatusEvent",
+  "allOf": [
+    {
+      "$ref": "./event.schema.json"
+    },
+    {
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "org.dsaf.sce.CertificateFulfillmentStatus.v1"
+        },
+        "data": {
+          "$ref": "./certificate.request.status.schema.json"
+        }
+      }
+    }
+  ]
+}

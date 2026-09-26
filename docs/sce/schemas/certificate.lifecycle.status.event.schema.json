@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CertificateLifecycleStatusEvent",
+  "allOf": [
+    {
+      "$ref": "./event.schema.json"
+    },
+    {
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "org.dsaf.sce.CertificateLifecycleStatus.v1"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "status",
+            "certificate"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "CREATED",
+                "MODIFIED",
+                "WITHDRAWN"
+              ]
+            },
+            "certificate": {
+              "type": "object"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "WITHDRAWN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "certificate": {
+                "type": "object",
+                "required": [
+                  "certificateId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "certificateId": {
+                    "$ref": "./common.schema.json#/definitions/Uuid"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "certificate": {
+                "type": "object",
+                "required": [
+                  "certificateId",
+                  "revision",
+                  "certificateType",
+                  "validFrom",
+                  "validUntil"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "certificateId": {
+                    "$ref": "./common.schema.json#/definitions/Uuid"
+                  },
+                  "revision": {
+                    "$ref": "./common.schema.json#/definitions/Revision"
+                  },
+                  "certificateType": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+$"
+                  },
+                  "validFrom": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "validUntil": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

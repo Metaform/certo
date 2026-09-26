@@ -1,0 +1,342 @@
+openapi: 3.1.0
+info:
+  title: SCE Certificate Provider API
+  version: 1.0.0
+  description: |
+    HTTP API exposed by a Certificate Provider under the Supply Chain Certificate
+    Exchange (SCE) specification to accept certificate requests, report
+    fulfillment status, serve certificate data, answer search queries, and
+    receive acceptance status events.
+
+    A certificate version is identified by the (`certificateId`, `revision`)
+    pair. A Certificate Exchange is identified by the `exchangeId` assigned by
+    the Certificate Provider when the exchange is opened.
+
+    All endpoints MUST use HTTPS (TLS 1.2 or higher). Authorization mechanisms,
+    including token formats and acquisition, are defined by deployment profiles
+    of the SCE specification.
+
+servers:
+  - url: '{baseUrl}'
+    description: |
+      The implementation-specific base URL, which may include additional
+      context information such as a sub-path that indicates a version.
+    variables:
+      baseUrl:
+        default: https://provider.example.com/sce
+
+paths:
+  /requests:
+    post:
+      summary: Request a certificate
+      description: |
+        Invoked by a Certificate Consumer to request a certificate. A request
+        opens a Certificate Exchange. The response carries the assigned
+        `exchangeId` and the current exchange `status`.
+      operationId: createCertificateRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/certificate.request.schema.json'
+            examples:
+              byTypeAndLocation:
+                summary: Request a certificate by type and location
+                value:
+                  certificateType: iso9001
+                  certifiedLocations:
+                    - legalEntityId: PRT000000001234
+                      siteId: site-0021
+      responses:
+        '200':
+          description: The request was accepted and a Certificate Exchange opened.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/certificate.request.status.schema.json'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /requests/{exchangeId}:
+    get:
+      summary: Poll the fulfillment status of a certificate request
+      description: |
+        Invoked by a Certificate Consumer to poll the Fulfillment-phase status
+        of an exchange it opened. Serves as a fallback and recovery mechanism
+        when fulfillment status events are pushed; it reports the same `status`
+        as the pushed events.
+      operationId: getCertificateRequestStatus
+      parameters:
+        - name: exchangeId
+          in: path
+          required: true
+          description: The `exchangeId` returned in the certificate request response.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The current fulfillment status of the exchange.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/certificate.request.status.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /certificates/{certificateId}:
+    get:
+      summary: Retrieve a certificate by id
+      description: |
+        Returns the certificate record. By default the latest revision is
+        returned; pass `revision` to retrieve a specific one. The record carries
+        document references only, never document content.
+
+        For a withdrawn certificate, the endpoint returns `HTTP 200` with the
+        minimal status body `{ "certificateId": "…", "status": "WITHDRAWN" }`.
+      operationId: getCertificate
+      parameters:
+        - name: certificateId
+          in: path
+          required: true
+          description: The certificate's `certificateId` (a UUID).
+          schema:
+            type: string
+            format: uuid
+        - name: revision
+          in: query
+          required: false
+          description: A specific revision to retrieve. If omitted, the latest revision is returned.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: The certificate record, or the withdrawal status body.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: './schemas/certificate.schema.json'
+                  - $ref: '#/components/schemas/WithdrawnCertificate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /documents/{documentId}:
+    get:
+      summary: Retrieve a certificate document
+      description: |
+        Returns the binary content of a document referenced by a certificate
+        record. The response `Content-Type` is the document's `mediaType`.
+      operationId: getDocument
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: The document's `documentId` from a certificate record.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The document binary.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /notifications:
+    post:
+      summary: Submit certificate acceptance status events
+      description: |
+        Invoked by a Certificate Consumer to report the Acceptance-phase status
+        of a Certificate Exchange. The event is correlated to its exchange by
+        `data.exchangeId`. An event referencing an unknown `exchangeId` is
+        rejected with `HTTP 404`; an event reporting a transition that is
+        invalid for the exchange's current state is rejected with `HTTP 409`.
+      operationId: postAcceptanceNotifications
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              $ref: './schemas/certificate.acceptance.status.event.schema.json'
+          application/cloudevents-batch+json:
+            schema:
+              type: array
+              minItems: 1
+              items:
+                $ref: './schemas/certificate.acceptance.status.event.schema.json'
+      responses:
+        '204':
+          description: The events were accepted; the response body is empty.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /search:
+    post:
+      summary: Search certificates
+      description: |
+        Returns certificate records matching the supplied criteria. All supplied
+        filters are combined with logical AND; an empty object matches all
+        certificates visible to the caller. Each result entry carries the full
+        certificate metadata for the latest revision, without document content.
+
+        A search using a filter property the provider does not support is
+        rejected with `HTTP 400`.
+      operationId: searchCertificates
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: The maximum number of results per page.
+          schema:
+            type: integer
+            minimum: 1
+        - name: cursor
+          in: query
+          required: false
+          description: The opaque page cursor from a previous response.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/certificate.search.request.schema.json'
+            examples:
+              byTypeAndLocation:
+                summary: Search by certificate type and certified location
+                value:
+                  certificateType: iso14001
+                  certifiedLocations:
+                    - legalEntityId: PRT000000001234
+                      siteId: site-0021
+      responses:
+        '200':
+          description: |
+            A page of matching certificate records. When the response is not the
+            last page, it carries a non-empty `cursor`.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/certificate.search.response.schema.json'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    WithdrawnCertificate:
+      type: object
+      required:
+        - certificateId
+        - status
+      additionalProperties: false
+      properties:
+        certificateId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          const: WITHDRAWN
+
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Human-readable error description.
+
+  responses:
+    BadRequest:
+      description: The request was malformed or failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: The request was not authenticated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller is not authorized to perform this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The referenced resource does not exist or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: The reported transition is invalid for the exchange's current state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: An unexpected error occurred on the server.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token. The token format and acquisition are defined by deployment
+        profiles of the SCE specification.
+
+security:
+  - bearerAuth: []
