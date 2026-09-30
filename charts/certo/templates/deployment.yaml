@@ -97,8 +97,6 @@ spec:
               value: {{ .Values.tokenExchange.scope | quote }}
             - name: CERTO_SECURITY_TOKENEXCHANGE_AUDIENCE
               value: {{ .Values.tokenExchange.audience | quote }}
-            - name: CERTO_SECURITY_TOKENEXCHANGE_VERIFYRESOURCE
-              value: {{ .Values.tokenExchange.verifyResource | quote }}
             {{- if .Values.tokenExchange.subjectTokenAudience }}
             # Projected ServiceAccount token minted for the broker's expected audience; the default
             # auto-mounted token is addressed to the API server and its TokenReview would reject it.

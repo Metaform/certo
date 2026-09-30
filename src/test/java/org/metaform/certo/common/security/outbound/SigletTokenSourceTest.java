@@ -59,7 +59,7 @@ class SigletTokenSourceTest {
         siglet.enqueue(new MockResponse().setResponseCode(200)
                 .setBody("{\"token\":\"siglet.jwt\",\"endpoint\":\"http://counterparty\"}"));
 
-        var resolved = source(new SecurityProperties.TokenExchange(false, null, null, null, null, null))
+        var resolved = source(new SecurityProperties.TokenExchange(false, null, null, null, null))
                 .resolve("provider-context", "did:web:consumer", "flow-1");
 
         assertThat(resolved).isEqualTo(new ResolvedToken("siglet.jwt", "http://counterparty"));
@@ -78,7 +78,7 @@ class SigletTokenSourceTest {
                 .setBody("{\"token\":\"siglet.jwt\",\"endpoint\":\"http://counterparty\"}"));
 
         var exchange = new SecurityProperties.TokenExchange(true, broker.url("/token").toString(),
-                "siglet:read", "did:web:siglet", "verify-context", subjectToken.toString());
+                "siglet:read", "did:web:siglet", subjectToken.toString());
         var resolved = source(exchange).resolve("provider-context", "did:web:consumer", "flow-1");
 
         assertThat(resolved.bearerToken()).isEqualTo("siglet.jwt");

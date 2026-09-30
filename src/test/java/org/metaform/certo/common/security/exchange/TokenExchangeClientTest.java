@@ -57,7 +57,7 @@ class TokenExchangeClientTest {
 
     private SecurityProperties.TokenExchange enabled() {
         return new SecurityProperties.TokenExchange(true, broker.url("/token").toString(),
-                "siglet:read siglet:verify", "did:web:siglet", "verify-context",
+                "siglet:read siglet:verify", "did:web:siglet",
                 subjectTokenFile.toString());
     }
 
@@ -73,7 +73,7 @@ class TokenExchangeClientTest {
 
     @Test
     void disabled_returnsEmpty_andCallsNoBroker() {
-        var client = client(new SecurityProperties.TokenExchange(false, null, null, null, null, null));
+        var client = client(new SecurityProperties.TokenExchange(false, null, null, null, null));
 
         assertThat(client.enabled()).isFalse();
         assertThat(client.accessTokenFor("some-context")).isEmpty();
@@ -144,7 +144,7 @@ class TokenExchangeClientTest {
     void unreadableSubjectToken_isABadGateway_withoutLeakingThePath() {
         var missing = tempDir.resolve("absent/token");
         var config = new SecurityProperties.TokenExchange(true, broker.url("/token").toString(),
-                "scope", "aud", "verify-context", missing.toString());
+                "scope", "aud", missing.toString());
 
         assertThatThrownBy(() -> client(config).accessTokenFor("ctx"))
                 .isInstanceOfSatisfying(ApiException.class,
@@ -156,13 +156,13 @@ class TokenExchangeClientTest {
     @Test
     void enabledWithoutRequiredConfig_failsFast() {
         assertThatThrownBy(() -> client(new SecurityProperties.TokenExchange(true, null, "scope", "aud",
-                "verify-context", "/tmp/token")))
+                "/tmp/token")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("certo.security.token-exchange.url");
 
         assertThatThrownBy(() -> client(new SecurityProperties.TokenExchange(true, "http://broker/token",
-                "scope", "aud", " ", "/tmp/token")))
+                "scope", " ", "/tmp/token")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("certo.security.token-exchange.verify-resource");
+                .hasMessageContaining("certo.security.token-exchange.audience");
     }
 }

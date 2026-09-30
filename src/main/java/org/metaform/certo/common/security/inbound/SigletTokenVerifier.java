@@ -35,10 +35,10 @@ import java.util.Map;
  * the signature.
  *
  * <p>When token exchange is enabled the verify call itself authenticates with a bearer from
- * {@link TokenExchangeClient}. Unlike {@link SigletTokenSource}, verification is not bound to a participant
- * context — the tenant is only known <em>after</em> siglet answers — so the RFC 8693 {@code resource} comes
- * from configuration ({@code certo.security.token-exchange.verify-resource}) rather than from the call. With
- * exchange disabled no caller JWT is sent, as before.
+ * {@link TokenExchangeClient}. Siglet binds that bearer's subject to a participant context, so — as in
+ * {@link SigletTokenSource} — the RFC 8693 {@code resource} is the participant context the token targets,
+ * resolved from its (unverified) audience DID before siglet is called. A token addressed to an unknown DID is
+ * rejected without calling siglet. With exchange disabled no caller JWT is sent, as before.
  */
 @Component
 public class SigletTokenVerifier implements SecurityTokenVerifier {
@@ -72,10 +72,15 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
             throw ApiException.unauthorized("Missing bearer token");
         }
         var audience = audienceOf(bearerToken);
-        var claims = validateWithSiglet(bearerToken, audience);
-        var verifiedAudience = firstAudience(claims);
-        var context = contexts.findByDid(verifiedAudience)
+        if (audience == null) {
+            throw ApiException.unauthorized("Token is missing an audience (aud)");
+        }
+        var context = contexts.findByDid(audience)
                 .orElseThrow(() -> ApiException.unauthorized("Token audience is not a known participant context"));
+        var claims = validateWithSiglet(bearerToken, audience, context.participantContextId());
+        if (!context.did().equals(firstAudience(claims))) {
+            throw ApiException.unauthorized("Verified token audience does not match the participant context");
+        }
         var subject = claims.get("sub") instanceof String s && !s.isBlank() ? s : null;
         if (subject == null) {
             throw ApiException.unauthorized("Token is missing a subject (sub)");
@@ -98,7 +103,7 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
     }
 
     /** POSTs the token to siglet's verification endpoint; returns the echoed claims, or throws on rejection. */
-    private Map<String, Object> validateWithSiglet(String token, String audience) {
+    private Map<String, Object> validateWithSiglet(String token, String audience, String participantContextId) {
         String requestBody;
         try {
             requestBody = mapper.writeValueAsString(new VerifyRequest(token, audience));
@@ -107,7 +112,7 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
         }
         var request = new Request.Builder().url(verifyUrl)
                 .post(RequestBody.create(requestBody, JSON));
-        exchange.accessTokenFor(exchange.verifyResource())
+        exchange.accessTokenFor(participantContextId)
                 .ifPresent(bearer -> OutboundJsonClient.authorize(request, bearer));
         try (var response = http.execute(request.build())) {
             if (response.code() == HttpStatus.UNAUTHORIZED.value()) {
