@@ -14,7 +14,9 @@ import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.common.security.SecurityProperties;
 import org.metaform.certo.common.security.exchange.TokenExchangeClient;
+import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.testsupport.MockSiglet;
+import org.springframework.http.HttpStatus;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.file.Files;
@@ -25,11 +27,11 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * {@link SigletTokenVerifier} over real HTTP: the verify call, and the token exchange that authenticates it
- * — whose {@code resource} is <em>configured</em>, because verification is not bound to a participant
- * context (the tenant is only known once siglet has answered).
+ * — whose {@code resource} is the participant context resolved from the inbound token's audience DID.
  */
 class SigletTokenVerifierTest {
 
@@ -84,7 +86,7 @@ class SigletTokenVerifierTest {
     void exchangeDisabled_callsSigletUnauthenticated() throws Exception {
         enqueueVerifiedClaims();
 
-        var verified = verifier(new SecurityProperties.TokenExchange(false, null, null, null, null, null))
+        var verified = verifier(new SecurityProperties.TokenExchange(false, null, null, null, null))
                 .verify(token);
 
         assertThat(verified.participantContextId()).isEqualTo("provider-context");
@@ -96,23 +98,40 @@ class SigletTokenVerifierTest {
     }
 
     @Test
-    void exchangeEnabled_exchangesForTheConfiguredResource_thenAuthenticatesTheVerifyCall() throws Exception {
+    void exchangeEnabled_exchangesForTheAudienceParticipantContext_thenAuthenticatesTheVerifyCall() throws Exception {
         var subjectToken = tempDir.resolve("token");
         Files.writeString(subjectToken, "k8s.sa.jwt");
         broker.enqueue(new MockResponse().setResponseCode(200).setBody("{\"access_token\":\"exchanged.jwt\"}"));
         enqueueVerifiedClaims();
 
         var exchange = new SecurityProperties.TokenExchange(true, broker.url("/token").toString(),
-                "siglet:verify", "did:web:siglet", "verify-context", subjectToken.toString());
+                "siglet:verify", "did:web:siglet", subjectToken.toString());
         var verified = verifier(exchange).verify(token);
 
         assertThat(verified.participantContextId()).isEqualTo("provider-context");
         assertThat(verified.bpn()).isEqualTo(CONSUMER_BPN);
-        // Not a participant context id: verification has no tenant until siglet answers.
+        // Siglet binds the exchanged token's subject to a participant context: the one the token targets.
         var exchangeBody = broker.takeRequest().getBody().readUtf8();
         assertThat(HttpUrl.parse("http://form/?" + exchangeBody).queryParameter("resource"))
-                .isEqualTo("verify-context");
+                .isEqualTo("provider-context");
         assertThat(siglet.takeRequest().getHeader("Authorization")).isEqualTo("Bearer exchanged.jwt");
+    }
+
+    @Test
+    void unknownAudience_isRejected_withoutCallingSigletOrTheBroker() throws Exception {
+        var subjectToken = tempDir.resolve("token");
+        Files.writeString(subjectToken, "k8s.sa.jwt");
+        var foreign = new MockSiglet(contexts, "http://counterparty")
+                .mint("did:web:unknown", CONSUMER_DID, CONSUMER_BPN);
+
+        var exchange = new SecurityProperties.TokenExchange(true, broker.url("/token").toString(),
+                "siglet:verify", "did:web:siglet", subjectToken.toString());
+
+        assertThatThrownBy(() -> verifier(exchange).verify(foreign))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.status()).isEqualTo(HttpStatus.UNAUTHORIZED));
+        assertThat(broker.getRequestCount()).isZero();
+        assertThat(siglet.getRequestCount()).isZero();
     }
 
     /** Minimal store stand-in — Mockito is excluded from this build. */

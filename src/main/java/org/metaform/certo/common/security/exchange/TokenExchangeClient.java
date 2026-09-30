@@ -53,7 +53,6 @@ public class TokenExchangeClient {
             require(config.url(), "url");
             require(config.scope(), "scope");
             require(config.audience(), "audience");
-            require(config.verifyResource(), "verify-resource");
             require(config.subjectTokenPath(), "subject-token-path");
         }
     }
@@ -68,11 +67,6 @@ public class TokenExchangeClient {
     /** Whether siglet calls authenticate at all. */
     public boolean enabled() {
         return config.enabled();
-    }
-
-    /** The {@code resource} the tenant-independent {@code /tokens/verify} call exchanges for. */
-    public String verifyResource() {
-        return config.verifyResource();
     }
 
     /**

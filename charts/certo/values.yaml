@@ -52,11 +52,11 @@ sigletBaseUrl: ""
 # When enabled, each siglet call first runs an RFC 8693 token exchange at `url`, sending the pod's
 # Kubernetes ServiceAccount JWT as subject_token and getting back a short-lived bearer for siglet.
 # The exchange's `resource` is the participant context the token is for: the outbound lookup passes
-# its own participantContextId, while /tokens/verify is not bound to a tenant and uses
-# `verifyResource`.
+# its own participantContextId, and /tokens/verify passes the participant context resolved from the
+# inbound token's audience DID.
 #
-# `url`, `scope`, `audience` and `verifyResource` are all required once enabled — certo fails at
-# startup if one is missing.
+# `url`, `scope` and `audience` are all required once enabled — certo fails at startup if one is
+# missing.
 tokenExchange:
   enabled: false
   # The broker's RFC 8693 token endpoint, e.g. http://jwtlet:8080/token
@@ -66,8 +66,6 @@ tokenExchange:
   scope: ""
   # The `aud` requested for the exchanged token — the siglet it is presented to.
   audience: ""
-  # The participant context used as `resource` for the tenant-independent /tokens/verify call.
-  verifyResource: ""
   # Audience of the ServiceAccount token sent as subject_token. The broker verifies it with a
   # TokenReview against its own configured client audience, so the default auto-mounted token
   # (addressed to the API server) is normally rejected. Setting this mounts a projected token minted

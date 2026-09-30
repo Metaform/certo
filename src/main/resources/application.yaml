@@ -47,17 +47,16 @@ certo:
     # cached — one exchange per siglet call — and the subject token is re-read from disk each time
     # because the kubelet rotates a projected ServiceAccount token in place.
     #
-    # The exchange's `resource` names the participant context the token is for: outbound lookups are
-    # per-tenant and pass their own participantContextId, while /tokens/verify is not bound to a tenant
-    # (the tenant is only known after siglet answers) and so uses `verify-resource`.
+    # The exchange's `resource` names the participant context the token is for: outbound lookups pass
+    # their own participantContextId, and /tokens/verify passes the participant context resolved from the
+    # inbound token's audience DID (siglet binds the exchanged token's subject to it).
     #
-    # Enabling it requires url, scope, audience and verify-resource; a missing one fails at startup.
+    # Enabling it requires url, scope and audience; a missing one fails at startup.
     token-exchange:
       enabled: ${CERTO_SECURITY_TOKENEXCHANGE_ENABLED:false}
       url: ${CERTO_SECURITY_TOKENEXCHANGE_URL:}
       scope: ${CERTO_SECURITY_TOKENEXCHANGE_SCOPE:}
       audience: ${CERTO_SECURITY_TOKENEXCHANGE_AUDIENCE:}
-      verify-resource: ${CERTO_SECURITY_TOKENEXCHANGE_VERIFYRESOURCE:}
       subject-token-path: ${CERTO_SECURITY_TOKENEXCHANGE_SUBJECTTOKENPATH:/var/run/secrets/kubernetes.io/serviceaccount/token}
   # Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents onto a NATS JetStream
   # stream, the way the platform's EDC runtimes publish theirs — subjects events.certificate.exchange.*,
