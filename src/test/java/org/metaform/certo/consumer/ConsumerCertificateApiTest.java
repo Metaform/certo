@@ -326,7 +326,9 @@ class ConsumerCertificateApiTest {
                   "source": "did:web:provider",
                   "id": "22222222-2222-2222-2222-222222222222",
                   "time": "2025-05-04T07:30:00Z",
-                  "data": { "exchangeId": "exch-f-1", "certificateId": "cert-ccc", "status": "FULFILLED" }
+                  "data": { "exchangeId": "exch-f-1", "status": "FULFILLED",
+                            "certificate": { "certificateId": "cert-ccc", "revision": 1, "certificateType": "iso9001",
+                                             "validFrom": "2024-06-01", "validUntil": "2028-05-31" } }
                 }
                 """;
         assertThat(postNotification(event).statusCode()).isEqualTo(204);

@@ -55,8 +55,12 @@ class ProviderCertificateApiTest {
                         .content("{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"iso9001\",\"certifiedLocations\":[{\"siteId\":\"SITE00000003AYRE\"}]}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
-                .andExpect(jsonPath("$.certificateId").value(TestTenants.ISO9001_CERT_ID))
-                .andExpect(jsonPath("$.revision").value(2))
+                // FULFILLED embeds the full record — the hand-off delivers the metadata in the 201.
+                .andExpect(jsonPath("$.certificate.certificateId").value(TestTenants.ISO9001_CERT_ID))
+                .andExpect(jsonPath("$.certificate.revision").value(2))
+                .andExpect(jsonPath("$.certificate.certificateType").value("iso9001"))
+                .andExpect(jsonPath("$.certificate.certifiedLocations[0].siteId").value("SITE00000003AYRE"))
+                .andExpect(jsonPath("$.certificate.documents[0].documentId").isNotEmpty())
                 .andReturn();
 
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
@@ -64,7 +68,8 @@ class ProviderCertificateApiTest {
         mvc.perform(get("/exchanges/{id}", exchangeId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exchangeId").value(exchangeId))
-                .andExpect(jsonPath("$.revision").value(2))
+                .andExpect(jsonPath("$.certificate.revision").value(2))
+                .andExpect(jsonPath("$.certificate.certificateType").value("iso9001"))
                 .andExpect(jsonPath("$.status").value("FULFILLED"));
     }
 
@@ -569,7 +574,7 @@ class ProviderCertificateApiTest {
                 {"certificateType":"%s","certificateTypeVersion":"2016","registrationNumber":"DE-CERT-0001",
                  "validFrom":"2020-01-01","validUntil":"2035-01-01",
                  "certifiedLocations":[{"legalEntityId":"LE000000TESTLE","addressId":"ADDR000000TESTAD","siteId":"%s","locationRole":"MAIN_LOCATION"}],
-                 "issuer":{"issuerName":"TUV","issuerId":"LE000000ISSUER"},
+                 "issuer":{"issuerName":"Acme Certification","issuerId":"LE000000ISSUER"},
                  "documentIds":["%s"]}""".formatted(type, location, documentId);
         var result = mvc.perform(post("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates")
                         .contentType(MediaType.APPLICATION_JSON).content(body))

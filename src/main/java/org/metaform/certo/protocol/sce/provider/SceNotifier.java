@@ -12,6 +12,7 @@ import org.metaform.certo.protocol.domain.ExchangeBinding;
 import org.metaform.certo.protocol.spi.ProtocolNotifier;
 import org.metaform.certo.protocol.sce.Sce;
 import org.metaform.certo.protocol.sce.model.SceLifecycleStatus;
+import org.metaform.certo.protocol.sce.model.SceFulfillmentStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -83,9 +84,11 @@ public class SceNotifier implements ProtocolNotifier {
     public boolean notifyFulfillment(ExchangeBinding binding, FulfillmentStatusData data, OutboundCall call) {
         // Token + counterparty endpoint from the siglet cache (keyed by the flow).
         var resolved = outboundTokenCache.forCall(call);
+        // Render the neutral domain event to the SCE wire payload (the certificate goes through the codec).
+        var wire = new SceFulfillmentStatus(data.exchangeId(), data.status(), toWire(data.certificate()), data.errors());
         // SCE: the subject of a fulfillment event is the exchangeId.
         var event = event(TYPE_FULFILLMENT_STATUS, UUID.randomUUID().toString(),
-                data, call.sender(), data.exchangeId());
+                wire, call.sender(), data.exchangeId());
         return outbound.postTo(resolved.baseUrl(), "notifications", event, CLOUDEVENTS_JSON,
                 resolved.bearer(), "notify fulfillment " + data.status() + " for exchange " + data.exchangeId());
     }

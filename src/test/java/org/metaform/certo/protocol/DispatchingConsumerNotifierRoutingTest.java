@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
@@ -72,13 +73,13 @@ class DispatchingConsumerNotifierRoutingTest {
     }
 
     @Test
-    void v3BoundExchange_routesToTheCloudEventsEndpoint() throws Exception {
+    void sceBoundExchange_routesToTheCloudEventsEndpoint() throws Exception {
         bindings.record(new ExchangeBinding("exch-route-sce", "cert-route-sce", Sce.PROTOCOL_ID,
                 CounterpartyRole.CONSUMER, TestTenants.CONSUMER_DID));
         consumer.enqueue(new MockResponse().setResponseCode(204));
 
         var delivered = notifier.notifyFulfillment(
-                new FulfillmentStatusData("exch-route-sce", "cert-route-sce", 1, FulfillmentStatus.FULFILLED, null), call);
+                new FulfillmentStatusData("exch-route-sce", FulfillmentStatus.FULFILLED, CertificateRecord.reference("cert-route-sce", 1), null), call);
 
         assertThat(delivered).isTrue();
         RecordedRequest request = consumer.takeRequest(5, TimeUnit.SECONDS);
@@ -91,7 +92,7 @@ class DispatchingConsumerNotifierRoutingTest {
     void noBinding_isADataIntegrityError() {
         // Every exchange records its binding when opened; a missing one is an error, never a fallback.
         assertThatThrownBy(() -> notifier.notifyFulfillment(
-                new FulfillmentStatusData("exch-route-unbound", "cert-x", 1, FulfillmentStatus.FULFILLED, null), call))
+                new FulfillmentStatusData("exch-route-unbound", FulfillmentStatus.FULFILLED, CertificateRecord.reference("cert-x", 1), null), call))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No protocol binding");
     }

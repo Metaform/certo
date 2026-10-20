@@ -46,7 +46,7 @@ class JsonAttributeConverterTest {
     @Test
     void singleValueObject_roundTrips() {
         var converter = new CertificateIssuerConverter();
-        var value = new CertificateIssuer("TÜV", "LE-ISSUER");
+        var value = new CertificateIssuer("Acme Certification", "LE-ISSUER");
 
         var json = converter.convertToDatabaseColumn(value);
         assertThat(converter.convertToEntityAttribute(json)).isEqualTo(value);

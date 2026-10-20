@@ -176,11 +176,26 @@ public class ProviderExchangeService {
                 CounterpartyRole.CONSUMER, counterpartyId));
     }
 
-    /** Renders an exchange as its full two-phase view. */
-    private static ExchangeView toResponse(ProviderCertificateExchange exchange) {
+    /** Renders an exchange as its full two-phase view, embedding the certificate record at the hand-off. */
+    private ExchangeView toResponse(ProviderCertificateExchange exchange) {
         return new ExchangeView(exchange.exchangeId(), exchange.certificateId(), exchange.revision(),
                 exchange.fulfillmentStatus(), exchange.fulfillmentErrors(),
-                exchange.acceptanceStatus(), exchange.acceptanceErrors());
+                exchange.acceptanceStatus(), exchange.acceptanceErrors(),
+                exchange.acceptanceStatus() == null ? fulfilledRecord(exchange) : null);
+    }
+
+    /**
+     * The full record of the exchange's pinned (certificateId, revision) — present exactly while the
+     * exchange sits at {@code FULFILLED}, so the hand-off delivers the metadata and the consumer needs no
+     * separate retrieval. A certificate withdrawn in the meantime yields {@code null}: the Exchange object
+     * then falls back to the reference form and retrieval serves the withdrawn-status body.
+     */
+    private CertificateRecord fulfilledRecord(ProviderCertificateExchange exchange) {
+        if (exchange.fulfillmentStatus() != FULFILLED || exchange.certificateId() == null) {
+            return null;
+        }
+        return catalog.find(exchange.participantContextId(), exchange.certificateId(), exchange.revision())
+                .orElse(null);
     }
 
     /**
@@ -261,10 +276,7 @@ public class ProviderExchangeService {
     /** Returns the provider's full view of an exchange — both phases (management/inspection; not in the SCE specification). */
     @Transactional(readOnly = true)
     public ExchangeView getExchangeView(String contextId, String exchangeId) {
-        var exchange = requireExchange(contextId, exchangeId);
-        return new ExchangeView(exchange.exchangeId(), exchange.certificateId(), exchange.revision(),
-                exchange.fulfillmentStatus(), exchange.fulfillmentErrors(),
-                exchange.acceptanceStatus(), exchange.acceptanceErrors());
+        return toResponse(requireExchange(contextId, exchangeId));
     }
 
     /**
@@ -427,10 +439,14 @@ public class ProviderExchangeService {
         }
         var call = new OutboundCall(requireContext(exchange.participantContextId()),
                 exchange.counterpartyId(), flowId);
+        // FULFILLED delivers the full record (so the consumer needs no separate retrieval); a certificate
+        // withdrawn in the meantime falls back to the (certificateId, revision) reference.
+        var certificate = fulfilledRecord(exchange);
+        if (status == FULFILLED && certificate == null) {
+            certificate = CertificateRecord.reference(exchange.certificateId(), exchange.revision());
+        }
         consumerNotifier.notifyFulfillment(new FulfillmentStatusData(
-                exchange.exchangeId(), exchange.certificateId(),
-                exchange.certificateId() != null ? exchange.revision() : null,
-                status, exchange.fulfillmentErrors()), call);
+                exchange.exchangeId(), status, certificate, exchange.fulfillmentErrors()), call);
     }
 
     /** Whether the exchange's consumer speaks the protocol the (single) acceptance poller speaks. */

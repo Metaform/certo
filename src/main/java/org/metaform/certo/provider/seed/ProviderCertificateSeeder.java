@@ -71,14 +71,14 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
                     properties.consumer().dataspaceIdentifier(), SEED_CONSUMER_DID));
         }
 
-        var tuvSud = new CertificateIssuer("TÜV Süd", "LE0000000003EF");
+        var acmeCert = new CertificateIssuer("Acme Certification", "LE0000000003EF");
 
         // An ISO9001 certificate with two revisions (AVAILABLE throughout).
         var iso9001 = new Certificate(
                 SEED_ISO9001_CERTIFICATE_ID, pctx, "iso9001", "2015", "12 100 4711",
                 "Production and assembly of powertrain components",
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE00000003AYRE", "ADDR000000000001", LocationRole.MAIN_LOCATION)),
-                tuvSud, new CertificateValidator("TÜV Süd", "LE0000000003EF"));
+                acmeCert, new CertificateValidator("Acme Certification", "LE0000000003EF"));
         iso9001.addRevision(revision(iso9001, 1, LocalDate.of(2023, 1, 25), LocalDate.of(2026, 1, 24)));
         iso9001.addRevision(revision(iso9001, 2, LocalDate.of(2023, 1, 25), LocalDate.of(2027, 1, 24)));
         certificates.save(iso9001);
@@ -87,7 +87,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
         var iso14001 = new Certificate(
                 SEED_ISO14001_CERTIFICATE_ID, pctx, "iso14001", "2015", "14 200 0815", null,
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE00000003AYRE", "ADDR000000000002", LocationRole.MAIN_LOCATION)),
-                tuvSud, null);
+                acmeCert, null);
         iso14001.addRevision(revision(iso14001, 1, LocalDate.of(2024, 6, 1), LocalDate.of(2027, 5, 31)));
         certificates.save(iso14001);
 
@@ -95,7 +95,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
         var expired = new Certificate(
                 SEED_EXPIRED_CERTIFICATE_ID, pctx, "iatf16949", "2016", "16 949 0001", null,
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE00000003AYRE", "ADDR000000000003", LocationRole.MAIN_LOCATION)),
-                tuvSud, null);
+                acmeCert, null);
         expired.addRevision(revision(expired, 1, LocalDate.of(2018, 1, 1), LocalDate.of(2020, 1, 1)));
         certificates.save(expired);
 

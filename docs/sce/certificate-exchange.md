@@ -283,7 +283,9 @@ The following is a non-normative example of an `AVAILABLE` notification:
 ### Certificate Fulfillment Status Event
 
 A `CertificateFulfillmentStatus` event reports the Fulfillment-phase outcome of a [=Certificate Exchange=] to the
-[=Certificate Consumer=] that opened it. It never carries a certificate record.
+[=Certificate Consumer=] that opened it. A `FULFILLED` event carries the certificate record exactly as
+[Certificate Retrieval](#certificate-retrieval) returns it, so the consumer needs no separate retrieval; it never
+carries [=Document=] content.
 
 The `subject` attribute of the event MUST be set to the `exchangeId`.
 
@@ -295,7 +297,7 @@ states:
 | **Schema**   | [JSON Schema](./schemas/certificate.fulfillment.status.event.schema.json)                                                     |
 | **Required** | - `exchangeId`: The identifier of the [=Certificate Exchange=].                                                            |
 |              | - `status`: One of `FULFILLED`, `DECLINED`.                                                                                 |
-| **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns. MUST be present when `status` is `FULFILLED`. |
+| **Optional** | - `certificate`: The certificate version the exchange concerns, as defined by the [Exchange object](#exchange-object). MUST be present as the full [Certificate Record](#certificate-record) when `status` is `FULFILLED`. |
 |              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED`.          |
 
 The following is a non-normative example of a `FULFILLED` notification:
@@ -311,9 +313,22 @@ The following is a non-normative example of a `FULFILLED` notification:
   "datacontenttype": "application/json",
   "data": {
     "exchangeId": "7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44",
-    "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-    "revision": 1,
-    "status": "FULFILLED"
+    "status": "FULFILLED",
+    "certificate": {
+      "certificateId": "550e8400-e29b-41d4-a716-446655440000",
+      "revision": 1,
+      "certificateType": "iso14001",
+      "certificateTypeVersion": "2015",
+      "validFrom": "2026-06-01",
+      "validUntil": "2029-05-31",
+      "certifiedLocations": [
+        { "legalEntityId": "LE00000000SUPPL", "siteId": "SITE00000003AYRE", "locationRole": "MAIN_LOCATION" }
+      ],
+      "issuer": { "issuerName": "Acme Certification" },
+      "documents": [
+        { "documentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "mediaType": "application/pdf", "language": "en" }
+      ]
+    }
   }
 }
 ```
@@ -386,7 +401,8 @@ with solid lines and their responses with dashed lines.
 The [=Certificate Provider=] publishes a new [=Certificate=] and notifies the [=Certificate Consumer=] with an
 `AVAILABLE` lifecycle event. The notification is purely informational; the consumer opens a [=Certificate Exchange=] by
 submitting a certificate request, which the provider — already holding the certificate — fulfills immediately in the
-request response. The consumer then retrieves the certificate and reports acceptance:
+request response, delivering the certificate record in the same round trip. The consumer then fetches any documents
+and reports acceptance:
 
 ```mermaid
 sequenceDiagram
@@ -394,9 +410,7 @@ sequenceDiagram
     participant prov as Certificate Provider
     prov ->> con: CertificateLifecycleStatus (AVAILABLE)
     con ->> prov: POST /exchanges
-    prov -->> con: 201 Exchange (FULFILLED)
-    con ->> prov: GET /certificates/:certificateId
-    prov -->> con: certificate record
+    prov -->> con: 201 Exchange (FULFILLED, certificate record)
     con ->> prov: GET /documents/:documentId
     prov -->> con: document binary
     con ->> prov: CertificateAcceptanceStatus (ACCEPTED)
@@ -405,8 +419,8 @@ sequenceDiagram
 ### Request-Initiated Flow
 
 The [=Certificate Consumer=] requests a [=Certificate=] the [=Certificate Provider=] does not yet hold. The provider
-accepts the request (`PENDING`) and reports the Fulfillment outcome with a fulfillment status event. Once
-`FULFILLED`, the consumer retrieves the certificate and reports acceptance:
+accepts the request (`PENDING`) and reports the Fulfillment outcome with a fulfillment status event, whose
+`FULFILLED` form delivers the certificate record. The consumer then fetches any documents and reports acceptance:
 
 ```mermaid
 sequenceDiagram
@@ -414,9 +428,7 @@ sequenceDiagram
     participant prov as Certificate Provider
     con ->> prov: POST /exchanges
     prov -->> con: 201 Exchange (PENDING)
-    prov ->> con: CertificateFulfillmentStatus (FULFILLED)
-    con ->> prov: GET /certificates/:certificateId
-    prov -->> con: certificate record
+    prov ->> con: CertificateFulfillmentStatus (FULFILLED, certificate record)
     con ->> prov: GET /documents/:documentId
     prov -->> con: document binary
     con ->> prov: CertificateAcceptanceStatus (ACCEPTED)
@@ -529,6 +541,8 @@ The response MUST be `HTTP 201 Created` with the `Location` header set to the cr
 [relative URL](#exchange-retrieval) and a body carrying the [Exchange](#exchange-object) representation, whose
 `status` reflects the exchange's current state (see [Exchange State Machine](#exchange-state-machine)). Note that an
 exchange is created even when the provider declines the request: the response is `HTTP 201` with `status` `DECLINED`.
+A request fulfilled immediately returns `status` `FULFILLED` with the full certificate record embedded (see the
+[Exchange object](#exchange-object)), so the creation response completes the metadata hand-off in one round trip.
 
 |                 |                                                                                     |
 |-----------------|---------------------------------------------------------------------------------------|
@@ -576,17 +590,54 @@ The Exchange object is the representation of a [=Certificate Exchange=]:
 | **Schema**   | [JSON Schema](./schemas/exchange.schema.json)                                                                                   |
 | **Required** | - `exchangeId`: The identifier assigned to the [=Certificate Exchange=].                                                       |
 |              | - `status`: The exchange's current state: one of `PENDING`, `FULFILLED`, `DECLINED`, `ACCEPTED`, `REJECTED`. |
-| **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns, once assigned. MUST be present when `status` is `FULFILLED`, `ACCEPTED`, or `REJECTED`. |
+| **Optional** | - `certificate`: The certificate version the exchange concerns (see below). MUST be present when `status` is `FULFILLED`, `ACCEPTED`, or `REJECTED`; MAY be present at `PENDING` once the version is allocated; MUST be absent for `DECLINED`. |
 |              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED` or `REJECTED`; for `REJECTED` it carries the errors reported by the consumer's acceptance feedback. |
 
-The following is a non-normative example:
+The `certificate` member is the single slot for certificate identity, and the `status` determines how much of
+it is filled in:
+
+- When `status` is `FULFILLED`, it MUST be the full [Certificate Record](#certificate-record) of the pinned
+  (`certificateId`, `revision`) — the hand-off delivers the certificate metadata, so the consumer needs no
+  separate [Certificate Retrieval](#certificate-retrieval). [=Document=] binaries are never included; they
+  are referenced in `documents[]` and fetched via [Document Retrieval](#document-retrieval). If the
+  certificate has been `WITHDRAWN` in the meantime, the member falls back to the reference form below.
+- In every other state where it is present, it contains only `certificateId` and `revision` (the reference
+  form).
+
+The following is a non-normative example of a `FULFILLED` exchange:
 
 ```json
 {
   "exchangeId": "7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44",
-  "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-  "revision": 1,
-  "status": "FULFILLED"
+  "status": "FULFILLED",
+  "certificate": {
+    "certificateId": "550e8400-e29b-41d4-a716-446655440000",
+    "revision": 1,
+    "certificateType": "iso14001",
+    "certificateTypeVersion": "2015",
+    "validFrom": "2026-06-01",
+    "validUntil": "2029-05-31",
+    "certifiedLocations": [
+      { "legalEntityId": "LE00000000SUPPL", "siteId": "SITE00000003AYRE", "locationRole": "MAIN_LOCATION" }
+    ],
+    "issuer": { "issuerName": "Acme Certification" },
+    "documents": [
+      { "documentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "mediaType": "application/pdf", "language": "en" }
+    ]
+  }
+}
+```
+
+The following is a non-normative example of an `ACCEPTED` exchange (the reference form):
+
+```json
+{
+  "exchangeId": "7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44",
+  "status": "ACCEPTED",
+  "certificate": {
+    "certificateId": "550e8400-e29b-41d4-a716-446655440000",
+    "revision": 1
+  }
 }
 ```
 

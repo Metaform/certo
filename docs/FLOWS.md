@@ -25,6 +25,12 @@ Every flow derives from two independent state machines:
   informational**: they never open, alter, or close an exchange. A certificate is JSON metadata that
   references `documents[]` retrieved separately by opaque, revision-independent id.
 
+**The hand-off delivers the metadata.** Every Exchange representation at `FULFILLED` — the `201` creation
+response, `GET /exchanges/{id}`, and the pushed fulfillment event — embeds the **full certificate record**
+(pinned revision), and Certo syncs the consumer's known-certificate view from it. In every other state the
+Exchange carries only the `{certificateId, revision}` reference. The management `retrieve` remains the way
+to pull **documents** (and re-pull the pinned record).
+
 ```mermaid
 stateDiagram-v2
     direction LR

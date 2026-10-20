@@ -13,6 +13,7 @@ import org.metaform.certo.common.security.outbound.OutboundTokenCache;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
 import org.metaform.certo.protocol.sce.Sce;
+import org.metaform.certo.protocol.sce.SceCertificateCodec;
 import org.metaform.certo.protocol.sce.model.SceExchange;
 import org.metaform.certo.protocol.spi.ProtocolRequester;
 import org.springframework.stereotype.Component;
@@ -100,6 +101,8 @@ public class SceRequester implements ProtocolRequester {
         } catch (IllegalArgumentException acceptancePhase) {
             status = FulfillmentStatus.FULFILLED;
         }
-        return new ProviderRequestResult(wire.exchangeId(), wire.certificateId(), wire.revision(), status, wire.errors());
+        // The embedded certificate (full record at FULFILLED, reference form otherwise) through the codec.
+        return new ProviderRequestResult(wire.exchangeId(), status,
+                SceCertificateCodec.toDomain(wire.certificate()), wire.errors());
     }
 }

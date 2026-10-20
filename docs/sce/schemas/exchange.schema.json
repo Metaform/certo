@@ -21,11 +21,29 @@
         "REJECTED"
       ]
     },
-    "certificateId": {
-      "$ref": "./common.schema.json#/definitions/Uuid"
-    },
-    "revision": {
-      "$ref": "./common.schema.json#/definitions/Revision"
+    "certificate": {
+      "anyOf": [
+        {
+          "$ref": "./certificate.schema.json"
+        },
+        {
+          "type": "object",
+          "description": "The reference form: only the pinned certificate version.",
+          "required": [
+            "certificateId",
+            "revision"
+          ],
+          "properties": {
+            "certificateId": {
+              "$ref": "./common.schema.json#/definitions/Uuid"
+            },
+            "revision": {
+              "$ref": "./common.schema.json#/definitions/Revision"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "errors": {
       "type": "array",
@@ -50,8 +68,7 @@
       },
       "then": {
         "required": [
-          "certificateId",
-          "revision"
+          "certificate"
         ]
       }
     },
@@ -70,6 +87,22 @@
         "required": [
           "errors"
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "DECLINED"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "certificate"
+          ]
+        }
       }
     }
   ]

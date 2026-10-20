@@ -251,6 +251,18 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
     }
 
     /**
+     * The tenant's certificate pinned to one revision as a full record — empty when the certificate is
+     * unknown, withdrawn, or the revision does not exist.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CertificateRecord> find(String participantContextId, String certificateId, int revision) {
+        return findCertificate(participantContextId, certificateId)
+                .filter(certificate -> certificate.lifecycleStatus() != WITHDRAWN)
+                .flatMap(certificate -> certificate.revision(revision)
+                        .map(rev -> toRecord(certificate, rev)));
+    }
+
+    /**
      * Maps a certificate + revision to the neutral {@link CertificateRecord}, resolving the revision's
      * document descriptors from this catalog's document store. Lives here (rather than in a separate
      * mapper) because the catalog owns the documents. Documents are references only — content is never

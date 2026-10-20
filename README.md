@@ -105,7 +105,8 @@ B=http://localhost:8080
 curl -s -X POST "$B/search" -H 'Content-Type: application/json' \
   -d '{"certificateType":"iso9001"}'
 
-# Create an exchange for a held certificate -> 201 Created, Location: /exchanges/{id}, status FULFILLED
+# Create an exchange for a held certificate -> 201 Created, Location: /exchanges/{id},
+# status FULFILLED with the full certificate record embedded (no separate retrieval needed)
 curl -s -X POST $B/exchanges -H 'Content-Type: application/json' \
   -d '{"messageId":"'$(uuidgen)'","certificateType":"iso9001","certifiedLocations":[{"siteId":"SITE00000003AYRE"}]}'
 
@@ -123,7 +124,7 @@ curl -s -X POST $M/certificates -H 'Content-Type: application/json' -d '{
     "certificateType":"iso14001", "certificateTypeVersion":"2015", "registrationNumber":"DE-14001-12345",
     "validFrom":"2026-01-01", "validUntil":"2029-01-01",
     "certifiedLocations":[{"legalEntityId":"LE00000000HOLDER","siteId":"SITE-NEW-PLANT","locationRole":"MAIN_LOCATION"}],
-    "issuer":{"issuerName":"TÜV","issuerId":"LE00000000ISSUER"},
+    "issuer":{"issuerName":"Acme Certification","issuerId":"LE00000000ISSUER"},
     "documentIds":["<documentId>"]
   }'   # -> 201 {certificateId, revision}
 # Discover which waiting exchanges the new certificate covers, then fulfill each per-exchange (carrying
@@ -180,7 +181,9 @@ curl -s -X POST $B/notifications \
   -H 'Content-Type: application/cloudevents+json' -d '{
     "specversion":"1.0","type":"org.dsaf.sce.CertificateFulfillmentStatus.v1",
     "source":"did:web:provider","subject":"<exchangeId>","id":"'$(uuidgen)'","time":"2026-05-04T07:30:00Z",
-    "data":{"exchangeId":"<exchangeId>","certificateId":"00000000-0000-0000-0000-000000009001","revision":2,"status":"FULFILLED"}}'
+    "data":{"exchangeId":"<exchangeId>","status":"FULFILLED",
+            "certificate":{"certificateId":"00000000-0000-0000-0000-000000009001","revision":2,"certificateType":"iso9001",
+                           "validFrom":"2024-01-24","validUntil":"2027-01-24"}}}'
 ```
 
 `POST /notifications` is one endpoint serving both roles (the base URL is shared): lifecycle and

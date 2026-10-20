@@ -5,6 +5,7 @@ import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.CertificateTypes;
 import org.metaform.certo.common.model.FulfillmentStatusData;
+import org.metaform.certo.common.model.CertificateRecord;
 import org.metaform.certo.common.model.LifecycleStatusData;
 import org.metaform.certo.common.model.LocationFilter;
 import org.metaform.certo.common.model.StatusError;
@@ -148,6 +149,8 @@ public class ConsumerExchangeService {
         // report) routes to the right adapter — keyed by exchangeId, counterparty = the provider.
         bindings.record(new ExchangeBinding(result.exchangeId(), result.certificateId(), protocolId,
                 CounterpartyRole.PROVIDER, providerId));
+        // An immediately-FULFILLED 201 embeds the full record — no separate retrieval needed for metadata.
+        recordEmbeddedCertificate(result.certificate(), contextId);
         return exchange;
     }
 
@@ -163,6 +166,8 @@ public class ConsumerExchangeService {
             var result = requestClient.pollStatus(exchangeId, outboundCall(exchange, flowId));
             exchange.updateFulfillment(result.status(), result.certificateId(), result.revision(), result.errors());
             exchangeStore.save(exchange);
+            // A FULFILLED poll response embeds the full record — sync the known-certificate view.
+            recordEmbeddedCertificate(result.certificate(), contextId);
         } catch (IOException e) {
             throw new ApiException(BAD_GATEWAY, "Provider poll failed: " + e.getMessage());
         }
@@ -349,6 +354,17 @@ public class ConsumerExchangeService {
         return retrieved;
     }
 
+    /**
+     * Syncs the known-certificate view from a certificate embedded in an Exchange representation or
+     * fulfillment event. Only a full record is recorded ({@code certificateType} present) — the
+     * id/revision reference form carries nothing worth recording.
+     */
+    private void recordEmbeddedCertificate(CertificateRecord certificate, String contextId) {
+        if (certificate != null && certificate.certificateType() != null) {
+            catalog.recordKnownCertificate(new LifecycleStatusData(AVAILABLE, certificate), contextId);
+        }
+    }
+
     private void validateLifecycle(LifecycleStatusData data) {
         if (data == null || data.status() == null || data.certificate() == null
             || data.certificate().certificateId() == null) {
@@ -384,6 +400,10 @@ public class ConsumerExchangeService {
         if (data.status() != FULFILLED && data.status() != DECLINED) {
             throw badRequest("Status " + data.status() + " cannot be pushed; a fulfillment event reports FULFILLED or DECLINED");
         }
+        if (data.status() == FULFILLED
+            && (data.certificate() == null || data.certificateId() == null || data.revision() == null)) {
+            throw badRequest("A FULFILLED event must carry the certificate (certificateId and revision)");
+        }
         var hasErrors = data.errors() != null && !data.errors().isEmpty();
         if (data.status() == DECLINED && !hasErrors) {
             throw badRequest("Status " + data.status() + " requires a non-empty 'errors' array");
@@ -411,6 +431,9 @@ public class ConsumerExchangeService {
         }
         exchange.updateFulfillment(data.status(), data.certificateId(), data.revision(), data.errors());
         exchangeStore.save(exchange);
+        // A FULFILLED push delivers the full record — sync the known-certificate view so the client needs
+        // no separate retrieval for the metadata (documents stay pull-only).
+        recordEmbeddedCertificate(data.certificate(), requestContext.participantContextId());
         // Record + emit only; a plugged-in client drives retrieve/accept via management with its own flowId.
         emit(new InboundNotification(InboundNotification.Kind.FULFILLMENT, exchange.exchangeId(), exchange.certificateId(),
                 exchange.revision(), data.status().name(), requestContext.subject()));

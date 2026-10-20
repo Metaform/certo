@@ -56,11 +56,11 @@ class MultiTenantIsolationTest {
         // A request addressed to tenant A fulfils only from A's holdings — with A's certificate, never B's.
         var fulfilledForA = requestAs("did:web:tenant-a");
         assertThat(fulfilledForA.get("status").asString()).isEqualTo("FULFILLED");
-        assertThat(fulfilledForA.get("certificateId").asString()).isEqualTo(certA);
+        assertThat(fulfilledForA.get("certificate").get("certificateId").asString()).isEqualTo(certA);
 
         var fulfilledForB = requestAs("did:web:tenant-b");
         assertThat(fulfilledForB.get("status").asString()).isEqualTo("FULFILLED");
-        assertThat(fulfilledForB.get("certificateId").asString()).isEqualTo(certB);
+        assertThat(fulfilledForB.get("certificate").get("certificateId").asString()).isEqualTo(certB);
 
         // A's certificate is invisible to a caller addressed to tenant B (retrieval never crosses the boundary).
         mvc.perform(get("/certificates/{id}", certA).header("Authorization", bearer("did:web:tenant-b")))
@@ -100,7 +100,7 @@ class MultiTenantIsolationTest {
         // to tenant D — the exchange is unknown across the boundary (404) — but tenant C accepts it (204).
         var fulfilledForC = requestAs("did:web:tenant-c");
         var exchangeId = fulfilledForC.get("exchangeId").asString();
-        var certificateId = fulfilledForC.get("certificateId").asString();
+        var certificateId = fulfilledForC.get("certificate").get("certificateId").asString();
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
                         .header("Authorization", bearer("did:web:tenant-d"))
                         .content(acceptanceEvent(exchangeId, certificateId)))

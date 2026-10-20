@@ -46,4 +46,9 @@ public record CertificateRecord(
     public static CertificateRecord idOnly(String certificateId) {
         return new CertificateRecord(certificateId, null, null, null, null, null, null, null, null, null, null, null);
     }
+
+    /** The reference form carried by an Exchange representation outside the {@code FULFILLED} hand-off. */
+    public static CertificateRecord reference(String certificateId, Integer revision) {
+        return new CertificateRecord(certificateId, revision, null, null, null, null, null, null, null, null, null, null);
+    }
 }

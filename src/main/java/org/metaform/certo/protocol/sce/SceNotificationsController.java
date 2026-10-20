@@ -11,6 +11,7 @@ import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.ConsumerExchangeService;
 import org.metaform.certo.consumer.spi.InboundProtocolEvent;
 import org.metaform.certo.protocol.sce.model.SceLifecycleStatus;
+import org.metaform.certo.protocol.sce.model.SceFulfillmentStatus;
 import org.metaform.certo.provider.ProviderExchangeService;
 import org.metaform.certo.provider.spi.InboundAcceptanceEvent;
 import org.springframework.http.MediaType;
@@ -66,9 +67,11 @@ public class SceNotificationsController {
                     consumerEvents.add(new InboundProtocolEvent.Lifecycle(data, codec.dedupKey(event)));
                 }
                 case Sce.TYPE_FULFILLMENT_STATUS -> {
-                    var event = codec.decode(node, FulfillmentStatusData.class);
+                    var event = codec.decode(node, SceFulfillmentStatus.class);
                     requireVerifiedSource(event.source(), requestContext);
-                    consumerEvents.add(new InboundProtocolEvent.Fulfillment(event.data(), codec.dedupKey(event)));
+                    var data = new FulfillmentStatusData(event.data().exchangeId(), event.data().status(),
+                            SceCertificateCodec.toDomain(event.data().certificate()), event.data().errors());
+                    consumerEvents.add(new InboundProtocolEvent.Fulfillment(data, codec.dedupKey(event)));
                 }
                 case Sce.TYPE_ACCEPTANCE_STATUS -> {
                     var event = codec.decode(node, AcceptanceStatusData.class);
