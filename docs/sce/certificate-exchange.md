@@ -146,20 +146,6 @@ retention period has elapsed, [Exchange Retrieval](#exchange-retrieval) and the
 [Acceptance Status Query](#acceptance-status-query) MAY respond with `HTTP 404 Not Found` for that exchange. While
 retained, a terminal exchange remains immutable.
 
-#### Relationship to the Certificate Lifecycle
-
-A [=Certificate Exchange=] governs the *delivery* of a [=Certificate=], not the certificate itself. Modifications and
-withdrawals of a certificate are changes to the certificate artifact and are not transitions of a
-[=Certificate Exchange=]. A change to a certificate that has already been delivered does not reopen or alter the
-(possibly terminal) exchange that delivered it.
-
-A certificate MAY be withdrawn while an exchange that delivered it is not yet terminal. The withdrawal does not alter
-the exchange; however, the certificate may no longer be retrievable (see
-[Certificate Retrieval](#certificate-retrieval)). The [=Certificate Consumer=] learns of the withdrawal via the
-`WITHDRAWN` lifecycle event or the withdrawal status body returned by certificate retrieval, and MAY conclude the
-exchange by reporting `REJECTED` with an [error](#error-object) referencing the withdrawal; otherwise the exchange
-remains at `FULFILLED`.
-
 ### Certificate Lifecycle
 
 The [=Certificate Lifecycle=] tracks a [=Certificate=] as an artifact over time, independently of how many times it is
@@ -214,13 +200,24 @@ afterward; this status changes with the passage of time alone — no lifecycle t
 orthogonal: a certificate MAY be `WITHDRAWN` while still within its validity window, or remain `AVAILABLE`
 after it has expired.
 
-#### Relationship to the Certificate Exchange
+### Exchanges and the Lifecycle
+
+The two state machines are independent: a [=Certificate Exchange=] governs the *delivery* of a [=Certificate=], the
+[=Certificate Lifecycle=] the certificate artifact itself, and no transition of one is a transition of the other.
 
 Lifecycle state is communicated to [=Certificate Consumers=] as certificate lifecycle events (see
 [Certificate Lifecycle Events](#certificate-lifecycle-events)). These events are purely informational: no lifecycle
 event opens, alters, or closes a [=Certificate Exchange=]. An `AVAILABLE` reporting a new `revision` revises the
 certificate in place under the same `certificateId` without initiating a new delivery, and a `WITHDRAWN` ends the
-certificate's availability.
+certificate's availability. A change to a certificate that has already been delivered does not reopen or alter the
+(possibly terminal) exchange that delivered it.
+
+A certificate MAY be withdrawn while an exchange that delivered it is not yet terminal. The withdrawal does not alter
+the exchange; however, the certificate may no longer be retrievable (see
+[Certificate Retrieval](#certificate-retrieval)). The [=Certificate Consumer=] learns of the withdrawal via the
+`WITHDRAWN` lifecycle event or the withdrawal status body returned by certificate retrieval, and MAY conclude the
+exchange by reporting `REJECTED` with an [error](#error-object) referencing the withdrawal; otherwise the exchange
+remains at `FULFILLED`.
 
 ## Protocol Events
 
