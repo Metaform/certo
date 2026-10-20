@@ -28,14 +28,12 @@ certo:
   seed-sample-data: false
   # Identity of the sample tenants created by ProviderCertificateSeeder (only when seed-sample-data=true).
   # Real tenants are created at runtime via POST /management/v1/participant-contexts and carry their own
-  # bpn/source/did; these values are NOT used as a runtime identity default.
+  # dataspaceIdentifier/did; these values are NOT used as a runtime identity default.
   provider:
-    bpn: BPNL0000000001AB
-    source: urn:bpn:BPNL0000000001AB
+    dataspace-identifier: PRT000000000001
   consumer:
-    bpn: BPNL0000000002CD
-    source: urn:bpn:BPNL0000000002CD
-  # Security tokens on the CCM protocol layer are always on and always come from a siglet STS: inbound calls
+    dataspace-identifier: PRT000000000002
+  # Security tokens on the protocol layer are always on and always come from a siglet STS: inbound calls
   # are verified via POST /tokens/verify and outbound calls resolve their token AND counterparty endpoint from
   # GET /tokens/{participantContextId}/{flowId}. A siglet is required (point at a mock siglet for dev/test).
   security:
@@ -58,7 +56,7 @@ certo:
       scope: ${CERTO_SECURITY_TOKENEXCHANGE_SCOPE:}
       audience: ${CERTO_SECURITY_TOKENEXCHANGE_AUDIENCE:}
       subject-token-path: ${CERTO_SECURITY_TOKENEXCHANGE_SUBJECTTOKENPATH:/var/run/secrets/kubernetes.io/serviceaccount/token}
-  # Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents onto a NATS JetStream
+  # Certificate-exchange status changes published as CloudEvents onto a NATS JetStream
   # stream, the way the platform's EDC runtimes publish theirs — subjects events.certificate.exchange.*,
   # so a consumer of the shared `edc-events` stream sees them alongside the connector's. OFF by default:
   # with `enabled: false` no connection is made and the publisher bean does not exist, so certo runs
@@ -76,13 +74,13 @@ certo:
       # CloudEvents `source`: the emitting APPLICATION, matching the EDC runtimes (whose events-nats
       # bridge uses their Hostname service). Blank resolves to $HOSTNAME — the pod name in
       # Kubernetes — or the local hostname. Set it for a stable logical name instead of a per-pod
-      # one. The emitting TENANT is carried by the sourcebpn extension, not here.
+      # one. The emitting TENANT is carried by the dataspaceidentifier extension, not here.
       source: ${CERTO_EVENTS_NATS_SOURCE:}
   # Outbound OkHttp client, shared across all adapters (routed through RetryingHttpClient). Timeouts are in
   # seconds (0 disables a given timeout). Retry (Failsafe, like EDC's EdcHttpClient) retries a transient
   # IOException or 5xx with exponential backoff. Every outbound call is idempotent so retry is safe: reads;
-  # the notification/acceptance messages correlated by exchangeId (CX-0135 §2.1.1); and the request-open,
-  # which the provider resolves as find-or-create over a still-live exchange rather than opening a duplicate.
+  # the notification/acceptance messages correlated by exchangeId; and the request-open, which the provider
+  # resolves idempotently on (counterparty, messageId) rather than opening a duplicate.
   # Backoff is in millis.
   http:
     connect-timeout-seconds: 10

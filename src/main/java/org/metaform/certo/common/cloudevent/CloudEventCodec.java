@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Decodes inbound CloudEvents request bodies. A body may be a single CloudEvent (JSON object) or a
- * batch (JSON array), per CX-0000 &sect;4; both are normalized to a list. The concrete {@code data}
+ * batch (JSON array), per the SCE specification; both are normalized to a list. The concrete {@code data}
  * payload type is selected by the caller after inspecting the event {@code type}.
  */
 @Component
@@ -53,10 +53,10 @@ public class CloudEventCodec {
     }
 
     /**
-     * Validates the required CloudEvents 1.0 attributes (CX-0000 &sect;2.1): {@code specversion}
-     * (=="1.0"), {@code type}, {@code source}, {@code id}, and the REQUIRED {@code sourcebpn} extension
-     * (&sect;2.1.2). Throws {@code 400} on any violation. The optional {@code time} attribute is accepted but
-     * not required on receipt (lenient inbound, per Postel — outbound always stamps it).
+     * Validates the required CloudEvents 1.0 attributes (core messaging): {@code specversion} (=="1.0"),
+     * {@code type}, {@code source} and {@code id}. Throws {@code 400} on any violation. The recommended
+     * attributes are accepted but not required on receipt (lenient inbound, per Postel — outbound always
+     * stamps {@code time}).
      */
     public static void validateEnvelope(JsonNode eventNode) {
         var specversion = text(eventNode, "specversion");
@@ -66,10 +66,9 @@ public class CloudEventCodec {
         requireNonBlank(eventNode, "type");
         requireNonBlank(eventNode, "source");
         requireNonBlank(eventNode, "id");
-        requireNonBlank(eventNode, "sourcebpn");
     }
 
-    /** The idempotency key for an event: {@code source} + {@code id} (CX-0000 &sect;2.2). */
+    /** The idempotency key for an event: {@code source} + {@code id} (core messaging). */
     public String dedupKey(CloudEvent<?> event) {
         return event.source() + " " + event.id();
     }

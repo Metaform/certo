@@ -10,12 +10,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Certificate revisioning + lifecycle (CX-0135 §2.2.4). */
+/** Certificate revisioning + lifecycle. */
 class CertificateTest {
 
     private static Certificate certificate() {
-        return new Certificate("cert-1", "pctx-p", "ISO9001", "2015", "REG-1",
-                "high", "Production", List.of(), null, null);
+        return new Certificate("cert-1", "pctx-p", "iso9001", "2015", "REG-1",
+                "Production", List.of(), null, null);
     }
 
     private static CertificateRevision revision(int n) {

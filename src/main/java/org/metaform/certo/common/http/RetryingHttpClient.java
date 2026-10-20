@@ -23,10 +23,10 @@ import java.time.Duration;
  * <ul>
  *   <li>reads (GET);</li>
  *   <li>the notification and acceptance messages, which carry an {@code exchangeId} the receiver treats as
- *       referring to the same exchange (CX-0135 &sect;2.1.1) — this runtime additionally dedups the CloudEvent
+ *       referring to the same exchange — this runtime additionally dedups the CloudEvent
  *       by {@code source+id};</li>
  *   <li>the consumer&rarr;provider request-open, which the provider resolves as a find-or-create over a
- *       still-live exchange (CX-0135 &sect;2.1.1) rather than opening a duplicate.</li>
+ *       still-live exchange rather than opening a duplicate.</li>
  * </ul>
  * Retry policy is configured in one place ({@code certo.http.*}, see {@link HttpClientProperties}).
  */

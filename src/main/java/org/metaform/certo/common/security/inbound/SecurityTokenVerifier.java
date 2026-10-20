@@ -1,7 +1,7 @@
 package org.metaform.certo.common.security.inbound;
 
 /**
- * Verifies an inbound CCM security token via the configured token backend: the in-process backend checks the
+ * Verifies an inbound protocol security token via the configured token backend: the in-process backend checks the
  * signature against its local Ed25519 key, the siglet backend delegates to siglet's revocation-aware
  * {@code POST /tokens/verify}. Either way the token's audience (a tenant DID) resolves to the receiving
  * {@link org.metaform.certo.common.pc.ParticipantContext}.

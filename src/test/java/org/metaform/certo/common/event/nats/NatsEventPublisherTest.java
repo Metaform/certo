@@ -16,9 +16,9 @@ import java.time.OffsetDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The CloudEvents envelope Certo puts on the wire. {@code source} and {@code sourcebpn} come from the
- * emitting tenant rather than from the process, so they are worth pinning: CX-0000 §2.1.2 makes
- * {@code sourcebpn} REQUIRED, and a consumer that de-duplicates on {@code source}+{@code id} depends
+ * The CloudEvents envelope Certo puts on the wire. {@code source} and {@code dataspaceidentifier} come from the
+ * emitting tenant rather than from the process, so they are worth pinning: the SCE specification makes
+ * the tenant identity optional, and a consumer that de-duplicates on {@code source}+{@code id} depends
  * on both being right.
  */
 class NatsEventPublisherTest {
@@ -29,7 +29,7 @@ class NatsEventPublisherTest {
     @BeforeEach
     void setUp() {
         contexts = new InMemoryParticipantContextStore();
-        contexts.save(new ParticipantContext("pctx-1", "BPNL0000000001AB", "urn:bpn:BPNL0000000001AB", "did:web:provider"));
+        contexts.save(new ParticipantContext("pctx-1", "LE0000000001AB", "did:web:provider"));
         // JetStream and the mapper are only exercised by the publish path, not by envelope construction.
         publisher = new NatsEventPublisher(null, null, contexts, "certo-7d56645cc7-2bzkl");
     }
@@ -41,7 +41,6 @@ class NatsEventPublisherTest {
                 ExchangeEventType.of(FulfillmentStatus.FULFILLED),
                 "ex-1",
                 participantContextId,
-                "BPNL-CONSUMER",
                 "did:web:consumer",
                 "cert-1",
                 2,
@@ -56,11 +55,11 @@ class NatsEventPublisherTest {
         CloudEvent<CertificateExchangeStatusChanged> envelope = publisher.envelope(change("pctx-1"));
 
         assertThat(envelope.specVersion()).isEqualTo("1.0");
-        assertThat(envelope.type()).isEqualTo("org.catena-x.ccm.CertificateExchangeFulfilled.v1");
+        assertThat(envelope.type()).isEqualTo("org.metaform.certo.CertificateExchangeFulfilled.v1");
         // source is the emitting APPLICATION, as in every other platform producer -- not the tenant.
         assertThat(envelope.source()).isEqualTo("certo-7d56645cc7-2bzkl");
-        // The tenant is carried by sourcebpn (CX-0000 §2.1.2) and participantContextId in the data.
-        assertThat(envelope.sourceBpn()).isEqualTo("BPNL0000000001AB");
+        // The tenant is carried by the dataspaceidentifier extension and participantContextId in the data.
+        assertThat(envelope.dataspaceIdentifier()).isEqualTo("LE0000000001AB");
         assertThat(envelope.dataContentType()).isEqualTo("application/json");
         assertThat(envelope.time()).isEqualTo(OffsetDateTime.parse("2026-08-12T10:15:30Z"));
         assertThat(envelope.data().exchangeId()).isEqualTo("ex-1");
@@ -84,12 +83,12 @@ class NatsEventPublisherTest {
     @Test
     void aDeletedTenantStillProducesAnIdentifiableEvent() {
         // The tenant can be removed between the transition committing and this listener running.
-        // Dropping the event would lose a committed fact, so it goes out without a sourcebpn; the
+        // Dropping the event would lose a committed fact, so it goes out without a dataspaceidentifier; the
         // application source is unaffected, and participantContextId still names the tenant.
         var envelope = publisher.envelope(change("pctx-gone"));
 
         assertThat(envelope.source()).isEqualTo("certo-7d56645cc7-2bzkl");
-        assertThat(envelope.sourceBpn()).isNull();
+        assertThat(envelope.dataspaceIdentifier()).isNull();
         assertThat(envelope.data().participantContextId()).isEqualTo("pctx-gone");
         assertThat(envelope.data().exchangeId()).isEqualTo("ex-1");
     }

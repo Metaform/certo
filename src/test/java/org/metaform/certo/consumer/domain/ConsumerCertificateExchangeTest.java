@@ -17,35 +17,32 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ConsumerCertificateExchangeTest {
 
     private static ConsumerCertificateExchange fulfilled() {
-        return new ConsumerCertificateExchange("exch-1", "cert-1", 1, true,
-                FulfillmentStatus.FULFILLED, null, "pctx-c", "BPNL-P", "did:web:p");
+        return new ConsumerCertificateExchange("exch-1", "cert-1", 1,
+                FulfillmentStatus.FULFILLED, null, "pctx-c", "did:web:p");
     }
 
     @Test
     void constructor_rejectsBlankRequiredIdentifiers() {
-        assertThatThrownBy(() -> new ConsumerCertificateExchange(" ", "c", 1, true,
-                FulfillmentStatus.FULFILLED, null, "pctx", "bpn", "did"))
+        assertThatThrownBy(() -> new ConsumerCertificateExchange(" ", "c", 1,
+                FulfillmentStatus.FULFILLED, null, "pctx", "did"))
                 .isInstanceOf(NullPointerException.class).hasMessageContaining("exchangeId");
-        assertThatThrownBy(() -> new ConsumerCertificateExchange("e", "c", 1, true,
-                FulfillmentStatus.FULFILLED, null, " ", "bpn", "did"))
+        assertThatThrownBy(() -> new ConsumerCertificateExchange("e", "c", 1,
+                FulfillmentStatus.FULFILLED, null, " ", "did"))
                 .isInstanceOf(NullPointerException.class).hasMessageContaining("participantContextId");
-        assertThatThrownBy(() -> new ConsumerCertificateExchange("e", "c", 1, true,
-                FulfillmentStatus.FULFILLED, null, "pctx", " ", "did"))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("providerBpn");
-        assertThatThrownBy(() -> new ConsumerCertificateExchange("e", "c", 1, true,
-                FulfillmentStatus.FULFILLED, null, "pctx", "bpn", " "))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("providerDid");
+        assertThatThrownBy(() -> new ConsumerCertificateExchange("e", "c", 1,
+                FulfillmentStatus.FULFILLED, null, "pctx", " "))
+                .isInstanceOf(NullPointerException.class).hasMessageContaining("providerId");
     }
 
     @Test
     void updateFulfillment_adoptsACertificateIdWhenProvided_elseKeepsExisting() {
-        var exchange = new ConsumerCertificateExchange("e", null, null, true,
-                FulfillmentStatus.CERTIFICATION_REQUESTED, null, "pctx", "bpn", "did");
+        var exchange = new ConsumerCertificateExchange("e", null, null,
+                FulfillmentStatus.CERTIFICATE_REQUESTED, null, "pctx", "did");
 
-        exchange.updateFulfillment(FulfillmentStatus.FULFILLED, "cert-new", null);
+        exchange.updateFulfillment(FulfillmentStatus.FULFILLED, "cert-new", null, null);
         assertThat(exchange.certificateId()).isEqualTo("cert-new");
 
-        exchange.updateFulfillment(FulfillmentStatus.FULFILLED, null, null);   // null id must not wipe it
+        exchange.updateFulfillment(FulfillmentStatus.FULFILLED, null, null, null);   // null id must not wipe it
         assertThat(exchange.certificateId()).isEqualTo("cert-new");
     }
 
@@ -70,13 +67,12 @@ class ConsumerCertificateExchangeTest {
     }
 
     @Test
-    void aFurtherTransition_reopensReportPending() {
+    void markingReported_clearsThePendingFlag() {
         var exchange = fulfilled();
-        exchange.transitionAcceptance(AcceptanceStatus.RETRIEVED, null);
+        exchange.transitionAcceptance(AcceptanceStatus.ACCEPTED, null);
+        assertThat(exchange.acceptanceReportPending()).isTrue();
+
         exchange.markAcceptanceReported();
         assertThat(exchange.acceptanceReportPending()).isFalse();
-
-        exchange.transitionAcceptance(AcceptanceStatus.ACCEPTED, null);    // new verdict → needs reporting again
-        assertThat(exchange.acceptanceReportPending()).isTrue();
     }
 }

@@ -21,10 +21,9 @@ public class SecurityWebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(interceptor)
                 .addPathPatterns(
-                        // v3.0.0 (ccm300)
-                        "/certificate-requests/**", "/certificates/**", "/documents/**",
-                        "/certificate-notifications", "/certificate-acceptance-notifications",
-                        "/certificate-acceptance-status/**")
+                        // The SCE Provider and Consumer APIs
+                        "/exchanges/**", "/certificates/**", "/documents/**",
+                        "/notifications", "/acceptance-status/**", "/search")
                 .excludePathPatterns("/management/**", "/actuator/**", "/error");
     }
 }

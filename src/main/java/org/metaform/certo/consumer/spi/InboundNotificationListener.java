@@ -1,8 +1,8 @@
 package org.metaform.certo.consumer.spi;
 
 /**
- * Extension point for reacting to inbound CCM notifications. After the consumer records an inbound
- * lifecycle/fulfillment event on its state, it emits an {@link InboundCcmEvent} to every registered
+ * Extension point for reacting to inbound notifications. After the consumer records an inbound
+ * lifecycle/fulfillment event on its state, it emits an {@link InboundNotification} to every registered
  * listener. A listener typically hands the event to a client that drives the consumer management API
  * (retrieve/accept) on its own timeline, supplying the live {@code flowId}.
  *
@@ -13,5 +13,5 @@ package org.metaform.certo.consumer.spi;
  */
 public interface InboundNotificationListener {
 
-    void onNotification(InboundCcmEvent event);
+    void onNotification(InboundNotification event);
 }

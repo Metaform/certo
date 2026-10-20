@@ -22,6 +22,7 @@ import org.metaform.certo.common.event.ExchangeRole;
 import org.metaform.certo.common.util.Validations;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
+import org.metaform.certo.common.model.LocationFilter;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.persistence.StatusErrorListConverter;
 import org.metaform.certo.common.web.ApiException;
@@ -34,17 +35,17 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATION_REQUESTED;
+import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATE_REQUESTED;
 
 /**
- * The provider's record of a {@code Certificate Exchange} (CX-0135 &sect;2.1) — one end-to-end
+ * The provider's record of a {@code Certificate Exchange} — one end-to-end
  * delivery interaction, correlated by {@code exchangeId}.
  *
- * <p>Enforces the CX-0135 &sect;2.1.3 state machine: Fulfillment transitions must be legal, terminal
+ * <p>Enforces the the SCE specification state machine: Fulfillment transitions must be legal, terminal
  * states are immutable, and Acceptance may only be recorded once the exchange is {@code FULFILLED}.
  *
  * <p>A consumer-initiated request for a certificate the provider does not yet hold is opened as a
- * {@link #pending} exchange in {@code CERTIFICATION_REQUESTED} — awaiting a certification-authority
+ * {@link #pending} exchange in {@code CERTIFICATE_REQUESTED} — awaiting a certification-authority
  * (backend) response — carrying the requested type and locations so a later issuance can be matched to
  * it. The certificate identity is unknown until the backend issues it, so {@code certificateId}/{@code
  * revision} are assigned at {@link #fulfill} time.
@@ -56,13 +57,13 @@ import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATION_RE
  */
 @Entity
 @Table(name = "provider_certificate_exchange",
-        // At most one *live* consumer-initiated exchange per (tenant, counterparty, request) — so two
-        // concurrent identical opens cannot both create a row (the loser's insert is rejected by the DB and
-        // its transaction rolls back; the client retry then finds the winner). The key is nulled once the
-        // exchange reaches a terminal outcome, and unique constraints treat NULLs as distinct, so a re-attempt
-        // after a terminal outcome opens a fresh exchange without colliding.
-        uniqueConstraints = @UniqueConstraint(name = "uk_exchange_live_request",
-                columnNames = {"participant_context_id", "counterparty_did", "live_dedup_key"}))
+        // At most one exchange per (tenant, counterparty, messageId) — so two concurrent opens repeating the
+        // same messageId cannot both create a row (the loser's insert is rejected by the DB and its
+        // transaction rolls back; the client retry then finds the winner). The constraint is never released:
+        // a repeat of the pair returns the same exchange for as long as it is retained, and a genuinely new
+        // request carries a new messageId (SCE exchange-creation idempotency).
+        uniqueConstraints = @UniqueConstraint(name = "uk_exchange_message",
+                columnNames = {"participant_context_id", "counterparty_id", "message_id"}))
 public class ProviderCertificateExchange {
 
     @Id
@@ -75,15 +76,13 @@ public class ProviderCertificateExchange {
     @NotNull
     @Column(nullable = false)
     private String participantContextId;
-    @NotNull
-    @Column(nullable = false)
-    private String counterpartyBpn;
     /**
-     * The counterparty consumer's DID — the token audience for outbound calls on this exchange.
+     * The counterparty consumer's identity (its DID) — the token audience for outbound calls on this
+     * exchange and the key of every counterparty guard.
      */
     @NotNull
     @Column(nullable = false)
-    private String counterpartyDid;
+    private String counterpartyId;
 
     /** Unknown until the backend issues the certificate ({@link #fulfill}); null for a pending request. */
     private String certificateId;
@@ -103,29 +102,25 @@ public class ProviderCertificateExchange {
     @Column(length = 65535)
     private List<StatusError> acceptanceErrors;
 
-    private boolean consumerInitiated;
-
     /**
      * For a pending consumer request: what the consumer asked for, used to match a later issuance.
      */
     private String requestedType;
-    // Normalized into child rows so the overlap/subset queries (queryRequests, fulfillableRequests) run in
-    // the database. EAGER: small, and read by toPendingView after the query with open-in-view off.
+    // Normalized into child rows (one per location filter, three identifier columns) so the backlog
+    // queries run in the database. EAGER: small, and read by toPendingView after the query with
+    // open-in-view off.
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "exchange_requested_location", joinColumns = @JoinColumn(name = "exchange_id"))
-    @Column(name = "location_bpn")
-    private List<String> requestedLocations;
+    private List<LocationFilter> requestedLocations;
     private OffsetDateTime requestedAt;
 
     /**
-     * The key that makes opening this exchange idempotent while it is live, so a repeat reuses it rather than
-     * opening a duplicate (CX-0135 &sect;2.1.1). Namespaced by origin: {@code "req:"} + the consumer request's
-     * canonical {@code certificateType}+locations for a consumer-initiated open, or {@code "pub:"} + the
-     * caller's idempotency key for a provider-initiated publish. Null when no key applies, and <b>nulled once
-     * this exchange reaches a terminal outcome</b> so the unique constraint stops guarding it (a re-attempt
-     * then opens a fresh exchange).
+     * The {@code messageId} of the certificate request that opened this exchange — the key that makes
+     * creation idempotent: a retried request repeats the (counterparty, {@code messageId}) pair and gets
+     * this exchange back; a genuinely new request carries a new one. Never released — a repeat after a
+     * terminal outcome still resolves to this exchange.
      */
-    private String liveDedupKey;
+    private String messageId;
 
     @Version
     private long version;
@@ -147,26 +142,23 @@ public class ProviderCertificateExchange {
                                        String participantContextId,
                                        String certificateId,
                                        int revision,
-                                       String counterpartyBpn,
-                                       String counterpartyDid,
+                                       String counterpartyId,
                                        FulfillmentStatus initialStatus) {
-        this(exchangeId, participantContextId, certificateId, revision, counterpartyBpn, counterpartyDid, initialStatus, null);
+        this(exchangeId, participantContextId, certificateId, revision, counterpartyId, initialStatus, null);
     }
 
     public ProviderCertificateExchange(String exchangeId,
                                        String participantContextId,
                                        String certificateId,
                                        int revision,
-                                       String counterpartyBpn,
-                                       String counterpartyDid,
+                                       String counterpartyId,
                                        FulfillmentStatus initialStatus,
                                        List<StatusError> initialErrors) {
         this.exchangeId = Validations.requireNonBlank(exchangeId, "exchangeId");
         this.participantContextId = Validations.requireNonBlank(participantContextId, "participantContextId");
         this.certificateId = certificateId;
         this.revision = revision;
-        this.counterpartyBpn = Validations.requireNonBlank(counterpartyBpn, "counterpartyBpn");
-        this.counterpartyDid = Validations.requireNonBlank(counterpartyDid, "counterpartyDid");
+        this.counterpartyId = Validations.requireNonBlank(counterpartyId, "counterpartyId");
         this.fulfillmentStatus = Objects.requireNonNull(initialStatus, "fulfillmentStatus");
         this.fulfillmentErrors = copyOrNull(initialErrors);
         recordFulfillmentChange(null);
@@ -174,24 +166,21 @@ public class ProviderCertificateExchange {
 
     /**
      * Opens a consumer-initiated exchange that is waiting for the backend to issue a certificate: no
-     * certificate identity yet, status {@code CERTIFICATION_REQUESTED}, and the requested type/locations
+     * certificate identity yet, status {@code CERTIFICATE_REQUESTED}, and the requested type/locations
      * retained so an issuance can be matched to it.
      */
     public static ProviderCertificateExchange pending(String exchangeId,
                                                       String participantContextId,
-                                                      String counterpartyBpn,
-                                                      String counterpartyDid,
+                                                      String counterpartyId,
                                                       String requestedType,
-                                                      List<String> requestedLocations,
+                                                      List<LocationFilter> requestedLocations,
                                                       OffsetDateTime requestedAt) {
         var exchange = new ProviderCertificateExchange(exchangeId,
                 participantContextId,
                 null,
                 0,
-                counterpartyBpn,
-                counterpartyDid,
-                CERTIFICATION_REQUESTED);
-        exchange.consumerInitiated = true;
+                counterpartyId,
+                CERTIFICATE_REQUESTED);
         exchange.requestedType = requestedType;
         exchange.requestedLocations = copyOrNull(requestedLocations);
         exchange.requestedAt = requestedAt;
@@ -209,7 +198,6 @@ public class ProviderCertificateExchange {
         var previous = fulfillmentStatus;
         this.fulfillmentStatus = to;
         this.fulfillmentErrors = copyOrNull(errors);
-        releaseLiveKeyIfTerminal();
         recordFulfillmentChange(previous);
     }
 
@@ -224,19 +212,21 @@ public class ProviderCertificateExchange {
     }
 
     /**
-     * Records an Acceptance-phase outcome (CX-0135 &sect;4.4.4). Feedback may follow any Fulfillment
-     * <em>outcome</em> — {@code FULFILLED}, {@code DECLINED}, or {@code FAILED} (&sect;2.1.3 draws Feedback
+     * Records an Acceptance-phase outcome. Feedback may follow any Fulfillment
+     * <em>outcome</em> — {@code FULFILLED} or {@code DECLINED} (the state machine draws Feedback
      * from all three) — but not an exchange still in progress with no outcome yet. Transitions out of a
-     * terminal acceptance state are rejected (409). The non-terminal {@code RETRIEVED} status is optional, so
-     * the first status recorded may be a terminal verdict reached directly (&sect;2.1.3); no prior
-     * {@code RETRIEVED} is required.
+     * terminal acceptance state are rejected (409), except a <b>re-report of the current state</b>, which is
+     * treated as a duplicate and ignored without a transition (SCE acceptance-notification rules).
      */
     public void recordAcceptance(AcceptanceStatus to, List<StatusError> errors) {
-        // FULFILLED, or a fulfillment dead-end (DECLINED/FAILED — isTerminal() marks no further *fulfillment*
-        // transition, which is exactly a produced outcome). Pre-outcome states have delivered nothing to judge.
-        if (fulfillmentStatus != FulfillmentStatus.FULFILLED && !fulfillmentStatus.isTerminal()) {
-            throw ApiException.conflict("Exchange " + exchangeId + " cannot be accepted before a fulfillment outcome"
+        // Acceptance begins only once Fulfillment has handed the certificate off (FULFILLED → {ACCEPTED,
+        // REJECTED}); earlier states have delivered nothing to judge and DECLINED concludes the exchange.
+        if (fulfillmentStatus != FulfillmentStatus.FULFILLED) {
+            throw ApiException.conflict("Exchange " + exchangeId + " is not FULFILLED"
                                         + " (current fulfillment status: " + fulfillmentStatus + ")");
+        }
+        if (to == acceptanceStatus) {
+            return; // a re-report of the current state is a duplicate, not a transition
         }
         if (acceptanceStatus != null && !acceptanceStatus.allowedNext().contains(to)) {
             throw ApiException.conflict("Illegal acceptance transition " + acceptanceStatus + " -> " + to
@@ -245,41 +235,21 @@ public class ProviderCertificateExchange {
         var previous = acceptanceStatus;
         this.acceptanceStatus = to;
         this.acceptanceErrors = copyOrNull(errors);
-        releaseLiveKeyIfTerminal();
         recordAcceptanceChange(previous);
     }
 
-    /** Nulls the live-request key once the exchange is no longer live, so the unique constraint stops guarding it. */
-    private void releaseLiveKeyIfTerminal() {
-        if (!isLive()) {
-            this.liveDedupKey = null;
-        }
+    /** Records the opening request's {@code messageId} so a repeated request resolves to this exchange. */
+    public void assignMessageId(String messageId) {
+        this.messageId = messageId;
     }
 
-    /**
-     * Whether the consumer opened this exchange (so the provider may push fulfillment status to it).
-     */
-    public void markConsumerInitiated() {
-        this.consumerInitiated = true;
-    }
-
-    public boolean isConsumerInitiated() {
-        return consumerInitiated;
-    }
-
-    /** Records the (namespaced) dedup key so a repeated open — consumer request or provider publish — reuses this exchange while live. */
-    public void assignLiveDedupKey(String liveDedupKey) {
-        this.liveDedupKey = liveDedupKey;
-    }
-
-    public String liveDedupKey() {
-        return liveDedupKey;
+    public String messageId() {
+        return messageId;
     }
 
     /**
      * Whether this exchange is still live — neither the Fulfillment nor the Acceptance phase has reached a
-     * terminal state — so a repeated request may reuse it (CX-0135 &sect;2.1.1: a re-attempt opens a new
-     * exchange only after a terminal outcome).
+     * terminal state — so a repeated request may reuse it.
      */
     public boolean isLive() {
         return !fulfillmentStatus.isTerminal() && (acceptanceStatus == null || !acceptanceStatus.isTerminal());
@@ -298,8 +268,7 @@ public class ProviderCertificateExchange {
                 ExchangeEventType.of(fulfillmentStatus),
                 exchangeId,
                 participantContextId,
-                counterpartyBpn,
-                counterpartyDid,
+                counterpartyId,
                 certificateId,
                 certificateId == null ? null : revision,
                 previous == null ? null : previous.name(),
@@ -316,8 +285,7 @@ public class ProviderCertificateExchange {
                 ExchangeEventType.of(acceptanceStatus),
                 exchangeId,
                 participantContextId,
-                counterpartyBpn,
-                counterpartyDid,
+                counterpartyId,
                 certificateId,
                 certificateId == null ? null : revision,
                 previous == null ? null : previous.name(),
@@ -362,22 +330,15 @@ public class ProviderCertificateExchange {
         return revision;
     }
 
-    public String counterpartyBpn() {
-        return counterpartyBpn;
-    }
-
-    /**
-     * The counterparty consumer's DID — the token audience for outbound calls on this exchange.
-     */
-    public String counterpartyDid() {
-        return counterpartyDid;
+    public String counterpartyId() {
+        return counterpartyId;
     }
 
     public String requestedType() {
         return requestedType;
     }
 
-    public List<String> requestedLocations() {
+    public List<LocationFilter> requestedLocations() {
         return copyOrNull(requestedLocations);
     }
 

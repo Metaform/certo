@@ -24,10 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Consumer-side <b>management</b> control surface — the app's own endpoints for driving a
- * consumer-initiated pull and inspecting local state. These are not part of the CX-0135 wire protocol
+ * consumer-initiated pull and inspecting local state. These are not part of the the SCE specification wire protocol
  * (the consumer's protocol surface is only {@code POST /certificate-notifications} and
  * {@code GET /certificate-acceptance-status/{id}}); the underlying provider-facing request flow they
- * trigger is CX-0135 &sect;4.4.1 / &sect;4.4.2.
+ * trigger is the SCE specification
  *
  * <p>Every operation is scoped to a consumer tenant named in the path — {@code
  * /management/v1/participant-contexts/{participantContextId}/consumer/…} An exchange or certificate addressed by id must
@@ -53,11 +53,12 @@ public class ConsumerManagementController {
     public ResponseEntity<ConsumerRequestView> initiate(@PathVariable("participantContextId") String participantContextId,
                                                         @Valid @RequestBody InitiateRequest request) {
         var opened = exchangeService.initiateRequest(participantContextId,
-                request.providerBpn(), request.providerDid(),
+                request.messageId(),
+                request.providerId(),
                 request.certificateType(),
                 request.flowId(),
                 request.certifiedLocations(),
-                request.protocolVersion());
+                request.protocol());
         return ResponseEntity.accepted().body(ConsumerRequestView.of(opened));
     }
 
@@ -102,9 +103,8 @@ public class ConsumerManagementController {
     @PostMapping(path = "/exchanges/{id}/retrieve", produces = MediaType.APPLICATION_JSON_VALUE)
     public RetrievedCertificateView retrieve(@PathVariable("participantContextId") String participantContextId,
                                              @PathVariable("id") String exchangeId,
-                                             // Optional: embedded content is returned inline (no pull), so no flow is
-                                             // needed; a by-reference retrieve needs it and fails clearly without one.
-                                             @RequestParam(value = "flowId", required = false) String flowId) {
+                                             // Every retrieve pulls from the provider, so the live flow is required.
+                                             @RequestParam(value = "flowId", required = true) String flowId) {
         return RetrievedCertificateView.of(exchangeService.retrieve(participantContextId, exchangeId, flowId));
     }
 
@@ -123,7 +123,7 @@ public class ConsumerManagementController {
 
     /**
      * {@code POST /consumer/certificates/pull} — proactively pull a partner's certificate over a live flow
-     * (the CX-0135 v2 asset-based pull, consumer-initiated with no prior notification): retrieve, record it in
+     * (the the SCE specification v2 asset-based pull, consumer-initiated with no prior notification): retrieve, record it in
      * the tenant's known-certificate view, and return it for display. Catalog discovery + flow setup are the
      * caller's; this reads and up-converts one certificate.
      */
@@ -133,7 +133,7 @@ public class ConsumerManagementController {
     public RetrievedCertificateView pull(@PathVariable("participantContextId") String participantContextId,
                                          @Valid @RequestBody PullRequest request) {
         return RetrievedCertificateView.of(exchangeService.pullCertificate(participantContextId,
-                request.partnerBpn(), request.partnerDid(), request.flowId(), request.protocolVersion()));
+                request.partnerId(), request.flowId(), request.protocol()));
     }
 
     /**

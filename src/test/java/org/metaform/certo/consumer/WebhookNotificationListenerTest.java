@@ -5,7 +5,7 @@ import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
-import org.metaform.certo.consumer.spi.InboundCcmEvent;
+import org.metaform.certo.consumer.spi.InboundNotification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -54,7 +54,7 @@ class WebhookNotificationListenerTest {
     @Test
     void postsTheRecordedEventToTheConfiguredWebhook() throws Exception {
         WEBHOOK.enqueue(new MockResponse().setResponseCode(200));
-        var event = new InboundCcmEvent(InboundCcmEvent.Kind.LIFECYCLE, "exch-wh-1", "cert-wh-1", 2, "MODIFIED", "BPNL-provider");
+        var event = new InboundNotification(InboundNotification.Kind.LIFECYCLE, "exch-wh-1", "cert-wh-1", 2, "MODIFIED", "LE-provider");
 
         listener.onNotification(event);
 
@@ -73,7 +73,7 @@ class WebhookNotificationListenerTest {
     void aWebhookFailureIsSwallowed() throws Exception {
         // The webhook rejects the delivery — onNotification must not throw (the event is already recorded).
         WEBHOOK.enqueue(new MockResponse().setResponseCode(500));
-        var event = new InboundCcmEvent(InboundCcmEvent.Kind.FULFILLMENT, "exch-wh-2", "cert-wh-2", null, "FULFILLED", null);
+        var event = new InboundNotification(InboundNotification.Kind.FULFILLMENT, "exch-wh-2", "cert-wh-2", null, "FULFILLED", null);
 
         assertThatCode(() -> listener.onNotification(event)).doesNotThrowAnyException();
         assertThat(WEBHOOK.takeRequest(5, TimeUnit.SECONDS)).isNotNull();   // it did attempt delivery

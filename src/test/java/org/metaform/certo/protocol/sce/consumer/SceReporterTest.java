@@ -1,4 +1,4 @@
-package org.metaform.certo.protocol.ccm300.consumer;
+package org.metaform.certo.protocol.sce.consumer;
 
 import org.metaform.certo.testsupport.MockSiglet;
 
@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Jackson 3 {@link ObjectMapper} (no web server is started — default MOCK environment).
  */
 @SpringBootTest
-class Ccm300ReporterTest {
+class SceReporterTest {
 
     @Autowired
     ObjectMapper mapper;
@@ -43,7 +43,7 @@ class Ccm300ReporterTest {
     OutboundJsonClient outbound;
 
     private MockWebServer provider;
-    private Ccm300Reporter client;
+    private SceReporter client;
     private OutboundCall call;
 
     @BeforeEach
@@ -53,17 +53,15 @@ class Ccm300ReporterTest {
         var clock = Clock.fixed(Instant.parse("2026-06-04T12:00:00Z"), ZoneOffset.UTC);
         // The consumer tenant sends the acceptance report to the provider (its counterparty).
         var contexts = new InMemoryParticipantContextStore();
-        var consumer = new ParticipantContext("pctx-consumer", "BPNL0000000002CD",
-                "urn:bpn:BPNL0000000002CD", "did:web:consumer");
+        var consumer = new ParticipantContext("pctx-consumer", "LE0000000002CD", "did:web:consumer");
         contexts.save(consumer);
-        contexts.save(new ParticipantContext("pctx-provider", "BPNL0000000001AB",
-                "urn:bpn:BPNL0000000001AB", "did:web:provider"));
+        contexts.save(new ParticipantContext("pctx-provider", "LE0000000001AB", "did:web:provider"));
         // The mock siglet returns the (mock) provider's URL as the outbound endpoint for this flow.
         var siglet = new MockSiglet(contexts, provider.url("/").toString());
         var outboundTokens = new OutboundTokenCache(siglet::resolve);
-        client = new Ccm300Reporter(outbound, outboundTokens, clock);
-        // Sender = the consumer tenant; counterparty = the provider (BPN + DID supplied on the call).
-        call = new OutboundCall(consumer, "BPNL0000000001AB", "did:web:provider", "flow-1");
+        client = new SceReporter(outbound, outboundTokens, clock);
+        // Sender = the consumer tenant; counterparty = the provider (its DID supplied on the call).
+        call = new OutboundCall(consumer, "did:web:provider", "flow-1");
     }
 
     @AfterEach
@@ -80,15 +78,15 @@ class Ccm300ReporterTest {
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
         assertThat(request.getMethod()).isEqualTo("POST");
-        assertThat(request.getPath()).isEqualTo("/certificate-acceptance-notifications");
+        assertThat(request.getPath()).isEqualTo("/notifications");
         assertThat(request.getHeader("Content-Type")).startsWith("application/cloudevents+json");
 
         var body = mapper.readTree(request.getBody().readUtf8());
         assertThat(body.get("specversion").asString()).isEqualTo("1.0");
-        assertThat(body.get("type").asString()).isEqualTo("org.catena-x.ccm.CertificateAcceptanceStatus.v1");
-        assertThat(body.get("source").asString()).isEqualTo("urn:bpn:BPNL0000000002CD");
-        assertThat(body.get("sourcebpn").asString()).isEqualTo("BPNL0000000002CD");
-        assertThat(body.get("subject").asString()).isEqualTo("BPNL0000000001AB");
+        assertThat(body.get("type").asString()).isEqualTo("org.dsaf.sce.CertificateAcceptanceStatus.v1");
+        assertThat(body.get("source").asString()).isEqualTo("did:web:consumer");
+        assertThat(body.get("dataspaceidentifier").asString()).isEqualTo("LE0000000002CD");
+        assertThat(body.get("subject").asString()).isEqualTo("exch-1");
 
         var data = body.get("data");
         assertThat(data.get("exchangeId").asString()).isEqualTo("exch-1");

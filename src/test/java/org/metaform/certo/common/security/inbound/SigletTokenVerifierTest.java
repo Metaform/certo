@@ -37,7 +37,7 @@ class SigletTokenVerifierTest {
 
     private static final String PROVIDER_DID = "did:web:provider";
     private static final String CONSUMER_DID = "did:web:consumer";
-    private static final String CONSUMER_BPN = "BPNL0000000002CD";
+    private static final String CONSUMER_DATASPACE_ID = "PRT000000000002";
 
     @TempDir
     Path tempDir;
@@ -56,10 +56,9 @@ class SigletTokenVerifierTest {
         broker.start();
         http = new RetryingHttpClient(new OkHttpClient(), new HttpClientProperties(2, 2, 2, 5, 0, 1L, 5L));
         contexts = new InMemoryContexts();
-        contexts.save(new ParticipantContext("provider-context", "BPNL0000000001AB",
-                "urn:bpn:BPNL0000000001AB", PROVIDER_DID));
+        contexts.save(new ParticipantContext("provider-context", "LE0000000001AB", PROVIDER_DID));
         // Only the local `aud` read parses this token; siglet (here, the mock server) is the signature authority.
-        token = new MockSiglet(contexts, "http://counterparty").mint(PROVIDER_DID, CONSUMER_DID, CONSUMER_BPN);
+        token = new MockSiglet(contexts, "http://counterparty").mint(PROVIDER_DID, CONSUMER_DID, CONSUMER_DATASPACE_ID);
     }
 
     @AfterEach
@@ -79,7 +78,7 @@ class SigletTokenVerifierTest {
         siglet.enqueue(new MockResponse().setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"aud\":\"" + PROVIDER_DID + "\",\"sub\":\"" + CONSUMER_DID
-                        + "\",\"bpn\":\"" + CONSUMER_BPN + "\"}"));
+                        + "\",\"dataspaceidentifier\":\"" + CONSUMER_DATASPACE_ID + "\"}"));
     }
 
     @Test
@@ -109,7 +108,7 @@ class SigletTokenVerifierTest {
         var verified = verifier(exchange).verify(token);
 
         assertThat(verified.participantContextId()).isEqualTo("provider-context");
-        assertThat(verified.bpn()).isEqualTo(CONSUMER_BPN);
+        assertThat(verified.dataspaceIdentifier()).isEqualTo(CONSUMER_DATASPACE_ID);
         // Siglet binds the exchanged token's subject to a participant context: the one the token targets.
         var exchangeBody = broker.takeRequest().getBody().readUtf8();
         assertThat(HttpUrl.parse("http://form/?" + exchangeBody).queryParameter("resource"))
@@ -122,7 +121,7 @@ class SigletTokenVerifierTest {
         var subjectToken = tempDir.resolve("token");
         Files.writeString(subjectToken, "k8s.sa.jwt");
         var foreign = new MockSiglet(contexts, "http://counterparty")
-                .mint("did:web:unknown", CONSUMER_DID, CONSUMER_BPN);
+                .mint("did:web:unknown", CONSUMER_DID, CONSUMER_DATASPACE_ID);
 
         var exchange = new SecurityProperties.TokenExchange(true, broker.url("/token").toString(),
                 "siglet:verify", "did:web:siglet", subjectToken.toString());

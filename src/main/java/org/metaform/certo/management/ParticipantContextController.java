@@ -51,14 +51,12 @@ public class ParticipantContextController {
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @Transactional
     public ResponseEntity<ParticipantContext> create(@RequestBody NewParticipantContext request) {
-        requirePresent("bpn", request.bpn());
-        requirePresent("source", request.source());
         requirePresent("did", request.did());
         var id = resolveId(request.participantContextId());
         if (contextStore.existsByDid(request.did())) {
             throw ApiException.conflict("A participant context with did " + request.did() + " already exists");
         }
-        var context = new ParticipantContext(id, request.bpn(), request.source(), request.did());
+        var context = new ParticipantContext(id, request.dataspaceIdentifier(), request.did());
         contextStore.save(context);
         return ResponseEntity.status(HttpStatus.CREATED).body(context);
     }

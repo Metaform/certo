@@ -1,4 +1,6 @@
-package org.metaform.certo.protocol.ccm300.provider;
+package org.metaform.certo.protocol.sce.provider;
+
+import org.metaform.certo.protocol.sce.Sce;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import okhttp3.HttpUrl;
@@ -21,17 +23,23 @@ import java.util.Optional;
 
 /**
  * The v3 {@link AcceptancePoller}: GETs the consumer's
- * {@code /certificate-acceptance-status/{exchangeId}} (CX-0135 &sect;4.3.3), with the token + endpoint
+ * {@code /certificate-acceptance-status/{exchangeId}}, with the token + endpoint
  * resolved from the siglet cache for the given flow. A {@code 404} means the consumer has not decided yet.
  */
 @Component
-public class Ccm300AcceptancePoller implements AcceptancePoller {
+public class SceAcceptancePoller implements AcceptancePoller {
+
+    @Override
+    public String protocolId() {
+        return Sce.PROTOCOL_ID;
+    }
+
 
     private final RetryingHttpClient http;
     private final ObjectMapper mapper;
     private final OutboundTokenCache outboundTokenCache;
 
-    public Ccm300AcceptancePoller(RetryingHttpClient http, ObjectMapper mapper, OutboundTokenCache outboundTokenCache) {
+    public SceAcceptancePoller(RetryingHttpClient http, ObjectMapper mapper, OutboundTokenCache outboundTokenCache) {
         this.http = http;
         this.mapper = mapper;
         this.outboundTokenCache = outboundTokenCache;
@@ -44,7 +52,7 @@ public class Ccm300AcceptancePoller implements AcceptancePoller {
         if (base == null) {
             throw new IOException("Invalid consumer base URL: " + resolved.baseUrl());
         }
-        var url = base.newBuilder().addPathSegment("certificate-acceptance-status").addPathSegment(exchangeId).build();
+        var url = base.newBuilder().addPathSegment("acceptance-status").addPathSegment(exchangeId).build();
         var builder = new Request.Builder().url(url).get();
         OutboundJsonClient.authorize(builder, resolved.bearer());
         try (var response = http.execute(builder.build())) {

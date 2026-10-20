@@ -4,7 +4,7 @@ import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import org.metaform.certo.common.http.RetryingHttpClient;
-import org.metaform.certo.consumer.spi.InboundCcmEvent;
+import org.metaform.certo.consumer.spi.InboundNotification;
 import org.metaform.certo.consumer.spi.InboundNotificationListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +38,7 @@ public class WebhookNotificationListener implements InboundNotificationListener 
     }
 
     @Override
-    public void onNotification(InboundCcmEvent event) {
+    public void onNotification(InboundNotification event) {
         try {
             var json = mapper.writeValueAsString(event);
             var request = new Request.Builder().url(callbackUrl).post(RequestBody.create(json, JSON)).build();

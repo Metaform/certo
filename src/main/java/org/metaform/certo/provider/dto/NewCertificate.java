@@ -18,7 +18,7 @@ import java.util.List;
  * ({@code /management/v1/participant-contexts/{participantContextId}/certificates}). Required in the body:
  * {@code certificateType}, {@code registrationNumber}, {@code validFrom}, {@code validUntil}, a non-empty
  * {@code certifiedLocations} with exactly one {@code MAIN_LOCATION}, and a non-empty {@code documentIds}.
- * {@code certificateTypeVersion} (the type edition, e.g. {@code 2015}), {@code trustLevel},
+ * {@code certificateTypeVersion} (the type edition, e.g. {@code 2015}),
  * {@code areaOfApplication}, {@code issuer} and {@code validator} are optional.
  */
 public record NewCertificate(
@@ -27,7 +27,6 @@ public record NewCertificate(
         String registrationNumber,
         @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate validFrom,
         @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate validUntil,
-        String trustLevel,
         String areaOfApplication,
         List<CertifiedLocation> certifiedLocations,
         CertificateIssuer issuer,

@@ -15,13 +15,11 @@ public final class TestTenants {
 
     public static final String PROVIDER_PCTX = ProviderCertificateSeeder.SEED_PARTICIPANT_CONTEXT_ID;
     public static final String PROVIDER_DID = ProviderCertificateSeeder.SEED_DID;
-    public static final String PROVIDER_BPN = "BPNL0000000001AB";
-    public static final String PROVIDER_SOURCE = "urn:bpn:BPNL0000000001AB";
+    public static final String PROVIDER_DATASPACE_ID = "PRT000000000001";
 
     public static final String CONSUMER_PCTX = ProviderCertificateSeeder.SEED_CONSUMER_PARTICIPANT_CONTEXT_ID;
     public static final String CONSUMER_DID = ProviderCertificateSeeder.SEED_CONSUMER_DID;
-    public static final String CONSUMER_BPN = "BPNL0000000002CD";
-    public static final String CONSUMER_SOURCE = "urn:bpn:BPNL0000000002CD";
+    public static final String CONSUMER_DATASPACE_ID = "PRT000000000002";
 
     // Seeded certificate ids (UUIDs).
     public static final String ISO9001_CERT_ID = ProviderCertificateSeeder.SEED_ISO9001_CERTIFICATE_ID;

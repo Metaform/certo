@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
  * ManagementScopeAuthorization} ({@code @PreAuthorize} on the controllers), with {@code
  * certo-mgmt-api:admin} superseding every fine-grained scope.
  *
- * <p>Everything else — the CCM protocol surface, {@code /info}, {@code /error} — is deliberately left
+ * <p>Everything else — the protocol surface, {@code /info}, {@code /error} — is deliberately left
  * to the existing mechanisms: protocol endpoints are verified by the always-on siglet token
  * interceptor (see {@code SecurityWebConfig}), which is a different trust domain than the management
  * IdP, so the permit-all chain here is not an unprotected surface.

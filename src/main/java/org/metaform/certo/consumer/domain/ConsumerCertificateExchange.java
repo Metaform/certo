@@ -18,10 +18,8 @@ import org.metaform.certo.common.util.Validations;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.StatusError;
-import org.metaform.certo.common.persistence.RetrievedCertificateConverter;
 import org.metaform.certo.common.persistence.StatusErrorListConverter;
 import org.metaform.certo.common.web.ApiException;
-import org.metaform.certo.consumer.spi.RetrievedCertificate;
 import org.springframework.data.domain.AfterDomainEventPublication;
 import org.springframework.data.domain.DomainEvents;
 
@@ -32,14 +30,14 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The consumer's record of a {@code Certificate Exchange} it is party to (CX-0135 &sect;2.1), holding
+ * The consumer's record of a {@code Certificate Exchange} it is party to, holding
  * both phases — like the provider's {@code ProviderCertificateExchange}. The consumer <em>mirrors</em> the
  * provider-owned Fulfillment status (tracked while it waits on a consumer-initiated request) and is
  * <em>authoritative</em> for the Acceptance status it reports.
  *
- * <p>{@code consumerInitiated} distinguishes the two ways an exchange is opened: a consumer request
- * (pull) versus a provider lifecycle {@code CREATED} notification (push, which enters directly at
- * {@code FULFILLED}). The Acceptance state machine is enforced; terminal states are immutable.
+ * <p>An exchange is opened only by the consumer's own request (pull); lifecycle notifications are purely
+ * informational and never create one. The Acceptance state machine is enforced; terminal states are
+ * immutable.
  *
  * <p>Persisted via JPA with {@code @Version} optimistic locking (a concurrent poll/accept/push that would
  * lose an update fails the version check instead of being serialized by a JVM monitor). Because JPA does
@@ -56,20 +54,15 @@ public class ConsumerCertificateExchange {
     /** Unknown until the provider reports one; null for a request still awaiting fulfillment. */
     private String certificateId;
     private Integer revision;
-    private boolean consumerInitiated;
 
     /** The consumer's own tenant (participant context) this exchange belongs to. */
     @NotNull
     @Column(nullable = false)
     private String participantContextId;
-    /** The counterparty provider's BPN — the target of the consumer's outbound calls for this exchange. */
+    /** The counterparty provider's identity (its DID) — the target of the consumer's outbound calls. */
     @NotNull
     @Column(nullable = false)
-    private String providerBpn;
-    /** The counterparty provider's DID — the token audience for those outbound calls. */
-    @NotNull
-    @Column(nullable = false)
-    private String providerDid;
+    private String providerId;
 
     @Enumerated(EnumType.STRING)
     @NotNull
@@ -92,17 +85,6 @@ public class ConsumerCertificateExchange {
      */
     private boolean acceptanceReported;
 
-    /**
-     * The certificate content when it arrived <b>inline</b> (an embedded push), retained so a later
-     * management-driven {@code retrieve}/{@code accept} can evaluate it — there is no pull endpoint to
-     * re-fetch it from. Null for by-reference exchanges, which are (re-)fetched from the provider on demand.
-     */
-    // Larger than the other JSON columns: this holds the inline certificate plus its base64 document
-    // binaries. 10 MB stays within Postgres's varchar limit while comfortably fitting certificate PDFs.
-    @Convert(converter = RetrievedCertificateConverter.class)
-    @Column(length = 10_000_000)
-    private RetrievedCertificate embeddedContent;
-
     @Version
     private long version;
 
@@ -118,18 +100,16 @@ public class ConsumerCertificateExchange {
         // for JPA
     }
 
-    public ConsumerCertificateExchange(String exchangeId, String certificateId, Integer revision, boolean consumerInitiated,
+    public ConsumerCertificateExchange(String exchangeId, String certificateId, Integer revision,
                             FulfillmentStatus fulfillmentStatus, List<StatusError> fulfillmentErrors,
-                            String participantContextId, String providerBpn, String providerDid) {
+                            String participantContextId, String providerId) {
         this.exchangeId = Validations.requireNonBlank(exchangeId, "exchangeId");
         this.certificateId = certificateId;
         this.revision = revision;
-        this.consumerInitiated = consumerInitiated;
         this.fulfillmentStatus = Objects.requireNonNull(fulfillmentStatus, "fulfillmentStatus");
         this.fulfillmentErrors = fulfillmentErrors;
         this.participantContextId = Validations.requireNonBlank(participantContextId, "participantContextId");
-        this.providerBpn = Validations.requireNonBlank(providerBpn, "providerBpn");
-        this.providerDid = Validations.requireNonBlank(providerDid, "providerDid");
+        this.providerId = Validations.requireNonBlank(providerId, "providerId");
         recordFulfillmentChange(null);
     }
 
@@ -138,12 +118,16 @@ public class ConsumerCertificateExchange {
      * {@code certificateId} may be unknown when a request is first opened (the provider assigns it only
      * once the backend issues the certificate); it is adopted here when the provider reports one.
      */
-    public void updateFulfillment(FulfillmentStatus status, String certificateId, List<StatusError> errors) {
+    public void updateFulfillment(FulfillmentStatus status, String certificateId, Integer revision,
+                                  List<StatusError> errors) {
         var previous = fulfillmentStatus;
         this.fulfillmentStatus = status;
         this.fulfillmentErrors = errors;
         if (certificateId != null) {
             this.certificateId = certificateId;
+        }
+        if (revision != null) {
+            this.revision = revision;
         }
         // Only a real change is an event. Unlike the provider's transitionFulfillment (which rejects a
         // no-op transition outright), this method mirrors whatever the provider last reported and is
@@ -154,9 +138,8 @@ public class ConsumerCertificateExchange {
     }
 
     /**
-     * Advances the Acceptance phase, rejecting illegal or post-terminal transitions (409). Reporting
-     * {@code RETRIEVED} is optional, so the first status may be a terminal verdict reached directly from
-     * {@code FULFILLED} (CX-0135 &sect;2.1.3).
+     * Advances the Acceptance phase, rejecting illegal or post-terminal transitions (409). Both acceptance
+     * states are terminal, reached directly from {@code FULFILLED}.
      */
     public void transitionAcceptance(AcceptanceStatus status, List<StatusError> errors) {
         if (acceptanceStatus != null && !acceptanceStatus.allowedNext().contains(status)) {
@@ -183,8 +166,7 @@ public class ConsumerCertificateExchange {
                 ExchangeEventType.of(fulfillmentStatus),
                 exchangeId,
                 participantContextId,
-                providerBpn,
-                providerDid,
+                providerId,
                 certificateId,
                 certificateId == null ? null : revision,
                 previous == null ? null : previous.name(),
@@ -201,8 +183,7 @@ public class ConsumerCertificateExchange {
                 ExchangeEventType.of(acceptanceStatus),
                 exchangeId,
                 participantContextId,
-                providerBpn,
-                providerDid,
+                providerId,
                 certificateId,
                 certificateId == null ? null : revision,
                 previous == null ? null : previous.name(),
@@ -232,15 +213,6 @@ public class ConsumerCertificateExchange {
         this.acceptanceReported = true;
     }
 
-    /** Retains inline certificate content (an embedded push) for a later management-driven retrieve/accept. */
-    public void attachEmbeddedContent(RetrievedCertificate content) {
-        this.embeddedContent = content;
-    }
-
-    public RetrievedCertificate embeddedContent() {
-        return embeddedContent;
-    }
-
     public String exchangeId() {
         return exchangeId;
     }
@@ -253,21 +225,13 @@ public class ConsumerCertificateExchange {
         return revision;
     }
 
-    public boolean consumerInitiated() {
-        return consumerInitiated;
-    }
-
     public String participantContextId() {
         return participantContextId;
     }
 
-    public String providerBpn() {
-        return providerBpn;
-    }
-
-    /** The counterparty provider's DID — the token audience for the consumer's outbound calls. */
-    public String providerDid() {
-        return providerDid;
+    /** The counterparty provider's identity (its DID) — the token audience for outbound calls. */
+    public String providerId() {
+        return providerId;
     }
 
     public FulfillmentStatus fulfillmentStatus() {

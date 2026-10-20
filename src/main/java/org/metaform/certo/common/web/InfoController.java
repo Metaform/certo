@@ -15,7 +15,7 @@ import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 
 /**
  * Public operational endpoints, modeled on redline's {@code InfoController}: a {@code /health} liveness probe,
- * a {@code /readiness} probe, and a {@code /info} descriptor. None is a CCM protocol path, so the siglet
+ * a {@code /readiness} probe, and a {@code /info} descriptor. None is a protocol path, so the siglet
  * security interceptor never applies (it is registered only on the protocol paths) — all are reachable without
  * a token, as container probes require, and they expose no tenant data.
  *
@@ -64,7 +64,7 @@ public class InfoController {
     /** {@code GET /info} — a static service descriptor. */
     @GetMapping(path = "/info", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, String> info() {
-        return Map.of("name", "Certo API", "description", "Company Certificate Management (CX-0135) data-plane");
+        return Map.of("name", "Certo API", "description", "Company Certificate Management data-plane");
     }
 
     private boolean databaseReachable() {

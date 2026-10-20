@@ -15,12 +15,11 @@ public interface ProviderCertificateExchangeStore extends
         JpaRepository<ProviderCertificateExchange, String>, JpaSpecificationExecutor<ProviderCertificateExchange> {
 
     /**
-     * The single still-live exchange a counterparty (by verified DID) has opened within a tenant for a given
-     * (namespaced) dedup key, reused for a repeat rather than opening a duplicate (CX-0135 &sect;2.1.1). At
-     * most one exists — the {@code (participantContextId, counterpartyDid, liveDedupKey)} unique constraint
-     * guarantees it — and a terminal exchange (key nulled) is not returned. Used by both the consumer-open
-     * ({@code "req:"} keys) and provider-publish ({@code "pub:"} keys) paths.
+     * The exchange a counterparty (by verified DID) opened within a tenant with a given request
+     * {@code messageId} — the SCE creation-idempotency lookup. At most one exists; the
+     * {@code (participantContextId, counterpartyId, messageId)} unique constraint guarantees it, and it is
+     * never released, so a retried request resolves to the same exchange even after a terminal outcome.
      */
-    Optional<ProviderCertificateExchange> findByParticipantContextIdAndCounterpartyDidAndLiveDedupKey(
-            String participantContextId, String counterpartyDid, String liveDedupKey);
+    Optional<ProviderCertificateExchange> findByParticipantContextIdAndCounterpartyIdAndMessageId(
+            String participantContextId, String counterpartyId, String messageId);
 }

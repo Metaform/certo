@@ -31,14 +31,14 @@ class ParticipantContextControllerTest {
 
     @Test
     void omittedId_isGeneratedUuid() throws Exception {
-        mvc.perform(create(null, "BPNL000000000P01", "urn:bpn:BPNL000000000P01", "did:web:pctx-gen"))
+        mvc.perform(create(null, "LE000000000P01", "did:web:pctx-gen"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.participantContextId").value(org.hamcrest.Matchers.matchesPattern(UUID_PATTERN)));
     }
 
     @Test
     void suppliedId_isUsedVerbatim() throws Exception {
-        mvc.perform(create("tenant-acme", "BPNL000000000P02", "urn:bpn:BPNL000000000P02", "did:web:pctx-acme"))
+        mvc.perform(create("tenant-acme", "LE000000000P02", "did:web:pctx-acme"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.participantContextId").value("tenant-acme"));
 
@@ -51,18 +51,18 @@ class ParticipantContextControllerTest {
 
     @Test
     void duplicateSuppliedId_isConflict() throws Exception {
-        mvc.perform(create("tenant-dup", "BPNL000000000P03", "urn:bpn:BPNL000000000P03", "did:web:pctx-dup-1"))
+        mvc.perform(create("tenant-dup", "LE000000000P03", "did:web:pctx-dup-1"))
                 .andExpect(status().isCreated());
         // Same id, different did -> the id clash is a conflict.
-        mvc.perform(create("tenant-dup", "BPNL000000000P03", "urn:bpn:BPNL000000000P03", "did:web:pctx-dup-2"))
+        mvc.perform(create("tenant-dup", "LE000000000P03", "did:web:pctx-dup-2"))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void list_returnsAllRegisteredContexts() throws Exception {
-        mvc.perform(create("tenant-list-1", "BPNL000000000P05", "urn:bpn:BPNL000000000P05", "did:web:pctx-list-1"))
+        mvc.perform(create("tenant-list-1", "LE000000000P05", "did:web:pctx-list-1"))
                 .andExpect(status().isCreated());
-        mvc.perform(create("tenant-list-2", "BPNL000000000P06", "urn:bpn:BPNL000000000P06", "did:web:pctx-list-2"))
+        mvc.perform(create("tenant-list-2", "LE000000000P06", "did:web:pctx-list-2"))
                 .andExpect(status().isCreated());
 
         // GET on the collection root returns a JSON array including every registered context (both just-created
@@ -78,7 +78,7 @@ class ParticipantContextControllerTest {
 
     @Test
     void delete_removesTheContext_andUnknownIdIs404() throws Exception {
-        mvc.perform(create("tenant-del", "BPNL000000000P07", "urn:bpn:BPNL000000000P07", "did:web:pctx-del"))
+        mvc.perform(create("tenant-del", "LE000000000P07", "did:web:pctx-del"))
                 .andExpect(status().isCreated());
 
         mvc.perform(delete("/management/v1/participant-contexts/{id}", "tenant-del"))
@@ -92,24 +92,24 @@ class ParticipantContextControllerTest {
 
     @Test
     void deletedId_canBeRegisteredAgain() throws Exception {
-        mvc.perform(create("tenant-recycle", "BPNL000000000P08", "urn:bpn:BPNL000000000P08", "did:web:pctx-recycle-1"))
+        mvc.perform(create("tenant-recycle", "LE000000000P08", "did:web:pctx-recycle-1"))
                 .andExpect(status().isCreated());
         mvc.perform(delete("/management/v1/participant-contexts/{id}", "tenant-recycle"))
                 .andExpect(status().isNoContent());
         // The id and the did are both free again.
-        mvc.perform(create("tenant-recycle", "BPNL000000000P08", "urn:bpn:BPNL000000000P08", "did:web:pctx-recycle-1"))
+        mvc.perform(create("tenant-recycle", "LE000000000P08", "did:web:pctx-recycle-1"))
                 .andExpect(status().isCreated());
     }
 
     @Test
     void invalidSuppliedId_isBadRequest() throws Exception {
-        mvc.perform(create("bad id/with slash", "BPNL000000000P04", "urn:bpn:BPNL000000000P04", "did:web:pctx-bad"))
+        mvc.perform(create("bad id/with slash", "LE000000000P04", "did:web:pctx-bad"))
                 .andExpect(status().isBadRequest());
     }
 
-    private org.springframework.test.web.servlet.RequestBuilder create(String id, String bpn, String source, String did) {
+    private org.springframework.test.web.servlet.RequestBuilder create(String id, String dataspaceIdentifier, String did) {
         var idField = id == null ? "" : "\"participantContextId\":\"" + id + "\",";
-        var body = "{" + idField + "\"bpn\":\"" + bpn + "\",\"source\":\"" + source + "\",\"did\":\"" + did + "\"}";
+        var body = "{" + idField + "\"dataspaceIdentifier\":\"" + dataspaceIdentifier + "\",\"did\":\"" + did + "\"}";
         return post("/management/v1/participant-contexts").contentType(MediaType.APPLICATION_JSON).content(body);
     }
 }

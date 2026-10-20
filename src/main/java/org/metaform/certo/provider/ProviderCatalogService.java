@@ -2,6 +2,8 @@ package org.metaform.certo.provider;
 
 import org.metaform.certo.common.model.CertificateDocument;
 import org.metaform.certo.common.model.CertificateRecord;
+import org.metaform.certo.common.model.CertificateTypes;
+import org.metaform.certo.common.model.LocationFilter;
 import org.metaform.certo.common.model.CertifiedLocation;
 import org.metaform.certo.common.model.LocationRole;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
@@ -10,7 +12,7 @@ import org.metaform.certo.common.web.Cursor;
 import org.metaform.certo.provider.dto.CertificateAdded;
 import org.metaform.certo.provider.dto.CertificateLifecycleResult;
 import org.metaform.certo.provider.dto.CertificatePage;
-import org.metaform.certo.provider.dto.CertificateQuery;
+import org.metaform.certo.provider.dto.CertificateSearchFilter;
 import org.metaform.certo.provider.dto.NewCertificate;
 import org.metaform.certo.provider.dto.NewRevision;
 import org.metaform.certo.provider.dto.StoredDocument;
@@ -50,12 +52,6 @@ import static org.metaform.certo.common.web.ApiException.requireText;
 @Service
 @Transactional
 public class ProviderCatalogService implements org.metaform.certo.provider.spi.HeldCertificateLookup {
-    /**
-     * Search fields the provider supports (CX-0135 §3.3.4); any other field is rejected with 501.
-     */
-    private static final Set<String> SUPPORTED_SEARCH_FIELDS = Set.of(
-            "certificateType", "certifiedLocations.bpnl", "certifiedLocations.bpns", "certifiedLocations.bpna");
-
     private static final int DEFAULT_SEARCH_LIMIT = 50;
     private static final String PDF_MEDIA_TYPE = "application/pdf";
 
@@ -105,6 +101,9 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
      */
     public CertificateAdded addCertificate(String contextId, NewCertificate request) {
         requireText(request.certificateType(), "A certificate must include a certificateType");
+        if (!CertificateTypes.isValid(request.certificateType())) {
+            throw badRequest("certificateType must be an opaque code of lowercase letters and digits only: " + request.certificateType());
+        }
         requireText(request.registrationNumber(), "A certificate must include a registrationNumber");
         checkValidityWindow(request.validFrom(), request.validUntil());
         validateCertifiedLocations(request.certifiedLocations());
@@ -118,7 +117,6 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
                 request.certificateType(),
                 request.certificateTypeVersion(),
                 request.registrationNumber(),
-                request.trustLevel(),
                 request.areaOfApplication(),
                 request.certifiedLocations(),
                 request.issuer(),
@@ -130,8 +128,8 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
 
     /**
      * State change: creates a <b>new version</b> of an existing certificate — appends a revision with the
-     * caller's issued validity window and documents, lifecycle {@code CREATED → MODIFIED} (CX-0135
-     * &sect;2.2.4). Does <b>not</b> notify any consumer — that is a separate, explicitly-targeted publish.
+     * caller's issued validity window and documents, lifecycle {@code CREATED → MODIFIED} (the SCE specification
+     * &sect;2.2.4). Does <b>not</b> notify any consumer — that is a separate, explicitly-targeted notify.
      */
     public CertificateLifecycleResult addRevision(String contextId, String certificateId, NewRevision request) {
         var certificate = resolveActiveCertificate(contextId, certificateId);
@@ -161,21 +159,26 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
     }
 
     /**
-     * Retrieves certificate metadata as JSON (CX-0135 &sect;3.3.2): the latest revision as a full record for
-     * an active certificate, or the minimal {@link WithdrawnCertificate} status body for a withdrawn one.
+     * Retrieves certificate metadata as JSON: the requested (or, when {@code revision} is null, the latest)
+     * revision as a full record for an active certificate, or the minimal {@link WithdrawnCertificate}
+     * status body for a withdrawn one. An unknown revision is 404.
      */
     @Transactional(readOnly = true)
-    public Object getCertificate(String contextId, String certificateId) {
+    public Object getCertificate(String contextId, String certificateId, Integer revision) {
         var certificate = findCertificate(contextId, certificateId)
                 .orElseThrow(() -> notFound("Unknown certificate: " + certificateId));
         if (certificate.lifecycleStatus() == WITHDRAWN) {
             return WithdrawnCertificate.of(certificateId);
         }
-        return toRecord(certificate, certificate.latestRevision());
+        var selected = revision == null
+                ? certificate.latestRevision()
+                : certificate.revision(revision).orElseThrow(
+                        () -> notFound("Unknown revision " + revision + " for certificate " + certificateId));
+        return toRecord(certificate, selected);
     }
 
     /**
-     * Retrieves a certificate document binary by its opaque id (CX-0135 &sect;3.3.3), scoped to the caller's
+     * Retrieves a certificate document binary by its opaque id, scoped to the caller's
      * tenant. Unknown id — or one owned by another tenant — is 404 (existence is not revealed across tenants).
      */
     @Transactional(readOnly = true)
@@ -186,23 +189,20 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
     }
 
     /**
-     * Searches certificates with the CX-0135 &sect;3.3.4 query grammar (a {@code $condition.$match} array of
-     * field/{@code $eq} clauses combined with AND). Withdrawn certificates are excluded. Returns one page of
-     * full records plus next/prev cursors. An unsupported field is rejected with 501.
+     * Searches certificates with the SCE filter object: every supplied property narrows the result (AND),
+     * and an empty filter matches all of the tenant's certificates. Withdrawn certificates are excluded.
+     * Returns one page of full records (latest revision) plus an opaque {@code cursor} when the page is not
+     * the last. Location filters must each supply at least one identifier property.
      */
     @Transactional(readOnly = true)
-    public CertificatePage search(String contextId, CertificateQuery query, Integer limit, String cursor) {
-        var clauses = query.condition().match();
-        if (clauses == null || clauses.isEmpty()) {
-            throw badRequest("Query $condition.$match must contain at least one clause");
+    public CertificatePage search(String contextId, CertificateSearchFilter filter, Integer limit, String cursor) {
+        var effective = filter != null ? filter : new CertificateSearchFilter(null, null, null);
+        if (effective.certifiedLocations() != null
+                && effective.certifiedLocations().stream().anyMatch(f -> f == null || !f.specifiesAnything())) {
+            throw badRequest("Each certifiedLocations filter must supply at least one identifier property");
         }
-        for (var clause : clauses) {
-            if (clause.field() == null || clause.eq() == null) {
-                throw badRequest("Each match clause requires $field and $eq");
-            }
-            if (!SUPPORTED_SEARCH_FIELDS.contains(clause.field())) {
-                throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "Unsupported search field: " + clause.field());
-            }
+        if (effective.certificateType() != null && !CertificateTypes.isValid(effective.certificateType())) {
+            throw badRequest("certificateType must be an opaque code of lowercase letters and digits only: " + effective.certificateType());
         }
 
         var pageLimit = (limit != null && limit > 0) ? limit : DEFAULT_SEARCH_LIMIT;
@@ -210,7 +210,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
         if (offset < 0) {
             throw badRequest("Invalid pagination cursor");
         }
-        var spec = CertificateSpecifications.matchingSearch(contextId, clauses);
+        var spec = CertificateSpecifications.matchingSearch(contextId, effective);
         var page = certificateStore.findAll(spec, new OffsetLimitPageable(offset, pageLimit, Sort.by("certificateId")));
         if (offset > page.getTotalElements()) {
             throw badRequest("Invalid pagination cursor");
@@ -220,8 +220,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
                 .toList();
         var end = offset + records.size();
         var next = end < page.getTotalElements() ? Cursor.encode(end) : null;
-        var prev = offset > 0 ? Cursor.encode(Math.max(0, offset - pageLimit)) : null;
-        return new CertificatePage(records, next, prev);
+        return new CertificatePage(records, next);
     }
 
     /**
@@ -230,7 +229,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
      */
     public Optional<Certificate> findCertificateForLocations(String contextId,
                                                              String certificateType,
-                                                             List<String> requestedLocations) {
+                                                             List<LocationFilter> requestedLocations) {
         var spec = CertificateSpecifications.heldCovering(contextId, certificateType, requestedLocations);
         return Optional.ofNullable(certificateStore.findBy(spec, q -> q.sortBy(Sort.by("certificateId")).firstValue()));
     }
@@ -252,25 +251,16 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
     }
 
     /**
-     * Maps a certificate + revision to the CX-0135 &sect;4 wire {@link CertificateRecord}, resolving the
-     * revision's document descriptors from this catalog's document store. Lives here (rather than in a
-     * separate mapper) because the catalog owns the documents. {@link #toRecordWithContent} additionally
-     * inlines each document's binary as {@code contentBase64} (for an embedded publish).
+     * Maps a certificate + revision to the neutral {@link CertificateRecord}, resolving the revision's
+     * document descriptors from this catalog's document store. Lives here (rather than in a separate
+     * mapper) because the catalog owns the documents. Documents are references only — content is never
+     * inlined.
      */
-    public CertificateRecord toRecord(Certificate certificate, CertificateRevision revision) {
-        return toRecord(certificate, revision, false);
-    }
-
-    public CertificateRecord toRecordWithContent(Certificate certificate, CertificateRevision revision) {
-        return toRecord(certificate, revision, true);
-    }
-
-    private CertificateRecord toRecord(Certificate c, CertificateRevision rev, boolean withContent) {
+    public CertificateRecord toRecord(Certificate c, CertificateRevision rev) {
         var docRefs = rev.documentIds().stream()
                 .map(documentStore::findById)
                 .filter(Optional::isPresent).map(Optional::get)
-                .map(d -> new CertificateDocument(d.documentId(), d.createdDate(), d.language(), d.mediaType(),
-                        withContent ? Base64.getEncoder().encodeToString(d.content()) : null))
+                .map(d -> new CertificateDocument(d.documentId(), d.createdDate(), d.language(), d.mediaType()))
                 .toList();
         return new CertificateRecord(
                 c.certificateId(),
@@ -280,7 +270,6 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
                 c.registrationNumber(),
                 rev.validFrom(),
                 rev.validUntil(),
-                c.trustLevel(),
                 c.areaOfApplication(),
                 c.certifiedLocations(),
                 c.issuer(),
@@ -312,7 +301,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
     }
 
     /**
-     * Validates the issued certified locations: non-empty, exactly one MAIN_LOCATION, each with a bpnl and bpna.
+     * Validates the issued certified locations: non-empty, exactly one MAIN_LOCATION, each with a legalEntityId.
      */
     private static void validateCertifiedLocations(List<CertifiedLocation> locations) {
         if (locations == null || locations.isEmpty()) {
@@ -323,8 +312,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
             throw badRequest("Exactly one certifiedLocation must have locationRole MAIN_LOCATION");
         }
         for (var location : locations) {
-            requireText(location.bpnl(), "Each certifiedLocation must have a BPNL and a BPNA");
-            requireText(location.bpna(), "Each certifiedLocation must have a BPNL and a BPNA");
+            requireText(location.legalEntityId(), "Each certifiedLocation must have a legalEntityId");
         }
     }
 

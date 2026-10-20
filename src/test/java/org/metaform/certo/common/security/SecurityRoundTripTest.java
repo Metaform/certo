@@ -86,8 +86,8 @@ class SecurityRoundTripTest {
         // Open the request; then the client drives retrieve + accept. Every consumer->provider hop carries a
         // verified token resolved from the stub siglet cache.
         var initiate = post("/management/v1/participant-contexts/pctx-seed-consumer/consumer/certificate-requests",
-                "{\"providerBpn\":\"BPNL0000000001AB\",\"providerDid\":\"did:web:provider\","
-                        + "\"certificateType\":\"ISO9001\",\"certifiedLocations\":[\"BPNS00000003AYRE\"],\"flowId\":\"flow-1\"}");
+                "{\"protocol\":\"sce-1.0\",\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"providerId\":\"did:web:provider\","
+                        + "\"certificateType\":\"iso9001\",\"certifiedLocations\":[{\"siteId\":\"SITE00000003AYRE\"}],\"flowId\":\"flow-1\"}");
         assertThat(initiate.statusCode()).isEqualTo(202);
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
@@ -144,7 +144,7 @@ class SecurityRoundTripTest {
             var claims = new JWTClaimsSet.Builder()
                     .subject("did:web:consumer.test")
                     .audience("did:web:provider")
-                    .claim("bpn", "BPNL0000000002CD")
+                    .claim("dataspaceidentifier", "LE0000000002CD")
                     .issuer("siglet")
                     .issueTime(new Date())
                     .expirationTime(Date.from(Instant.now().plusSeconds(300)))

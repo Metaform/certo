@@ -3,22 +3,19 @@ package org.metaform.certo.common.model;
 import java.util.Set;
 
 /**
- * States of the Fulfillment phase of a {@code Certificate Exchange} (CX-0135 &sect;2.1.3), owned by
- * the Certificate Provider.
+ * States of the Fulfillment phase of a {@code Certificate Exchange}, owned by the Certificate Provider.
+ * Technical/transport failures are not exchange states; the one negative outcome is {@code DECLINED},
+ * whose grounds travel in the status payload's {@code errors} array.
  */
 public enum FulfillmentStatus {
-    /** The exchange was opened by the consumer; the provider has not yet acted. Internal, never reported on the wire. */
-    REQUESTED(false),
     /** The provider accepted the request and began preparing the certificate. */
     ACKNOWLEDGED(false),
     /** The provider submitted the request to an external certification authority and awaits issuance. */
-    CERTIFICATION_REQUESTED(false),
+    CERTIFICATE_REQUESTED(false),
     /** The certificate is prepared and available for retrieval. Hand-off point to the Acceptance phase. */
     FULFILLED(false),
-    /** The provider declined the request (a business decision). Terminal. */
-    DECLINED(true),
-    /** The provider could not produce a valid certificate (a business error). Terminal. */
-    FAILED(true);
+    /** The provider did not fulfill the request; the grounds are carried in the errors array. Terminal. */
+    DECLINED(true);
 
     private final boolean terminal;
 
@@ -30,13 +27,12 @@ public enum FulfillmentStatus {
         return terminal;
     }
 
-    /** The Fulfillment states reachable from this one (CX-0135 &sect;2.1.3 state machine). */
+    /** The Fulfillment states reachable from this one (SCE exchange state machine). */
     public Set<FulfillmentStatus> allowedNext() {
         return switch (this) {
-            case REQUESTED -> Set.of(ACKNOWLEDGED, DECLINED);
-            case ACKNOWLEDGED -> Set.of(CERTIFICATION_REQUESTED, FULFILLED, FAILED, DECLINED);
-            case CERTIFICATION_REQUESTED -> Set.of(FULFILLED, FAILED, DECLINED);
-            case FULFILLED, DECLINED, FAILED -> Set.of();
+            case ACKNOWLEDGED -> Set.of(CERTIFICATE_REQUESTED, FULFILLED, DECLINED);
+            case CERTIFICATE_REQUESTED -> Set.of(FULFILLED, DECLINED);
+            case FULFILLED, DECLINED -> Set.of();
         };
     }
 }

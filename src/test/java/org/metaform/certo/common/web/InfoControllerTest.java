@@ -12,7 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * The public operational endpoints — {@code /health} (liveness), {@code /readiness} (liveness + DB), and
- * {@code /info} (descriptor). All must answer without a security token: they are not CCM protocol paths, so
+ * {@code /info} (descriptor). All must answer without a security token: they are not protocol paths, so
  * container probes can reach them. The DB is up in the test context, so readiness is UP.
  */
 @SpringBootTest

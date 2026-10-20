@@ -1,11 +1,11 @@
 package org.metaform.certo.protocol;
 
 import org.metaform.certo.common.security.outbound.OutboundCall;
-import org.metaform.certo.consumer.spi.CertificateRetriever;
+import org.metaform.certo.common.web.ApiException;
 import org.metaform.certo.consumer.spi.RetrievedCertificate;
+import org.metaform.certo.protocol.domain.ExchangeBinding;
 import org.metaform.certo.protocol.spi.ProtocolRetriever;
 import org.metaform.certo.protocol.store.ExchangeBindingStore;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -15,52 +15,52 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * The core-facing certificate retriever: selects the counterparty's protocol version and delegates to that
- * version's {@link ProtocolRetriever}. The retrieval analogue of {@link DispatchingConsumerNotifier} /
+ * The core-facing certificate retriever: selects the counterparty's protocol and delegates to that
+ * protocol's {@link ProtocolRetriever}. The retrieval analogue of {@link DispatchingConsumerNotifier} /
  * {@link DispatchingAcceptanceReporter}.
  *
- * <p>Two entry points, because the version is known two ways:
+ * <p>Two entry points, because the protocol is known two ways:
  * <ul>
- *   <li>{@link #fetch(String, OutboundCall)} — the {@link CertificateRetriever} port used by an
- *       exchange-scoped {@code retrieve}. The version is looked up from the exchange's
- *       {@link org.metaform.certo.protocol.domain.ExchangeBinding} via the same
- *       {@code (certificateId, peerDid)} correlation inbound status uses; no binding ⇒
- *       {@link ProtocolVersion#NATIVE}.</li>
- *   <li>{@link #fetch(ProtocolVersion, String, OutboundCall)} — a proactive discovery pull, where no
- *       exchange exists yet and the caller states the partner's protocol version explicitly.</li>
+ *   <li>{@link #fetchForExchange(String, String, OutboundCall)} — an exchange-scoped {@code retrieve}: the
+ *       protocol is read from the exchange's {@link ExchangeBinding} (role
+ *       {@link CounterpartyRole#PROVIDER}) — every exchange has one, recorded when it was opened.</li>
+ *   <li>{@link #fetch(String, String, OutboundCall)} — a proactive discovery pull, where no exchange
+ *       exists and the caller states the partner's protocol id explicitly (<b>required</b>).</li>
  * </ul>
  */
 @Component
-@Primary
-public class DispatchingCertificateRetriever implements CertificateRetriever {
+public class DispatchingCertificateRetriever {
 
-    private final Map<ProtocolVersion, ProtocolRetriever> byVersion;
+    private final Map<String, ProtocolRetriever> byId;
     private final ExchangeBindingStore bindings;
 
     public DispatchingCertificateRetriever(List<ProtocolRetriever> retrievers, ExchangeBindingStore bindings) {
-        this.byVersion = retrievers.stream().collect(Collectors.toMap(ProtocolRetriever::version, Function.identity()));
+        this.byId = retrievers.stream().collect(Collectors.toMap(ProtocolRetriever::protocolId, Function.identity()));
         this.bindings = bindings;
     }
 
-    @Override
-    public RetrievedCertificate fetch(String certificateId, OutboundCall call) throws IOException {
-        // Correlate the exchange's binding on the verified peer DID (the provider): a retrieval is keyed by
-        // certificateId, not exchangeId. A bound exchange resolves to its version's retriever, else native.
-        var version = bindings.findByCertificateIdAndPeerDid(certificateId, call.counterpartyDid())
-                .map(binding -> binding.version())
-                .orElse(ProtocolVersion.NATIVE);
-        return retriever(version).fetch(certificateId, call);
+    /**
+     * Pulls an exchange's certificate in the protocol recorded on the exchange's binding, pinned to the
+     * revision the exchange concerns (the certificate may have been modified since fulfillment).
+     */
+    public RetrievedCertificate fetchForExchange(String exchangeId, String certificateId, Integer revision,
+                                                 OutboundCall call) throws IOException {
+        var protocolId = bindings.resolve(exchangeId, CounterpartyRole.PROVIDER)
+                .map(ExchangeBinding::protocolId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No protocol binding recorded for exchange " + exchangeId));
+        return retriever(protocolId).fetch(certificateId, revision, call);
     }
 
-    /** Pulls in an explicitly-named protocol version (a proactive discovery pull with no bound exchange). */
-    public RetrievedCertificate fetch(ProtocolVersion version, String certificateId, OutboundCall call) throws IOException {
-        return retriever(version).fetch(certificateId, call);
+    /** Pulls in an explicitly-named protocol — a proactive discovery pull with no bound exchange (latest revision). */
+    public RetrievedCertificate fetch(String protocolId, String certificateId, OutboundCall call) throws IOException {
+        return retriever(protocolId).fetch(certificateId, null, call);
     }
 
-    private ProtocolRetriever retriever(ProtocolVersion version) {
-        var retriever = byVersion.getOrDefault(version, byVersion.get(ProtocolVersion.NATIVE));
+    private ProtocolRetriever retriever(String protocolId) {
+        var retriever = byId.get(protocolId);
         if (retriever == null) {
-            throw new IllegalStateException("No certificate retriever registered for protocol version " + version);
+            throw ApiException.badRequest("Unsupported protocol: " + protocolId);
         }
         return retriever;
     }

@@ -60,14 +60,15 @@ class AcceptanceReconciliationTest {
 
     @Test
     void aLostAcceptanceReportStaysSurfacedUntilItIsRedelivered() throws Exception {
-        // 1. Provider publishes (embedded) to the consumer over the loopback so the exchange is recorded locally.
+        // 1. A loopback consumer-initiated request records the exchange locally (held -> FULFILLED), and the
+        // retrieve pulls the certificate over the loopback before the endpoint is redirected.
         siglet.setEndpoint(BASE);
-        var publish = postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX
-                        + "/certificates/" + TestTenants.ISO14001_CERT_ID + "/publish",
-                "{\"embedded\":true,\"flowId\":\"flow-1\",\"consumerBpn\":\"" + TestTenants.CONSUMER_BPN
-                        + "\",\"consumerDid\":\"" + TestTenants.CONSUMER_DID + "\"}");
-        var exchangeId = mapper.readTree(publish.body()).get("exchangeId").asString();
-        assertThat(retrieve(exchangeId).statusCode()).isEqualTo(200);   // inline content, no outbound pull
+        var initiate = postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX
+                        + "/consumer/certificate-requests",
+                "{\"protocol\":\"sce-1.0\",\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"providerId\":\"" + TestTenants.PROVIDER_DID
+                        + "\",\"certificateType\":\"iso14001\",\"certifiedLocations\":[{\"siteId\":\"SITE00000003AYRE\"}],\"flowId\":\"flow-1\"}");
+        var exchangeId = mapper.readTree(initiate.body()).get("exchangeId").asString();
+        assertThat(retrieve(exchangeId).statusCode()).isEqualTo(200);
 
         // 2. Redirect the acceptance report to a controllable provider: first delivery fails (503), the re-drive succeeds (204).
         provider.enqueue(new MockResponse().setResponseCode(503));
@@ -107,7 +108,7 @@ class AcceptanceReconciliationTest {
     }
 
     private String bearer() {
-        return "Bearer " + siglet.mint(TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_BPN);
+        return "Bearer " + siglet.mint(TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_DATASPACE_ID);
     }
 
     private HttpResponse<String> postJson(String path, String body) throws Exception {

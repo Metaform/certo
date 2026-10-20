@@ -48,7 +48,7 @@ public class MockSigletConfig {
 
     @Bean
     MockMvcBuilderCustomizer defaultAuthToken(MockSiglet siglet) {
-        var bearer = "Bearer " + siglet.mint(TestTenants.PROVIDER_DID, TestTenants.CONSUMER_DID, TestTenants.CONSUMER_BPN);
+        var bearer = "Bearer " + siglet.mint(TestTenants.PROVIDER_DID, TestTenants.CONSUMER_DID, TestTenants.CONSUMER_DATASPACE_ID);
         return builder -> builder.defaultRequest(get("/").header("Authorization", bearer));
     }
 }

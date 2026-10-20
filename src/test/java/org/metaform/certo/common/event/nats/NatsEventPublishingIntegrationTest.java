@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
+import org.metaform.certo.common.model.LocationFilter;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
@@ -88,8 +89,7 @@ class NatsEventPublishingIntegrationTest {
     @Test
     void aCommittedExchangeLifecycleIsPublishedInOrder() throws Exception {
         var tenantId = "pctx-" + UUID.randomUUID();
-        contextStore.save(new ParticipantContext(tenantId, "BPNL0000000009ZZ", "urn:bpn:BPNL0000000009ZZ",
-                "did:web:events-test-" + UUID.randomUUID()));
+        contextStore.save(new ParticipantContext(tenantId, "LE0000000009ZZ", "did:web:events-test-" + UUID.randomUUID()));
 
         try (var connection = Nats.connect("nats://%s:%d".formatted(NATS.getHost(), NATS.getMappedPort(4222)))) {
             // Subscribe before producing: the stream retains on Interest policy, so a message published
@@ -99,7 +99,7 @@ class NatsEventPublishingIntegrationTest {
 
             var exchangeId = "ex-" + UUID.randomUUID();
             var exchange = new ProviderCertificateExchange(exchangeId, tenantId, "cert-1", 1,
-                    "BPNL-CONSUMER", "did:web:consumer", FulfillmentStatus.REQUESTED);
+                    "did:web:consumer", FulfillmentStatus.ACKNOWLEDGED);
             exchangeStore.save(exchange);
 
             var loaded = exchangeStore.findById(exchangeId).orElseThrow();
@@ -112,24 +112,24 @@ class NatsEventPublishingIntegrationTest {
             exchangeStore.save(loaded);
 
             var received = new ArrayList<JsonNode>();
-            for (var i = 0; i < 4; i++) {
+            for (var i = 0; i < 3; i++) {
                 var message = subscription.nextMessage(Duration.ofSeconds(10));
-                assertThat(message).as("expected 4 events, got %d", received.size()).isNotNull();
+                assertThat(message).as("expected 3 events, got %d", received.size()).isNotNull();
                 message.ack();
                 received.add(mapper.readTree(message.getData()));
             }
 
             assertThat(received).extracting(node -> node.get("type").asString()).containsExactly(
-                    "org.catena-x.ccm.CertificateExchangeRequested.v1",
-                    "org.catena-x.ccm.CertificateExchangeAcknowledged.v1",
-                    "org.catena-x.ccm.CertificateExchangeFulfilled.v1",
-                    "org.catena-x.ccm.CertificateExchangeAccepted.v1");
+                    "org.metaform.certo.CertificateExchangeRequested.v1",
+                    "org.metaform.certo.CertificateExchangeAcknowledged.v1",
+                    "org.metaform.certo.CertificateExchangeFulfilled.v1",
+                    "org.metaform.certo.CertificateExchangeAccepted.v1");
 
             // source names the emitting application (like every other platform producer); the tenant
-            // travels in sourcebpn and in the payload.
+            // travels in dataspaceidentifier and in the payload.
             var first = received.getFirst();
             assertThat(first.get("source").asString()).isEqualTo("certo-under-test");
-            assertThat(first.get("sourcebpn").asString()).isEqualTo("BPNL0000000009ZZ");
+            assertThat(first.get("dataspaceidentifier").asString()).isEqualTo("LE0000000009ZZ");
             assertThat(first.get("specversion").asString()).isEqualTo("1.0");
             assertThat(first.get("data").get("exchangeId").asString()).isEqualTo(exchangeId);
             assertThat(first.get("data").get("previousStatus")).isNull();
@@ -147,23 +147,16 @@ class NatsEventPublishingIntegrationTest {
      * The consumer-initiated pull, which is the only flow that reaches the EARLY Fulfillment states.
      *
      * <p>The provider-initiated publish covered above constructs its exchange directly in
-     * {@code FULFILLED} ({@code ProviderExchangeService.publish}), so it never holds {@code REQUESTED},
-     * {@code ACKNOWLEDGED} or {@code CERTIFICATION_REQUESTED} and correctly never announces them. A
+     * {@code FULFILLED} when the certificate is already held, so it never announces the earlier states. A
      * consumer asking for a certificate the provider does not yet hold opens a
      * {@link ProviderCertificateExchange#pending} exchange instead, which walks the state machine
      * properly — and that walk is what this asserts.
      *
-     * <p>It also exercises {@code RETRIEVED}, the optional non-terminal acceptance status
-     * (CX-0135 §2.1.3). Note no certo code path sets it today — {@code ConsumerExchangeService.retrieve}
-     * fetches the certificate without recording acceptance — so it only occurs when a counterparty
-     * explicitly reports it. This test is the standing proof that the event works when the status does
-     * occur, rather than being a catalogue entry nothing can ever reach.
      */
     @Test
     void aConsumerInitiatedPullPublishesTheEarlyStates() throws Exception {
         var tenantId = "pctx-" + UUID.randomUUID();
-        contextStore.save(new ParticipantContext(tenantId, "BPNL0000000008YY", "urn:bpn:BPNL0000000008YY",
-                "did:web:events-pull-" + UUID.randomUUID()));
+        contextStore.save(new ParticipantContext(tenantId, "LE0000000008YY", "did:web:events-pull-" + UUID.randomUUID()));
 
         try (var connection = Nats.connect("nats://%s:%d".formatted(NATS.getHost(), NATS.getMappedPort(4222)))) {
             ensureStream(connection);
@@ -174,7 +167,7 @@ class NatsEventPublishingIntegrationTest {
             // identity, and the request retained so a later issuance can be matched to it.
             var exchangeId = "ex-" + UUID.randomUUID();
             var pending = ProviderCertificateExchange.pending(exchangeId, tenantId,
-                    "BPNL-CONSUMER", "did:web:consumer", "ISO9001", List.of("BPNS-SITE-1"),
+                    "did:web:consumer", "iso9001", List.of(new LocationFilter(null, "SITE-SITE-1", null)),
                     OffsetDateTime.parse("2026-08-12T09:00:00Z"));
             exchangeStore.save(pending);
 
@@ -183,19 +176,15 @@ class NatsEventPublishingIntegrationTest {
             loaded.fulfill("cert-pull-1", 4);
             exchangeStore.save(loaded);
 
-            // The consumer reports the optional RETRIEVED hop, then its terminal verdict.
+            // The consumer reports its terminal verdict, reached directly from FULFILLED.
             loaded = exchangeStore.findById(exchangeId).orElseThrow();
-            loaded.recordAcceptance(AcceptanceStatus.RETRIEVED, null);
-            exchangeStore.save(loaded);
-
-            loaded = exchangeStore.findById(exchangeId).orElseThrow();
-            loaded.recordAcceptance(AcceptanceStatus.REJECTED, List.of(new StatusError("scope does not cover BPNS-SITE-1")));
+            loaded.recordAcceptance(AcceptanceStatus.REJECTED, List.of(new StatusError("scope does not cover SITE-SITE-1")));
             exchangeStore.save(loaded);
 
             var received = new ArrayList<JsonNode>();
-            for (var i = 0; i < 4; i++) {
+            for (var i = 0; i < 3; i++) {
                 var message = subscription.nextMessage(Duration.ofSeconds(10));
-                assertThat(message).as("expected 4 events, got %d", received.size()).isNotNull();
+                assertThat(message).as("expected 3 events, got %d", received.size()).isNotNull();
                 message.ack();
                 received.add(mapper.readTree(message.getData()));
             }
@@ -205,33 +194,29 @@ class NatsEventPublishingIntegrationTest {
                     .containsOnly(exchangeId);
 
             assertThat(received).extracting(node -> node.get("type").asString()).containsExactly(
-                    "org.catena-x.ccm.CertificateExchangeCertificationRequested.v1",
-                    "org.catena-x.ccm.CertificateExchangeFulfilled.v1",
-                    "org.catena-x.ccm.CertificateExchangeRetrieved.v1",
-                    "org.catena-x.ccm.CertificateExchangeRejected.v1");
+                    "org.metaform.certo.CertificateExchangeCertificateRequested.v1",
+                    "org.metaform.certo.CertificateExchangeFulfilled.v1",
+                    "org.metaform.certo.CertificateExchangeRejected.v1");
 
             // Opened, not transitioned — and with no certificate identity to report yet.
             var opened = received.getFirst().get("data");
             assertThat(opened.get("previousStatus")).isNull();
-            assertThat(opened.get("status").asString()).isEqualTo("CERTIFICATION_REQUESTED");
+            assertThat(opened.get("status").asString()).isEqualTo("CERTIFICATE_REQUESTED");
             assertThat(opened.get("certificateId")).isNull();
             assertThat(opened.get("revision")).isNull();
 
             // Fulfilment binds the certificate the backend issued.
             var fulfilled = received.get(1).get("data");
-            assertThat(fulfilled.get("previousStatus").asString()).isEqualTo("CERTIFICATION_REQUESTED");
+            assertThat(fulfilled.get("previousStatus").asString()).isEqualTo("CERTIFICATE_REQUESTED");
             assertThat(fulfilled.get("certificateId").asString()).isEqualTo("cert-pull-1");
             assertThat(fulfilled.get("revision").asInt()).isEqualTo(4);
 
             // The acceptance phase carries its own predecessor chain, independent of fulfilment.
-            var retrieved = received.get(2).get("data");
-            assertThat(retrieved.get("phase").asString()).isEqualTo("ACCEPTANCE");
-            assertThat(retrieved.get("previousStatus")).isNull();
-
             var rejected = received.getLast().get("data");
-            assertThat(rejected.get("previousStatus").asString()).isEqualTo("RETRIEVED");
+            assertThat(rejected.get("phase").asString()).isEqualTo("ACCEPTANCE");
+            assertThat(rejected.get("previousStatus")).isNull();
             assertThat(rejected.get("errors").get(0).get("message").asString())
-                    .isEqualTo("scope does not cover BPNS-SITE-1");
+                    .isEqualTo("scope does not cover SITE-SITE-1");
 
             assertThat(subscription.nextMessage(Duration.ofMillis(500)))
                     .as("no further events expected")
@@ -251,7 +236,7 @@ class NatsEventPublishingIntegrationTest {
             // standing between a rolled-back transition and a consumer being told it happened.
             new TransactionTemplate(transactionManager).execute(status -> {
                 exchangeStore.save(new ProviderCertificateExchange("ex-" + UUID.randomUUID(), "pctx-rollback",
-                        "cert-1", 1, "BPNL-CONSUMER", "did:web:consumer", FulfillmentStatus.REQUESTED));
+                        "cert-1", 1, "did:web:consumer", FulfillmentStatus.ACKNOWLEDGED));
                 status.setRollbackOnly();
                 return null;
             });

@@ -1,7 +1,7 @@
 package org.metaform.certo.common.model;
 
 /**
- * States of the {@code Certificate Lifecycle} (CX-0135 &sect;2.2.2) — the publication lifecycle of a
+ * States of the {@code Certificate Lifecycle} — the publication lifecycle of a
  * certificate as an artifact, independent of the {@code Certificate Exchange}.
  */
 public enum LifecycleStatus {
@@ -22,7 +22,7 @@ public enum LifecycleStatus {
         return terminal;
     }
 
-    /** Only {@code CREATED} opens a {@code Certificate Exchange} (CX-0135 &sect;2.2.4). */
+    /** Only {@code CREATED} opens a {@code Certificate Exchange}. */
     public boolean opensExchange() {
         return this == CREATED;
     }

@@ -7,7 +7,7 @@ import org.metaform.certo.common.model.StatusError;
 import java.util.List;
 
 /**
- * The consumer's view of a provider request/poll response (CX-0135 &sect;4.4.1 / &sect;4.4.2): the opened
+ * The consumer's view of a provider request/poll response: the opened
  * exchange's identity and its current Fulfillment status.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)

@@ -60,13 +60,13 @@ class OutboundRetryTest {
 
     @Test
     void aTransient5xxOnTheAcceptanceReportIsRetriedThenSucceeds() throws Exception {
-        // Record the exchange locally via a loopback embedded publish.
+        // Record the exchange locally via a loopback consumer-initiated request (held -> FULFILLED).
         siglet.setEndpoint(BASE);
-        var publish = postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX
-                        + "/certificates/" + TestTenants.ISO14001_CERT_ID + "/publish",
-                "{\"embedded\":true,\"flowId\":\"flow-1\",\"consumerBpn\":\"" + TestTenants.CONSUMER_BPN
-                        + "\",\"consumerDid\":\"" + TestTenants.CONSUMER_DID + "\"}");
-        var exchangeId = mapper.readTree(publish.body()).get("exchangeId").asString();
+        var initiate = postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX
+                        + "/consumer/certificate-requests",
+                "{\"protocol\":\"sce-1.0\",\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"providerId\":\"" + TestTenants.PROVIDER_DID
+                        + "\",\"certificateType\":\"iso14001\",\"certifiedLocations\":[{\"siteId\":\"SITE00000003AYRE\"}],\"flowId\":\"flow-1\"}");
+        var exchangeId = mapper.readTree(initiate.body()).get("exchangeId").asString();
         assertThat(retrieve(exchangeId).statusCode()).isEqualTo(200);
 
         // The provider is transiently unavailable, then recovers within one accept's report.
@@ -103,7 +103,7 @@ class OutboundRetryTest {
     }
 
     private String bearer() {
-        return "Bearer " + siglet.mint(TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_BPN);
+        return "Bearer " + siglet.mint(TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_DATASPACE_ID);
     }
 
     private HttpResponse<String> postJson(String path, String body) throws Exception {

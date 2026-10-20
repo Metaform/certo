@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * Enforces a verified token on inbound CCM protocol calls (both versions). Registered only on the protocol
+ * Enforces a verified token on inbound protocol calls. Registered only on the protocol
  * paths (never {@code /management/**}) by {@link SecurityWebConfig}. Security is always on. A verified
  * request whose token audience resolves to a known participant context is required — the verifier rejects
  * anything else with 401 — so downstream handlers can trust a non-null {@link VerifiedRequestContext} with a

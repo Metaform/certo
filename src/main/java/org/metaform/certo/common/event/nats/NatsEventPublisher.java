@@ -2,7 +2,7 @@ package org.metaform.certo.common.event.nats;
 
 import io.nats.client.JetStream;
 import io.nats.client.impl.Headers;
-import org.metaform.certo.common.cloudevent.CcmEvents;
+import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.cloudevent.CloudEvent;
 import org.metaform.certo.common.event.CertificateExchangeStatusChanged;
 import org.metaform.certo.common.pc.domain.ParticipantContext;
@@ -77,8 +77,8 @@ public class NatsEventPublisher {
      * de-duplicating on {@code source} + {@code id} needs a stable per-producer value, and tools that
      * group events by origin expect the service, not the participant.
      *
-     * <p>The emitting tenant is identified by the CX-0000 §2.1.2-REQUIRED {@code sourcebpn} extension
-     * instead, read from its participant context, with {@code participantContextId} in the payload.
+     * <p>The emitting tenant is identified by the optional {@code dataspaceidentifier} extension instead,
+     * read from its participant context, with {@code participantContextId} in the payload.
      */
     // Package-private so the envelope contract can be asserted without standing up a broker.
     CloudEvent<CertificateExchangeStatusChanged> envelope(CertificateExchangeStatusChanged event) {
@@ -94,11 +94,11 @@ public class NatsEventPublisher {
                 null,
                 // A tenant deleted between the transition committing and this listener running leaves
                 // nothing to read; the event still goes out, carrying participantContextId in the data.
-                context == null ? null : context.bpn(),
+                context == null ? null : context.dataspaceIdentifier(),
                 event);
     }
 
     private static Headers headers() {
-        return new Headers().add("Content-Type", CcmEvents.CONTENT_TYPE);
+        return new Headers().add("Content-Type", CloudEvent.CONTENT_TYPE_CLOUDEVENTS);
     }
 }

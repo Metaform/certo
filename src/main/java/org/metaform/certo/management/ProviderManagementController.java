@@ -4,7 +4,7 @@ import org.metaform.certo.provider.ProviderCatalogService;
 import org.metaform.certo.provider.ProviderExchangeService;
 import org.metaform.certo.provider.dto.CertificateAdded;
 import org.metaform.certo.provider.dto.CertificateLifecycleResult;
-import org.metaform.certo.provider.dto.CertificatePublication;
+import org.metaform.certo.provider.dto.LifecycleNotification;
 import org.metaform.certo.provider.dto.CertificateRequestPage;
 import org.metaform.certo.provider.dto.CertificateRequestQuery;
 import org.metaform.certo.provider.dto.CertificateRequestStatus;
@@ -12,7 +12,7 @@ import org.metaform.certo.provider.dto.ExchangeView;
 import org.metaform.certo.provider.dto.NewCertificate;
 import org.metaform.certo.provider.dto.NewDocument;
 import org.metaform.certo.provider.dto.NewRevision;
-import org.metaform.certo.provider.dto.PublishRequest;
+import org.metaform.certo.provider.dto.NotifyRequest;
 import org.metaform.certo.provider.dto.StoredDocument;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Provider-side <b>management</b> control surface — the triggers and inspection views used to drive
- * and observe the app. None of these are part of the CX-0135 wire protocol (a real deployment's
+ * and observe the app. None of these are part of the the SCE specification wire protocol (a real deployment's
  * certificate-management backend would drive publication/modification/withdrawal and fulfillment); they
  * are kept out of the protocol adapters so those contain only §3.3 / §4.x endpoints.
  *
@@ -92,7 +92,7 @@ public class ProviderManagementController {
 
     /**
      * {@code POST /certificate-requests/query} (UC1) — browse/reconcile the backlog of consumer-initiated
-     * exchanges (by default those still {@code CERTIFICATION_REQUESTED}), filtered by the request body.
+     * exchanges (by default those still {@code CERTIFICATE_REQUESTED}), filtered by the request body.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:read')")
     @PostMapping(path = "/certificate-requests/query",
@@ -117,7 +117,7 @@ public class ProviderManagementController {
     /**
      * {@code POST /certificates/{id}/revisions} — create a new version of the certificate: append a
      * revision with the caller's issued validity + documents (lifecycle {@code MODIFIED}). A <b>state change
-     * only</b>; notifying consumers is a separate {@code publish} of a {@code MODIFIED} event (CX-0135 &sect;2.2.4).
+     * only</b>; notifying consumers is a separate {@code notify} per counterparty.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificates/{id}/revisions",
@@ -126,19 +126,6 @@ public class ProviderManagementController {
                                                                   @PathVariable("id") String certificateId,
                                                                   @RequestBody NewRevision request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addRevision(participantContextId, certificateId, request));
-    }
-
-    /**
-     * {@code POST /certificate-requests/{id}/fail} — the backend could not issue the certificate: fail a
-     * waiting exchange (optionally with a {@code reason}) and push the terminal status to the consumer.
-     */
-    @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
-    @PostMapping(path = "/certificate-requests/{id}/fail", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CertificateRequestStatus failRequest(@PathVariable("participantContextId") String participantContextId,
-                                                @PathVariable("id") String exchangeId,
-                                                @RequestParam(value = "flowId", required = true) String flowId,
-                                                @RequestParam(value = "reason", required = false) String reason) {
-        return exchangeService.failRequest(participantContextId, exchangeId, flowId, reason);
     }
 
     /**
@@ -155,23 +142,22 @@ public class ProviderManagementController {
     }
 
     /**
-     * {@code POST /certificates/{id}/publish} — provider-initiated push of a held certificate. The
-     * {@link PublishRequest} body selects the protocol {@code protocolVersion} (default {@code 3.0.0}, the
-     * native consumer), whether the certificate is sent {@code embedded}
-     * (full content inline) or by reference, and the {@code revision}. An empty body publishes the latest
-     * revision to the native consumer, by reference.
+     * {@code POST /certificates/{id}/notify} — single-target push of the certificate's current lifecycle
+     * state to the <b>one</b> consumer named in the {@link NotifyRequest}. Certo keeps no counterparty
+     * registry: to reach several consumers, call once per consumer; each call returns that one delivery's
+     * outcome, so a failure is retried per counterparty.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
-    @PostMapping(path = "/certificates/{id}/publish", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<CertificatePublication> publish(@PathVariable("participantContextId") String participantContextId,
-                                                          @PathVariable("id") String certificateId,
-                                                          @RequestBody(required = false) PublishRequest request) {
-        return ResponseEntity.accepted().body(exchangeService.publish(participantContextId, certificateId, request));
+    @PostMapping(path = "/certificates/{id}/notify", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<LifecycleNotification> notify(@PathVariable("participantContextId") String participantContextId,
+                                                        @PathVariable("id") String certificateId,
+                                                        @RequestBody NotifyRequest request) {
+        return ResponseEntity.accepted().body(exchangeService.notify(participantContextId, certificateId, request));
     }
 
     /**
      * {@code POST /certificates/{id}/withdraw} — withdraw a certificate (lifecycle {@code WITHDRAWN}). A
-     * <b>state change only</b>; notifying consumers is a separate {@code publish} of a {@code WITHDRAWN} event.
+     * <b>state change only</b>; notifying consumers is a separate {@code notify} per counterparty.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificates/{id}/withdraw", produces = MediaType.APPLICATION_JSON_VALUE)

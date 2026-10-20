@@ -44,7 +44,7 @@ class SecurityConsumerOutboundTest {
         provider.start();
         provider.enqueue(new MockResponse().setResponseCode(202)
                 .setHeader("Content-Type", "application/json")
-                .setBody("{\"exchangeId\":\"exch-out-1\",\"status\":\"CERTIFICATION_REQUESTED\"}"));
+                .setBody("{\"exchangeId\":\"exch-out-1\",\"status\":\"CERTIFICATE_REQUESTED\"}"));
         var providerBase = provider.url("/").toString();
 
         siglet = new MockWebServer();
@@ -71,13 +71,13 @@ class SecurityConsumerOutboundTest {
     @Test
     void consumerRequest_carriesBearerToProviderEndpoint() throws Exception {
         var response = post("/management/v1/participant-contexts/pctx-seed-consumer/consumer/certificate-requests",
-                "{\"providerBpn\":\"BPNL0000000001AB\",\"providerDid\":\"did:web:provider\","
-                        + "\"certificateType\":\"ISO9001\",\"flowId\":\"flow-1\"}");
+                "{\"protocol\":\"sce-1.0\",\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"providerId\":\"did:web:provider\","
+                        + "\"certificateType\":\"iso9001\",\"flowId\":\"flow-1\"}");
         assertThat(response.statusCode()).isEqualTo(202);
 
         var recorded = provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(recorded).isNotNull();
-        assertThat(recorded.getPath()).isEqualTo("/certificate-requests");
+        assertThat(recorded.getPath()).isEqualTo("/exchanges");
         assertThat(recorded.getHeader("Authorization")).isEqualTo("Bearer " + TOKEN);
     }
 

@@ -26,7 +26,7 @@ import java.time.ZoneOffset;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Exercises the consumer-initiated <em>poll</em> alternative to the fulfillment push (CX-0135 &sect;4.4.2).
+ * Exercises the consumer-initiated <em>poll</em> alternative to the fulfillment push.
  * The consumer base URL points at a closed port, so the provider's fulfillment push cannot reach the
  * consumer — the consumer must learn the exchange is {@code FULFILLED} by polling, which then drives
  * retrieval and acceptance. Runs on its own port (18081) to avoid clashing with the push-flow context.
@@ -66,10 +66,10 @@ class ConsumerPollFlowTest {
 
     @Test
     void consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts() throws Exception {
-        // Open a request for a not-yet-held certificate -> CERTIFICATION_REQUESTED (awaiting backend).
+        // Open a request for a not-yet-held certificate -> CERTIFICATE_REQUESTED (awaiting backend).
         var exchangeId = mapper.readTree(postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests",
-                "{\"providerBpn\":\"" + TestTenants.PROVIDER_BPN + "\",\"providerDid\":\"" + TestTenants.PROVIDER_DID
-                        + "\",\"flowId\":\"flow-1\",\"certificateType\":\"ISO14001\",\"certifiedLocations\":[\"BPNS-POLL-1\"]}").body())
+                "{\"protocol\":\"sce-1.0\",\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"providerId\":\"" + TestTenants.PROVIDER_DID
+                        + "\",\"flowId\":\"flow-1\",\"certificateType\":\"iso14001\",\"certifiedLocations\":[{\"siteId\":\"SITE-POLL-1\"}]}").body())
                 .get("exchangeId").asString();
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404); // not retrieved yet
 
@@ -79,9 +79,9 @@ class ConsumerPollFlowTest {
                 "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}").body())
                 .get("documentId").asString();
         var certBody = """
-                {"certificateType":"ISO14001","certificateTypeVersion":"2015","registrationNumber":"DE-CERT-0002",
-                 "validFrom":"2020-01-01","validUntil":"2035-01-01","trustLevel":"high",
-                 "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"BPNS-POLL-1","locationRole":"MAIN_LOCATION"}],
+                {"certificateType":"iso14001","certificateTypeVersion":"2015","registrationNumber":"DE-CERT-0002",
+                 "validFrom":"2020-01-01","validUntil":"2035-01-01",
+                 "certifiedLocations":[{"legalEntityId":"LE000000TESTLE","addressId":"ADDR000000TESTAD","siteId":"SITE-POLL-1","locationRole":"MAIN_LOCATION"}],
                  "documentIds":["%s"]}""".formatted(docId);
         postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates", certBody);
         postEmpty("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificate-requests/" + exchangeId + "/fulfill?flowId=flow-1");
@@ -109,9 +109,9 @@ class ConsumerPollFlowTest {
     private HttpResponse<String> getAcceptanceStatus(String exchangeId) throws Exception {
         // The acceptance-status query is addressed to the consumer tenant that owns the exchange (aud =
         // consumer DID), from the provider as caller.
-        return http.send(HttpRequest.newBuilder(URI.create(BASE + "/certificate-acceptance-status/" + exchangeId))
+        return http.send(HttpRequest.newBuilder(URI.create(BASE + "/acceptance-status/" + exchangeId))
                 .header("Authorization", "Bearer " + siglet.mint(
-                        TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_BPN)).GET().build(),
+                        TestTenants.CONSUMER_DID, TestTenants.PROVIDER_DID, TestTenants.PROVIDER_DATASPACE_ID)).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 

@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * P4 outbound: with {@code certo.security.enabled=true}, a provider publish carries a {@code flowId}; the
+ * P4 outbound: with {@code certo.security.enabled=true}, a provider notify carries a {@code flowId}; the
  * adapter resolves the token + endpoint from the (stubbed) siglet cache and delivers the push to <b>that
  * endpoint</b> with an {@code Authorization: Bearer} header — proving the counterparty URL comes from the
  * token, not configuration.
@@ -68,21 +68,21 @@ class SecurityOutboundTest {
     }
 
     @Test
-    void publish_deliversToTokenEndpointWithBearer() throws Exception {
-        var publish = post("/management/v1/participant-contexts/pctx-seed-provider/certificates/00000000-0000-0000-0000-000000009001/publish",
-                "{\"protocolVersion\":\"3.0.0\","
-                        + "\"consumerBpn\":\"BPNL0000000002CD\",\"consumerDid\":\"did:web:consumer\",\"flowId\":\"flow-1\"}");
+    void notify_deliversToTokenEndpointWithBearer() throws Exception {
+        var publish = post("/management/v1/participant-contexts/pctx-seed-provider/certificates/00000000-0000-0000-0000-000000009001/notify",
+                "{\"protocol\":\"sce-1.0\",\"messageId\":\"3f0e8e2e-0000-4000-8000-000000000001\","
+                        + "\"consumerId\":\"did:web:consumer\",\"flowId\":\"flow-1\"}");
         assertThat(publish.statusCode()).isEqualTo(202);
 
         var pushed = targetConsumer.takeRequest(5, TimeUnit.SECONDS);
         assertThat(pushed).isNotNull();
-        assertThat(pushed.getPath()).isEqualTo("/certificate-notifications");
+        assertThat(pushed.getPath()).isEqualTo("/notifications");
         assertThat(pushed.getHeader("Authorization")).isEqualTo("Bearer " + TOKEN);
     }
 
     @Test
-    void publish_withoutFlowId_isBadRequest() throws Exception {
-        assertThat(post("/management/v1/participant-contexts/pctx-seed-provider/certificates/00000000-0000-0000-0000-000000009001/publish", "{}").statusCode()).isEqualTo(400);
+    void notify_withoutFlowId_isBadRequest() throws Exception {
+        assertThat(post("/management/v1/participant-contexts/pctx-seed-provider/certificates/00000000-0000-0000-0000-000000009001/notify", "{}").statusCode()).isEqualTo(400);
     }
 
     private HttpResponse<String> post(String path, String body) throws Exception {

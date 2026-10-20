@@ -5,7 +5,7 @@ import org.springframework.data.domain.Sort;
 
 /**
  * A {@link Pageable} addressed by an absolute row {@code offset} + {@code limit}, rather than a page number.
- * The CX-0135 certificate search pages by an opaque offset cursor, so this maps that cursor straight onto
+ * The the SCE specification certificate search pages by an opaque offset cursor, so this maps that cursor straight onto
  * the query's {@code firstResult}/{@code maxResults} (arbitrary offsets, not just multiples of the limit).
  */
 public record OffsetLimitPageable(long offset, int limit, Sort sort) implements Pageable {

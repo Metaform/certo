@@ -24,8 +24,8 @@ class CloudEventCodecTest {
     }
 
     private static String validEnvelope(String extra) {
-        return "{\"specversion\":\"1.0\",\"type\":\"org.catena-x.ccm.X.v1\",\"source\":\"urn:bpn:BPNL-C\","
-                + "\"id\":\"id-1\",\"sourcebpn\":\"BPNL-C\"" + extra + "}";
+        return "{\"specversion\":\"1.0\",\"type\":\"org.dsaf.sce.X.v1\",\"source\":\"did:web:sender\","
+                + "\"id\":\"id-1\"" + extra + "}";
     }
 
     @Test
@@ -49,15 +49,16 @@ class CloudEventCodecTest {
     @Test
     void validateEnvelope_requiresEachMandatoryAttribute() {
         assertBadRequest(() -> codec.toEventNodes(bytes(
-                "{\"type\":\"t\",\"source\":\"s\",\"id\":\"i\",\"sourcebpn\":\"b\"}")));         // no specversion
+                "{\"type\":\"t\",\"source\":\"s\",\"id\":\"i\"}")));         // no specversion
         assertBadRequest(() -> codec.toEventNodes(bytes(
-                "{\"specversion\":\"1.0\",\"source\":\"s\",\"id\":\"i\",\"sourcebpn\":\"b\"}"))); // no type
+                "{\"specversion\":\"1.0\",\"source\":\"s\",\"id\":\"i\"}"))); // no type
         assertBadRequest(() -> codec.toEventNodes(bytes(
-                "{\"specversion\":\"1.0\",\"type\":\"t\",\"id\":\"i\",\"sourcebpn\":\"b\"}")));    // no source
+                "{\"specversion\":\"1.0\",\"type\":\"t\",\"id\":\"i\"}")));    // no source
         assertBadRequest(() -> codec.toEventNodes(bytes(
-                "{\"specversion\":\"1.0\",\"type\":\"t\",\"source\":\"s\",\"sourcebpn\":\"b\"}"))); // no id
-        assertBadRequest(() -> codec.toEventNodes(bytes(
-                "{\"specversion\":\"1.0\",\"type\":\"t\",\"source\":\"s\",\"id\":\"i\"}")));       // no sourcebpn
+                "{\"specversion\":\"1.0\",\"type\":\"t\",\"source\":\"s\"}"))); // no id
+        // Extension attributes are NOT required (core messaging): specversion/type/source/id suffice.
+        assertThat(codec.toEventNodes(bytes(
+                "{\"specversion\":\"1.0\",\"type\":\"t\",\"source\":\"s\",\"id\":\"i\"}"))).hasSize(1);
     }
 
     @Test
@@ -69,14 +70,14 @@ class CloudEventCodecTest {
     @Test
     void typeOf_readsTheTypeAttribute() {
         var node = codec.toEventNodes(bytes(validEnvelope(""))).get(0);
-        assertThat(codec.typeOf(node)).isEqualTo("org.catena-x.ccm.X.v1");
+        assertThat(codec.typeOf(node)).isEqualTo("org.dsaf.sce.X.v1");
     }
 
     @Test
     void dedupKey_isSourcePlusId() {
-        var event = new CloudEvent<>("1.0", "type", "urn:bpn:BPNL-C", "subj", "id-9",
-                null, "application/json", "schema", "BPNL-C", "data");
-        assertThat(codec.dedupKey(event)).isEqualTo("urn:bpn:BPNL-C id-9");
+        var event = new CloudEvent<>("1.0", "type", "did:web:sender", "subj", "id-9",
+                null, "application/json", "schema", "LE-C", "data");
+        assertThat(codec.dedupKey(event)).isEqualTo("did:web:sender id-9");
     }
 
     @Test

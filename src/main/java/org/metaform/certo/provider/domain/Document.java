@@ -2,20 +2,22 @@ package org.metaform.certo.provider.domain;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 
 /**
- * A certificate document held by the provider: the binary plus its descriptor (CX-0135 &sect;4). A
+ * A certificate document held by the provider: the binary plus its descriptor. A
  * document is identified by an opaque, revision-independent {@code documentId}, belongs to the
  * {@code participantContextId} tenant that uploaded it, and may be referenced by more than one certificate
  * revision of that tenant; it is served verbatim by {@code GET /documents/{id}} with its {@code mediaType}
  * as the {@code Content-Type}.
  *
- * <p>Persisted via JPA; the binary is a {@code @Lob}. The content is defensively cloned in and out so a
- * caller's array can never mutate stored (or to-be-stored) content.
+ * <p>Persisted via JPA; the binary maps to a plain binary column ({@code bytea} on Postgres — deliberately
+ * not a large object, which would drag {@code pg_largeobject} bookkeeping into DBA hands). The content is
+ * defensively cloned in and out so a caller's array can never mutate stored (or to-be-stored) content.
  */
 @Entity
 @Table(name = "document")
@@ -27,7 +29,7 @@ public class Document {
     private LocalDate createdDate;
     private String language;
     private String mediaType;
-    @Lob
+    @JdbcTypeCode(SqlTypes.LONG32VARBINARY)
     private byte[] content;
 
     protected Document() {

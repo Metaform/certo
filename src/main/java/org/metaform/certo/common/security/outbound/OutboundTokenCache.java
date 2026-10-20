@@ -20,7 +20,7 @@ public class OutboundTokenCache {
 
     /** The counterparty endpoint (from siglet) and the bearer to attach. */
     public ResolvedCall forCall(OutboundCall call) {
-        var token = source.resolve(call.sender().participantContextId(), call.counterpartyDid(), call.flowId());
+        var token = source.resolve(call.sender().participantContextId(), call.counterpartyId(), call.flowId());
         if (token.endpointUrl() == null) {
             throw new ApiException(HttpStatus.BAD_GATEWAY,
                     "Siglet returned no endpoint for flow " + call.flowId());

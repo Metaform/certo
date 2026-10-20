@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * A certificate artifact held by the provider (CX-0135 &sect;4). Stable across revisions under one
+ * A certificate artifact held by the provider. Stable across revisions under one
  * {@code certificateId}; each modification appends a new {@link CertificateRevision}. Tracks its own
  * publication lifecycle, independent of any {@code Certificate Exchange}.
  *
@@ -45,7 +45,6 @@ public class Certificate {
     private String certificateType;
     private String certificateTypeVersion;
     private String registrationNumber;
-    private String trustLevel;
     private String areaOfApplication;
     // Normalized into child rows so location-based coverage/search run as DB queries (EAGER: small, and
     // always needed alongside the certificate — e.g. by toRecord outside a transaction with open-in-view off).
@@ -71,7 +70,7 @@ public class Certificate {
     }
 
     public Certificate(String certificateId, String participantContextId, String certificateType,
-                       String certificateTypeVersion, String registrationNumber, String trustLevel,
+                       String certificateTypeVersion, String registrationNumber,
                        String areaOfApplication, List<CertifiedLocation> certifiedLocations,
                        CertificateIssuer issuer, CertificateValidator validator) {
         this.certificateId = certificateId;
@@ -79,7 +78,6 @@ public class Certificate {
         this.certificateType = certificateType;
         this.certificateTypeVersion = certificateTypeVersion;
         this.registrationNumber = registrationNumber;
-        this.trustLevel = trustLevel;
         this.areaOfApplication = areaOfApplication;
         this.certifiedLocations = certifiedLocations == null ? List.of() : List.copyOf(certifiedLocations);
         this.issuer = issuer;
@@ -131,10 +129,6 @@ public class Certificate {
 
     public String registrationNumber() {
         return registrationNumber;
-    }
-
-    public String trustLevel() {
-        return trustLevel;
     }
 
     public String areaOfApplication() {

@@ -17,19 +17,20 @@ import java.util.stream.Collectors;
 
 /**
  * The core-facing consumer&rarr;provider acceptance reporter: it looks up the exchange's
- * {@link ExchangeBinding} to find the counterparty's protocol version, then delegates to that version's
- * {@link ProtocolAcceptanceReporter}. No binding ⇒ {@link ProtocolVersion#NATIVE}. The core service
- * depends only on {@link AcceptanceReporter} and is unaware of versions.
+ * {@link org.metaform.certo.protocol.domain.ExchangeBinding} to find the counterparty's protocol, then
+ * delegates to that protocol's {@link ProtocolAcceptanceReporter}. Every exchange has a binding (recorded
+ * when it was opened); a missing one is a data-integrity error, not a fallback. The core service depends
+ * only on {@link AcceptanceReporter} and is unaware of protocols.
  */
 @Component
 @Primary
 public class DispatchingAcceptanceReporter implements AcceptanceReporter {
 
-    private final Map<ProtocolVersion, ProtocolAcceptanceReporter> byVersion;
+    private final Map<String, ProtocolAcceptanceReporter> byId;
     private final ExchangeBindingStore bindings;
 
     public DispatchingAcceptanceReporter(List<ProtocolAcceptanceReporter> reporters, ExchangeBindingStore bindings) {
-        this.byVersion = reporters.stream().collect(Collectors.toMap(ProtocolAcceptanceReporter::version, Function.identity()));
+        this.byId = reporters.stream().collect(Collectors.toMap(ProtocolAcceptanceReporter::protocolId, Function.identity()));
         this.bindings = bindings;
     }
 
@@ -39,9 +40,13 @@ public class DispatchingAcceptanceReporter implements AcceptanceReporter {
                           AcceptanceStatus status,
                           OutboundCall call,
                           List<StatusError> errors) {
-        var binding = bindings.resolve(exchangeId, CounterpartyRole.PROVIDER).orElse(null);
-        var version = binding != null ? binding.version() : ProtocolVersion.NATIVE;
-        var reporter = byVersion.getOrDefault(version, byVersion.get(ProtocolVersion.NATIVE));
+        var binding = bindings.resolve(exchangeId, CounterpartyRole.PROVIDER)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No protocol binding recorded for exchange " + exchangeId));
+        var reporter = byId.get(binding.protocolId());
+        if (reporter == null) {
+            throw new IllegalStateException("No acceptance reporter registered for protocol " + binding.protocolId());
+        }
         return reporter.report(binding, exchangeId, certificateId, status, errors, call);
     }
 }

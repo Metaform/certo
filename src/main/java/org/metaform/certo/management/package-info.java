@@ -6,13 +6,13 @@
  * contracts, and each has its own home:
  * <ul>
  *   <li><b>Management API</b> (here) — local triggers and inspection views used to drive and observe the
- *       app: publish/modify/withdraw certificates, open and inspect exchanges, register participant
+ *       app: add/modify/withdraw and notify certificates, open and inspect exchanges, register participant
  *       contexts. None of it is part of any CX wire protocol; in a real deployment a certificate-management
  *       backend would drive these actions. Centralizing the three controllers
  *       ({@code ProviderManagementController}, {@code ConsumerManagementController},
  *       {@code ParticipantContextController}) keeps the operator surface in one place.</li>
- *   <li><b>Wire protocol</b> — the CX-0135 §3.3/§4.x endpoints a counterparty calls. Those controllers
- *       live <em>with their protocol</em> under {@code protocol.ccm300.*}, so
+ *   <li><b>Wire protocol</b> — the the SCE specificationx endpoints a counterparty calls. Those controllers
+ *       live <em>with their protocol</em> under {@code protocol.<name>.*}, so
  *       each protocol adapter contains only its own spec endpoints.</li>
  * </ul>
  *

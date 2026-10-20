@@ -46,8 +46,13 @@ public class MockSiglet {
         this.endpoint = endpoint;
     }
 
-    /** Mints a token addressed to {@code aud} (receiver DID) from {@code sub} (sender DID), carrying a {@code bpn} claim. */
-    public String mint(String aud, String sub, String bpn) {
+    /** Mints a token addressed to {@code aud} (receiver DID) from {@code sub} (sender DID). */
+    public String mint(String aud, String sub) {
+        return mint(aud, sub, null);
+    }
+
+    /** Mints a token additionally carrying the sender's optional {@code dataspaceidentifier} claim. */
+    public String mint(String aud, String sub, String dataspaceIdentifier) {
         try {
             var builder = new JWTClaimsSet.Builder()
                     .subject(sub)
@@ -59,8 +64,8 @@ public class MockSiglet {
                     // scope lets one default bearer serve both surfaces in tests (protocol verification
                     // ignores the claim).
                     .claim("scope", "certo-mgmt-api:admin");
-            if (bpn != null) {
-                builder.claim("bpn", bpn);
+            if (dataspaceIdentifier != null) {
+                builder.claim("dataspaceidentifier", dataspaceIdentifier);
             }
             var jwt = new SignedJWT(
                     new JWSHeader.Builder(JWSAlgorithm.EdDSA).keyID(key.getKeyID()).build(), builder.build());
@@ -75,8 +80,8 @@ public class MockSiglet {
     public ResolvedToken resolve(String participantContextId, String counterpartyDid, String flowId) {
         var sender = contexts.find(participantContextId).orElse(null);
         var sub = sender != null ? sender.did() : participantContextId;
-        var bpn = sender != null ? sender.bpn() : null;
-        return new ResolvedToken(mint(counterpartyDid, sub, bpn), endpoint);
+        var dataspaceIdentifier = sender != null ? sender.dataspaceIdentifier() : null;
+        return new ResolvedToken(mint(counterpartyDid, sub, dataspaceIdentifier), endpoint);
     }
 
     /** {@code SecurityTokenVerifier}: verify signature + expiry, resolve the audience DID to a participant context. */
@@ -97,11 +102,8 @@ public class MockSiglet {
                     ? null : claims.getAudience().get(0);
             var context = contexts.findByDid(audience)
                     .orElseThrow(() -> ApiException.unauthorized("Token audience is not a known participant context"));
-            var bpn = claims.getClaim("bpn") instanceof String b && !b.isBlank() ? b : null;
-            if (bpn == null) {
-                throw ApiException.unauthorized("Token is missing a bpn claim");
-            }
-            return new VerifiedRequestContext(claims.getSubject(), bpn, context.participantContextId(), claims.getClaims());
+            var dataspaceIdentifier = claims.getClaim("dataspaceidentifier") instanceof String d && !d.isBlank() ? d : null;
+            return new VerifiedRequestContext(claims.getSubject(), dataspaceIdentifier, context.participantContextId(), claims.getClaims());
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {

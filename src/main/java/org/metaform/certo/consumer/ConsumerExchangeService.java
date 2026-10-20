@@ -1,12 +1,12 @@
 package org.metaform.certo.consumer;
 
-import org.metaform.certo.common.cloudevent.CloudEventCodec;
 import org.metaform.certo.common.cloudevent.EventBatch;
 import org.metaform.certo.common.cloudevent.store.ProcessedEventStore;
 import org.metaform.certo.common.model.AcceptanceStatus;
-import org.metaform.certo.common.model.CertificateRecord;
+import org.metaform.certo.common.model.CertificateTypes;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.model.LifecycleStatusData;
+import org.metaform.certo.common.model.LocationFilter;
 import org.metaform.certo.common.model.StatusError;
 import org.metaform.certo.common.pc.domain.ParticipantContext;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
@@ -19,18 +19,15 @@ import org.metaform.certo.consumer.dto.ConsumerExchangePage;
 import org.metaform.certo.consumer.dto.ConsumerExchangeQuery;
 import org.metaform.certo.consumer.dto.ConsumerExchangeView;
 import org.metaform.certo.consumer.spi.AcceptanceReporter;
-import org.metaform.certo.consumer.spi.InboundCcmEvent;
+import org.metaform.certo.consumer.spi.InboundNotification;
 import org.metaform.certo.consumer.spi.InboundNotificationListener;
+import org.metaform.certo.consumer.spi.InboundProtocolEvent;
 import org.metaform.certo.consumer.spi.ProviderRequestResult;
 import org.metaform.certo.consumer.spi.RetrievedCertificate;
-import org.metaform.certo.consumer.spi.RetrievedDocument;
 import org.metaform.certo.consumer.store.ConsumerCertificateExchangeStore;
 import org.metaform.certo.protocol.CounterpartyRole;
 import org.metaform.certo.protocol.DispatchingCertificateRequester;
 import org.metaform.certo.protocol.DispatchingCertificateRetriever;
-import org.metaform.certo.protocol.ProtocolVersion;
-import org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec;
-import org.metaform.certo.protocol.ccm300.model.Ccm300LifecycleStatus;
 import org.metaform.certo.protocol.domain.ExchangeBinding;
 import org.metaform.certo.protocol.store.ExchangeBindingStore;
 import org.slf4j.Logger;
@@ -46,11 +43,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 
-import static org.metaform.certo.common.cloudevent.CcmEvents.TYPE_FULFILLMENT_STATUS;
-import static org.metaform.certo.common.cloudevent.CcmEvents.TYPE_LIFECYCLE_STATUS;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
 import static org.metaform.certo.common.model.LifecycleStatus.CREATED;
 import static org.metaform.certo.common.util.TransactionSupport.afterCommit;
@@ -58,7 +52,7 @@ import static org.metaform.certo.common.web.ApiException.badRequest;
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 
 /**
- * The consumer's {@code Certificate Exchange} lifecycle (CX-0135 v3, &sect;3.2). It is a <b>pure
+ * The consumer's {@code Certificate Exchange} lifecycle (the SCE specification, &sect;3.2). It is a <b>pure
  * mechanism</b>: consumer-initiated requests (pull), the inbound lifecycle/fulfillment CloudEvents it
  * records on its state and emits to {@link InboundNotificationListener}s, and the management operations a
  * client drives — {@link #retrieve} (pull the certificate + documents for inspection) and {@link #accept}
@@ -77,7 +71,6 @@ public class ConsumerExchangeService {
     private static final int MAX_QUERY_RESULTS = 500;
 
     private final ConsumerCertificateExchangeStore exchangeStore;
-    private final CloudEventCodec codec;
     private final ProcessedEventStore eventStore;
     private final DispatchingCertificateRetriever providerClient;
     private final DispatchingCertificateRequester requestClient;
@@ -89,7 +82,6 @@ public class ConsumerExchangeService {
     private final TransactionTemplate tx;
 
     public ConsumerExchangeService(ConsumerCertificateExchangeStore exchangeStore,
-                                   CloudEventCodec codec,
                                    ProcessedEventStore eventStore,
                                    DispatchingCertificateRetriever providerClient,
                                    DispatchingCertificateRequester requestClient,
@@ -100,7 +92,6 @@ public class ConsumerExchangeService {
                                    List<InboundNotificationListener> listeners,
                                    PlatformTransactionManager txManager) {
         this.exchangeStore = exchangeStore;
-        this.codec = codec;
         this.eventStore = eventStore;
         this.providerClient = providerClient;
         this.requestClient = requestClient;
@@ -117,7 +108,7 @@ public class ConsumerExchangeService {
     }
 
     /**
-     * Consumer-initiated pull (CX-0135 &sect;3.3.1): opens a certificate request on the provider and records
+     * Consumer-initiated pull: opens a certificate request on the provider and records
      * the resulting exchange (mirroring the returned fulfillment status). The consumer never decides
      * acceptance itself — once an exchange is {@code FULFILLED}, a client drives {@code retrieve} + {@code accept}.
      */
@@ -125,42 +116,42 @@ public class ConsumerExchangeService {
     // exchange save) so no DB connection is held across the outbound call.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ConsumerCertificateExchange initiateRequest(String contextId,
-                                                       String providerBpn,
-                                                       String providerDid,
+                                                       String messageId,
+                                                       String providerId,
                                                        String certificateType,
                                                        String flowId,
-                                                       List<String> certifiedLocations,
-                                                       ProtocolVersion protocolVersion) {
+                                                       List<LocationFilter> certifiedLocations,
+                                                       String protocolId) {
         var sender = requireContext(contextId);
-        var version = protocolVersion != null ? protocolVersion : ProtocolVersion.NATIVE;
-        var call = new OutboundCall(sender, providerBpn, providerDid, flowId);
+        requireProtocol(protocolId);
+        requireUuidMessageId(messageId);
+        if (!CertificateTypes.isValid(certificateType)) {
+            throw badRequest("certificateType must be an opaque code of lowercase letters and digits only: " + certificateType);
+        }
+        var call = new OutboundCall(sender, providerId, flowId);
         ProviderRequestResult result;
         try {
-            result = requestClient.request(version, certificateType, certifiedLocations, call);
+            result = requestClient.request(protocolId, messageId, certificateType, certifiedLocations, call);
         } catch (IOException e) {
             throw new ApiException(BAD_GATEWAY, "Provider request failed: " + e.getMessage());
         }
         var exchange = new ConsumerCertificateExchange(result.exchangeId(),
                 result.certificateId(),
                 result.revision(),
-                true,
                 result.status(),
                 result.errors(),
                 contextId,
-                providerBpn,
-                providerDid);
+                providerId);
         exchangeStore.save(exchange);
-        // For a non-native provider, record the protocol binding so a later poll (and any other outbound on
-        // this exchange) routes to the right adapter — keyed by exchangeId, counterparty = the provider.
-        if (version != ProtocolVersion.NATIVE) {
-            bindings.record(new ExchangeBinding(result.exchangeId(), result.certificateId(), version,
-                    CounterpartyRole.PROVIDER, providerDid, null));
-        }
+        // Record the protocol binding so every later outbound on this exchange (poll, retrieve, acceptance
+        // report) routes to the right adapter — keyed by exchangeId, counterparty = the provider.
+        bindings.record(new ExchangeBinding(result.exchangeId(), result.certificateId(), protocolId,
+                CounterpartyRole.PROVIDER, providerId));
         return exchange;
     }
 
     /**
-     * Polls the provider for the latest fulfillment status of a consumer-initiated request (CX-0135 &sect;3.3.1.1).
+     * Polls the provider for the latest fulfillment status of a consumer-initiated request.
      */
     // Non-transactional: load the exchange, poll the provider outside any transaction, then save the mirrored
     // status — so no DB connection is held across the outbound call.
@@ -169,7 +160,7 @@ public class ConsumerExchangeService {
         var exchange = findConsumerRequest(contextId, exchangeId);
         try {
             var result = requestClient.pollStatus(exchangeId, outboundCall(exchange, flowId));
-            exchange.updateFulfillment(result.status(), result.certificateId(), result.errors());
+            exchange.updateFulfillment(result.status(), result.certificateId(), result.revision(), result.errors());
             exchangeStore.save(exchange);
         } catch (IOException e) {
             throw new ApiException(BAD_GATEWAY, "Provider poll failed: " + e.getMessage());
@@ -184,37 +175,30 @@ public class ConsumerExchangeService {
 
     private ConsumerCertificateExchange findConsumerRequest(String contextId, String exchangeId) {
         return exchangeStore.findById(exchangeId)
-                .filter(ConsumerCertificateExchange::consumerInitiated)
                 .filter(e -> contextId.equals(e.participantContextId()))
                 .orElseThrow(() -> ApiException.notFound("Unknown request exchangeId: " + exchangeId));
     }
 
     /**
-     * Handles one or more inbound notification CloudEvents (CX-0135 &sect;3.2.1 / &sect;3.2.2). The whole
-     * batch runs in one transaction: every event is validated before any is applied, then each is claimed
+     * Handles one or more inbound notification events, already decoded to the neutral payloads by a
+     * protocol adapter (see {@link InboundProtocolEvent}). The whole batch runs in one transaction: every event is validated before any is applied, then each is claimed
      * and applied. Because dedup and every side effect share the transaction, a failure anywhere rolls the
      * batch back whole — including the dedup markers — so a retry re-applies all of it and nothing is lost
      * or double-applied. Duplicate events (same {@code source}+{@code id}) are skipped by the dedup claim.
      */
     @Transactional
-    public void handleNotifications(byte[] body, VerifiedRequestContext requestContext) {
+    public void handleNotifications(List<InboundProtocolEvent> events, VerifiedRequestContext requestContext) {
         var pending = new ArrayList<EventBatch.PendingEvent>();
-        for (var node : codec.toEventNodes(body)) {
-            var type = codec.typeOf(node);
-            switch (type) {
-                case TYPE_LIFECYCLE_STATUS -> {
-                    // Decode the v3 wire payload and map the certificate back to the neutral domain.
-                    var event = codec.decode(node, Ccm300LifecycleStatus.class);
-                    var data = toDomainLifecycle(event.data());
+        for (var event : events) {
+            switch (event) {
+                case InboundProtocolEvent.Lifecycle(var data, var dedupKey) -> {
                     validateLifecycle(data);
-                    pending.add(new EventBatch.PendingEvent(codec.dedupKey(event), () -> applyLifecycle(data, requestContext)));
+                    pending.add(new EventBatch.PendingEvent(dedupKey, () -> applyLifecycle(data, requestContext)));
                 }
-                case TYPE_FULFILLMENT_STATUS -> {
-                    var event = codec.decode(node, FulfillmentStatusData.class);
-                    validateFulfillment(event.data());
-                    pending.add(new EventBatch.PendingEvent(codec.dedupKey(event), () -> applyFulfillment(event.data(), requestContext)));
+                case InboundProtocolEvent.Fulfillment(var data, var dedupKey) -> {
+                    validateFulfillment(data);
+                    pending.add(new EventBatch.PendingEvent(dedupKey, () -> applyFulfillment(data, requestContext)));
                 }
-                default -> throw badRequest("Unsupported notification event type: " + type);
             }
         }
         // Claim + apply each event in this transaction: a throw rolls the whole batch back (claims included),
@@ -229,11 +213,11 @@ public class ConsumerExchangeService {
      * exist). Best-effort — a failing listener never disrupts the inbound acknowledgement; the event is
      * already recorded and reconcilable.
      */
-    private void emit(InboundCcmEvent event) {
+    private void emit(InboundNotification event) {
         afterCommit(() -> notifyListeners(event));
     }
 
-    private void notifyListeners(InboundCcmEvent event) {
+    private void notifyListeners(InboundNotification event) {
         for (var listener : listeners) {
             try {
                 listener.onNotification(event);
@@ -244,7 +228,7 @@ public class ConsumerExchangeService {
     }
 
     /**
-     * Returns the consumer's acceptance decision for an exchange (CX-0135 &sect;3.2.3). Returns
+     * Returns the consumer's acceptance decision for an exchange. Returns
      * {@code 404} until the Acceptance phase has begun (the exchange may still be in Fulfillment).
      */
     @Transactional(readOnly = true)
@@ -282,22 +266,19 @@ public class ConsumerExchangeService {
     /**
      * Management-driven retrieval: fetches an exchange's certificate (and documents) from the provider over
      * the given live {@code flowId}, for the caller to inspect before deciding acceptance. Used by a plugged-in
-     * client reacting to an {@link InboundCcmEvent}.
+     * client reacting to an {@link InboundNotification}.
      */
     // Non-transactional: load the exchange in its own short transaction, then fetch from the provider outside
     // any transaction so no DB connection is held across the outbound call.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RetrievedCertificate retrieve(String contextId, String exchangeId, String flowId) {
         var exchange = requireOwnedExchange(contextId, exchangeId);
-        // An embedded push delivered the content inline (no pull endpoint to re-fetch); return what we kept.
-        if (exchange.embeddedContent() != null) {
-            return exchange.embeddedContent();
-        }
         if (exchange.certificateId() == null) {
             throw ApiException.conflict("Exchange " + exchangeId + " has no certificate to retrieve yet");
         }
         try {
-            return providerClient.fetch(exchange.certificateId(), outboundCall(exchange, flowId));
+            return providerClient.fetchForExchange(exchange.exchangeId(), exchange.certificateId(),
+                    exchange.revision(), outboundCall(exchange, flowId));
         } catch (IOException e) {
             throw new ApiException(BAD_GATEWAY, "Retrieval failed: " + e.getMessage());
         }
@@ -305,8 +286,8 @@ public class ConsumerExchangeService {
 
     /**
      * Management-driven acceptance: records the caller's decision for an exchange and reports it to the
-     * provider over the given live {@code flowId}. The decision (ACCEPTED / REJECTED / ERRORED) is the
-     * caller's — the consumer applies no rule of its own.
+     * provider over the given live {@code flowId}. The decision (ACCEPTED / REJECTED) is the caller's —
+     * the consumer applies no rule of its own.
      *
      * <p>The report is <b>best-effort</b> (post-commit), so a lost report leaves the acceptance recorded here
      * but unknown to the provider. Recovery is by polling, not a durable outbox: {@link #queryExchanges}
@@ -340,7 +321,7 @@ public class ConsumerExchangeService {
 
     /**
      * Proactive discovery pull (consumer-initiated with no prior notification): pulls a partner's certificate
-     * over the caller-supplied live {@code flowId} in the stated {@code protocolVersion}, records it in the
+     * over the caller-supplied live {@code flowId} in the stated {@code protocol}, records it in the
      * tenant's known-certificate view, and returns it for display. The flow is established upstream by the
      * caller; this performs the data-plane read. Used to satisfy a "retrieve &amp; display a partner's
      * certificate" without a push.
@@ -349,27 +330,22 @@ public class ConsumerExchangeService {
     // certificate in its own short transaction, so no DB connection is held across the provider read.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RetrievedCertificate pullCertificate(String contextId,
-                                                String partnerBpn,
-                                                String partnerDid,
+                                                String partnerId,
                                                 String flowId,
-                                                ProtocolVersion protocolVersion) {
+                                                String protocolId) {
         var sender = requireContext(contextId);
-        var version = protocolVersion != null ? protocolVersion : ProtocolVersion.NATIVE;
-        var call = new OutboundCall(sender, partnerBpn, partnerDid, flowId);
+        requireProtocol(protocolId);
+        var call = new OutboundCall(sender, partnerId, flowId);
         RetrievedCertificate retrieved;
         try {
             // No exchange/certificateId is known ahead of a discovery pull; the retriever derives the id.
-            retrieved = providerClient.fetch(version, null, call);
+            retrieved = providerClient.fetch(protocolId, null, call);
         } catch (IOException e) {
             throw new ApiException(BAD_GATEWAY, "Certificate pull failed: " + e.getMessage());
         }
         tx.executeWithoutResult(_ ->
-                catalog.recordKnownCertificate(new LifecycleStatusData(CREATED, null, retrieved.metadata()), contextId));
+                catalog.recordKnownCertificate(new LifecycleStatusData(CREATED, retrieved.metadata()), contextId));
         return retrieved;
-    }
-
-    private static LifecycleStatusData toDomainLifecycle(Ccm300LifecycleStatus wire) {
-        return new LifecycleStatusData(wire.status(), wire.exchangeId(), Ccm300CertificateCodec.toDomain(wire.certificate()));
     }
 
     private void validateLifecycle(LifecycleStatusData data) {
@@ -377,76 +353,25 @@ public class ConsumerExchangeService {
             || data.certificate().certificateId() == null) {
             throw badRequest("Lifecycle event is missing status or certificate.certificateId");
         }
-        if (data.status() == CREATED && data.exchangeId() == null) {
-            throw badRequest("A CREATED lifecycle event must carry data.exchangeId");
-        }
     }
 
+    /**
+     * A lifecycle event is purely informational: it never opens, alters, or closes an exchange. The
+     * known-certificate view is updated and the event is emitted; a client that wants the certificate opens
+     * an exchange via {@link #initiateRequest}.
+     */
     private void applyLifecycle(LifecycleStatusData data, VerifiedRequestContext requestContext) {
         // Keep the consumer's known-certificate view in sync (CREATED/MODIFIED/WITHDRAWN), owned by the
         // receiving tenant (the verified audience).
         catalog.recordKnownCertificate(data, requestContext.participantContextId());
         var cert = data.certificate();
-
-        if (data.status() == CREATED) {
-            // Record the consumer-side exchange now so it can be retrieved/accepted later. It is stamped with
-            // the receiving tenant (the verified audience) and the provider (the verified caller) so a later
-            // management-driven retrieve/accept can address the right provider on behalf of the right tenant.
-            var exchange = ensureExchange(data.exchangeId(),
-                    cert.certificateId(),
-                    cert.revision(),
-                    requestContext.participantContextId(),
-                    requestContext.bpn(),
-                    requestContext.subject());
-            if (cert.hasEmbeddedContent()) {
-                exchange.attachEmbeddedContent(embeddedToRetrieved(cert));
-                exchangeStore.save(exchange);
-            }
-        }
-
-        // Record + emit only. A provider-initiated push has no live flowId, so the consumer never reacts
-        // inline; a plugged-in client drives retrieve/accept via the management API with its own flowId.
-        emit(new InboundCcmEvent(InboundCcmEvent.Kind.LIFECYCLE,
-                data.exchangeId(),
+        // Record + emit only. A plugged-in client reacts via the management API with its own flowId.
+        emit(new InboundNotification(InboundNotification.Kind.LIFECYCLE,
+                null,
                 cert.certificateId(),
                 cert.revision(),
                 data.status().name(),
-                requestContext.bpn()));
-    }
-
-    private ConsumerCertificateExchange ensureExchange(String exchangeId,
-                                                       String certificateId,
-                                                       Integer revision,
-                                                       String contextId,
-                                                       String providerBpn,
-                                                       String providerDid) {
-        // Runs inside the caller's transaction; a concurrent insert of the same id fails the primary-key
-        // constraint (that transaction rolls back and retries)
-        return exchangeStore.findById(exchangeId).map(existing -> {
-            // A reused exchangeId must belong to this tenant AND the calling provider (verified DID); otherwise
-            // a different caller is addressing — and would overwrite — an exchange that is not theirs.
-            if (!contextId.equals(existing.participantContextId())
-                || !providerDid.equals(existing.providerDid())) {
-                throw ApiException.notFound("Unknown exchangeId: " + exchangeId);
-            }
-            return existing;
-        }).orElseGet(() -> {
-            var created = new ConsumerCertificateExchange(exchangeId, certificateId, revision != null ? revision : 1,
-                    false, FULFILLED, null, contextId, providerBpn, providerDid);
-            exchangeStore.save(created);
-            return created;
-        });
-    }
-
-    /**
-     * Builds a {@link RetrievedCertificate} from an embedded push's inline content (decoding each document).
-     */
-    private static RetrievedCertificate embeddedToRetrieved(CertificateRecord cert) {
-        var documents = cert.documents().stream()
-                .map(d -> new RetrievedDocument(d.documentId(), d.mediaType(),
-                        d.contentBase64() == null ? new byte[0] : Base64.getDecoder().decode(d.contentBase64())))
-                .toList();
-        return new RetrievedCertificate(cert, documents);
+                requestContext.subject()));
     }
 
     private void validateFulfillment(FulfillmentStatusData data) {
@@ -460,7 +385,7 @@ public class ConsumerExchangeService {
     }
 
     /**
-     * A pushed Fulfillment status for a consumer-initiated exchange (CX-0135 &sect;3.2.2). Correlates by
+     * A pushed Fulfillment status for a consumer-initiated exchange. Correlates by
      * {@code exchangeId} to a tracked request and mirrors the status, then records + emits — the consumer
      * never decides acceptance itself. An event for an exchange the consumer didn't open is ignored.
      */
@@ -469,20 +394,20 @@ public class ConsumerExchangeService {
         // with the calling provider (the verified caller's DID) is applied — so a rogue provider cannot
         // overwrite another provider's exchange within this tenant.
         var contextId = requestContext.participantContextId();
-        var callerDid = requestContext.subject();
+        var callerId = requestContext.subject();
         var exchange = exchangeStore.findById(data.exchangeId())
                 .filter(e -> contextId.equals(e.participantContextId()))
-                .filter(e -> callerDid.equals(e.providerDid()))
+                .filter(e -> callerId.equals(e.providerId()))
                 .orElse(null);
         if (exchange == null) {
             LOG.info("Fulfillment status {} for unknown exchange {} — ignored", data.status(), data.exchangeId());
             return;
         }
-        exchange.updateFulfillment(data.status(), data.certificateId(), data.errors());
+        exchange.updateFulfillment(data.status(), data.certificateId(), data.revision(), data.errors());
         exchangeStore.save(exchange);
         // Record + emit only; a plugged-in client drives retrieve/accept via management with its own flowId.
-        emit(new InboundCcmEvent(InboundCcmEvent.Kind.FULFILLMENT, exchange.exchangeId(), exchange.certificateId(),
-                exchange.revision(), data.status().name(), requestContext.bpn()));
+        emit(new InboundNotification(InboundNotification.Kind.FULFILLMENT, exchange.exchangeId(), exchange.certificateId(),
+                exchange.revision(), data.status().name(), requestContext.subject()));
     }
 
     /**
@@ -499,7 +424,26 @@ public class ConsumerExchangeService {
      */
     private OutboundCall outboundCall(ConsumerCertificateExchange exchange, String flowId) {
         return new OutboundCall(requireContext(exchange.participantContextId()),
-                exchange.providerBpn(), exchange.providerDid(), flowId);
+                exchange.providerId(), flowId);
+    }
+
+    /** A {@code messageId} goes on the wire as the request message id, so it must be a UUID. */
+    private static void requireUuidMessageId(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            throw badRequest("A messageId is required (a UUID, reused verbatim on retries)");
+        }
+        try {
+            java.util.UUID.fromString(messageId);
+        } catch (IllegalArgumentException e) {
+            throw badRequest("The messageId must be a UUID: " + messageId);
+        }
+    }
+
+    /** The wire protocol is the caller's to state — there is no default. */
+    private static void requireProtocol(String protocolId) {
+        if (protocolId == null || protocolId.isBlank()) {
+            throw badRequest("A protocol is required (the counterparty's wire-protocol id)");
+        }
     }
 
     /**

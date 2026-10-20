@@ -9,14 +9,16 @@ import jakarta.persistence.Version;
 
 /**
  * A participant context (PCI) — the unit of multi-tenancy. It owns a participant's identity: the
- * {@code bpn} (Business Partner Number), the {@code source} (CloudEvents {@code source} URI it emits with),
- * and the {@code did} (the token audience it is addressed by). The same context may act as a provider
- * (issuing certificates) and/or a consumer (opening requests). Certificates and exchanges are stamped with
- * a {@code participantContextId}; outbound identity and the siglet participant-context key both derive from
- * it. The id is system-generated; the context never appears on the CCM wire.
+ * {@code did} (the participant identity — the token audience it is addressed by and the CloudEvents
+ * {@code source} it emits with) and an optional {@code dataspaceIdentifier} (the identifier a dataspace
+ * assigns when one exists distinct from the participant identity; emitted as the {@code dataspaceidentifier}
+ * extension attribute). The same context may act as a provider (issuing certificates) and/or a consumer
+ * (opening requests). Certificates and exchanges are stamped with a {@code participantContextId}; outbound
+ * identity and the siglet participant-context key both derive from it. The id is system-generated; the
+ * context never appears on the wire.
  *
  * <p>Persisted via JPA. The {@code did} carries a unique constraint so concurrent tenant creation with the
- * same audience is rejected by the database (the former create-time JVM lock is gone).
+ * same audience is rejected by the database.
  */
 @Entity
 @Table(name = "participant_context")
@@ -28,9 +30,7 @@ public class ParticipantContext {
     @JsonProperty
     private String participantContextId;
     @JsonProperty
-    private String bpn;
-    @JsonProperty
-    private String source;
+    private String dataspaceIdentifier;
     @Column(unique = true)
     @JsonProperty
     private String did;
@@ -41,10 +41,9 @@ public class ParticipantContext {
         // for JPA
     }
 
-    public ParticipantContext(String participantContextId, String bpn, String source, String did) {
+    public ParticipantContext(String participantContextId, String dataspaceIdentifier, String did) {
         this.participantContextId = participantContextId;
-        this.bpn = bpn;
-        this.source = source;
+        this.dataspaceIdentifier = dataspaceIdentifier;
         this.did = did;
     }
 
@@ -52,12 +51,9 @@ public class ParticipantContext {
         return participantContextId;
     }
 
-    public String bpn() {
-        return bpn;
-    }
-
-    public String source() {
-        return source;
+    /** The dataspace-assigned identifier, when the deployment's dataspace uses one; null otherwise. */
+    public String dataspaceIdentifier() {
+        return dataspaceIdentifier;
     }
 
     public String did() {

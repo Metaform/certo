@@ -7,8 +7,8 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * The published catalogue of certificate-exchange events: one entry per CX-0135 &sect;2.1.3 status,
- * binding it to the NATS subject it is published on and the CloudEvents {@code type} it carries.
+ * The published catalogue of certificate-exchange events: one entry per exchange status, binding it to
+ * the NATS subject it is published on and the CloudEvents {@code type} it carries.
  *
  * <p>Subject and type live together here on purpose — they are the two halves of this component's
  * public contract, and a consumer routing on one while switching on the other must never see them
@@ -19,26 +19,22 @@ import java.util.Map;
  * <p>The {@code events.} prefix is not cosmetic: it is the subject space the platform's
  * {@code edc-events} JetStream stream captures ({@code subjects: "events.>"}), and the only one the
  * NATS permission matrix grants publishers. Leaves are lowerCamelCase, matching the EDC event bridge
- * (e.g. {@code events.transfer.process.deprovisioningRequested}). Types follow the CX-0000 &sect;2.3
- * reverse-DNS convention already used by {@link org.metaform.certo.common.cloudevent.CcmEvents}.
+ * (e.g. {@code events.transfer.process.deprovisioningRequested}). Types follow the the SCE specification
+ * reverse-DNS convention under the application's own domain.
  */
 public enum ExchangeEventType {
 
-    REQUESTED(ExchangePhase.FULFILLMENT, "requested", "CertificateExchangeRequested"),
     ACKNOWLEDGED(ExchangePhase.FULFILLMENT, "acknowledged", "CertificateExchangeAcknowledged"),
-    CERTIFICATION_REQUESTED(ExchangePhase.FULFILLMENT, "certificationRequested", "CertificateExchangeCertificationRequested"),
+    CERTIFICATE_REQUESTED(ExchangePhase.FULFILLMENT, "certificateRequested", "CertificateExchangeCertificateRequested"),
     FULFILLED(ExchangePhase.FULFILLMENT, "fulfilled", "CertificateExchangeFulfilled"),
     DECLINED(ExchangePhase.FULFILLMENT, "declined", "CertificateExchangeDeclined"),
-    FAILED(ExchangePhase.FULFILLMENT, "failed", "CertificateExchangeFailed"),
 
-    RETRIEVED(ExchangePhase.ACCEPTANCE, "retrieved", "CertificateExchangeRetrieved"),
     ACCEPTED(ExchangePhase.ACCEPTANCE, "accepted", "CertificateExchangeAccepted"),
-    REJECTED(ExchangePhase.ACCEPTANCE, "rejected", "CertificateExchangeRejected"),
-    ERRORED(ExchangePhase.ACCEPTANCE, "errored", "CertificateExchangeErrored");
+    REJECTED(ExchangePhase.ACCEPTANCE, "rejected", "CertificateExchangeRejected");
 
     /** Subject namespace of every event in this catalogue; {@code events.certificate.exchange.>} takes them all. */
     public static final String SUBJECT_PREFIX = "events.certificate.exchange.";
-    private static final String TYPE_PREFIX = "org.catena-x.ccm.";
+    private static final String TYPE_PREFIX = "org.metaform.certo.";
     private static final String TYPE_SUFFIX = ".v1";
 
     private static final Map<FulfillmentStatus, ExchangeEventType> BY_FULFILLMENT = new EnumMap<>(FulfillmentStatus.class);
@@ -86,7 +82,7 @@ public enum ExchangeEventType {
         return subject;
     }
 
-    /** The CloudEvents {@code type} attribute (CX-0000 &sect;2.3 reverse-DNS). */
+    /** The CloudEvents {@code type} attribute. */
     public String type() {
         return type;
     }

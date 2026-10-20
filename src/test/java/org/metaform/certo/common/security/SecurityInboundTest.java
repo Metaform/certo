@@ -32,7 +32,7 @@ import java.util.Date;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * P3 inbound verification: the CCM protocol endpoints require a bearer token that is verified by calling the
+ * P3 inbound verification: the protocol endpoints require a bearer token that is verified by calling the
  * runtime's siglet verification endpoint ({@code POST /tokens/verify}, stubbed on a fixed port), while the
  * management surface stays open. Tokens are Ed25519, minted here; the stub siglet plays siglet's server-side
  * role — it validates the signature (revocation-aware in production) and echoes the token's claims.
@@ -99,30 +99,30 @@ class SecurityInboundTest {
 
     @Test
     void protocolCall_withoutToken_isUnauthorized() throws Exception {
-        assertThat(post("/certificate-requests", REQUEST, null).statusCode()).isEqualTo(401);
+        assertThat(post("/exchanges", REQUEST, null).statusCode()).isEqualTo(401);
     }
 
     @Test
     void protocolCall_withValidToken_passes() throws Exception {
-        assertThat(post("/certificate-requests", REQUEST, token(SIGNING_KEY, AUDIENCE)).statusCode()).isEqualTo(202);
+        assertThat(post("/exchanges", REQUEST, token(SIGNING_KEY, AUDIENCE)).statusCode()).isEqualTo(201);
     }
 
     @Test
     void protocolCall_withTokenFromUnknownKey_isUnauthorized() throws Exception {
-        assertThat(post("/certificate-requests", REQUEST, token(UNKNOWN_KEY, AUDIENCE)).statusCode()).isEqualTo(401);
+        assertThat(post("/exchanges", REQUEST, token(UNKNOWN_KEY, AUDIENCE)).statusCode()).isEqualTo(401);
     }
 
     @Test
     void protocolCall_withWrongAudience_isUnauthorized() throws Exception {
-        assertThat(post("/certificate-requests", REQUEST, token(SIGNING_KEY, "did:web:someone-else")).statusCode())
+        assertThat(post("/exchanges", REQUEST, token(SIGNING_KEY, "did:web:someone-else")).statusCode())
                 .isEqualTo(401);
     }
 
     @Test
-    void protocolCall_withoutBpnClaim_isUnauthorized() throws Exception {
-        // A CCM participant is identified on the wire by its BPN; a verified token that omits the bpn claim is
-        // not acceptable for a protocol call (the BPN must always be conveyable to the counterparty).
-        assertThat(post("/certificate-requests", REQUEST, tokenWithoutBpn(AUDIENCE)).statusCode()).isEqualTo(401);
+    void protocolCall_withoutDataspaceIdentifierClaim_passes() throws Exception {
+        // The dataspace-assigned identifier is optional (core messaging): a verified token carrying only the
+        // participant identity (sub) is sufficient for a protocol call.
+        assertThat(post("/exchanges", REQUEST, tokenWithoutDataspaceIdentifier(AUDIENCE)).statusCode()).isEqualTo(201);
     }
 
     @Test
@@ -137,19 +137,19 @@ class SecurityInboundTest {
     @Test
     void verifiedCaller_becomesExchangeCounterparty() throws Exception {
         // A request under a valid token opens a pending exchange whose counterparty identity comes from the
-        // verified token — its DID (sub) drives correlation, and its bpn claim is stored as the conveyed BPN.
-        assertThat(post("/certificate-requests", "{\"certificateType\":\"P5-IDENTITY-TYPE\"}",
-                token(SIGNING_KEY, AUDIENCE)).statusCode()).isEqualTo(202);
+        // verified token — its DID (sub) is the one identity used for correlation and storage.
+        assertThat(post("/exchanges", "{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"p5identitytype\"}",
+                token(SIGNING_KEY, AUDIENCE)).statusCode()).isEqualTo(201);
 
         var page = post("/management/v1/participant-contexts/pctx-seed-provider/certificate-requests/query",
-                "{\"certificateType\":\"P5-IDENTITY-TYPE\"}", ManagementTestAuth.adminToken());
+                "{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"p5identitytype\"}", ManagementTestAuth.adminToken());
         var items = mapper.readTree(page.body()).get("items");
         assertThat(items.size()).isEqualTo(1);
-        // The stored counterparty BPN is the token's bpn claim (never the DID) — no more bpn/DID conflation.
-        assertThat(items.get(0).get("consumerBpn").asString()).isEqualTo("BPNL0000000002CD");
+        // The stored counterparty identity is the verified token subject (the caller's DID).
+        assertThat(items.get(0).get("counterpartyId").asString()).isEqualTo("did:web:consumer.test");
     }
 
-    private static final String REQUEST = "{\"certificateType\":\"SEC-TEST-TYPE\"}";
+    private static final String REQUEST = "{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"sectesttype\"}";
 
     private HttpResponse<String> post(String path, String body, String token) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create(BASE + path))
@@ -162,15 +162,15 @@ class SecurityInboundTest {
     }
 
     private static String token(OctetKeyPair key, String audience) {
-        return token(key, audience, "BPNL0000000002CD");
+        return token(key, audience, "LE0000000002CD");
     }
 
-    /** A validly-signed token that carries no bpn claim (for the missing-bpn rejection case). */
-    private static String tokenWithoutBpn(String audience) {
+    /** A validly-signed token that carries no dataspaceidentifier claim. */
+    private static String tokenWithoutDataspaceIdentifier(String audience) {
         return token(SIGNING_KEY, audience, null);
     }
 
-    private static String token(OctetKeyPair key, String audience, String bpn) {
+    private static String token(OctetKeyPair key, String audience, String dataspaceIdentifier) {
         try {
             var builder = new JWTClaimsSet.Builder()
                     .subject("did:web:consumer.test")
@@ -178,8 +178,8 @@ class SecurityInboundTest {
                     .issuer("siglet")
                     .issueTime(new Date())
                     .expirationTime(Date.from(Instant.now().plusSeconds(300)));
-            if (bpn != null) {
-                builder.claim("bpn", bpn);
+            if (dataspaceIdentifier != null) {
+                builder.claim("dataspaceidentifier", dataspaceIdentifier);
             }
             var jwt = new SignedJWT(
                     new JWSHeader.Builder(JWSAlgorithm.EdDSA).keyID(key.getKeyID()).build(), builder.build());

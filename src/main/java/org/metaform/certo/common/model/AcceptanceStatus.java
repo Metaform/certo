@@ -3,22 +3,16 @@ package org.metaform.certo.common.model;
 import java.util.Set;
 
 /**
- * States of the Acceptance phase of a {@code Certificate Exchange} (CX-0135 &sect;2.1.3), owned by
- * the Certificate Consumer.
+ * States of the Acceptance phase of a {@code Certificate Exchange}, owned by the Certificate Consumer.
+ * Both states are terminal and reached directly from {@code FULFILLED}; no delivery receipt is modeled
+ * (the provider observes retrieval itself), and acceptance feedback is optional — an exchange without it
+ * rests at {@code FULFILLED} indefinitely.
  */
 public enum AcceptanceStatus {
-    /**
-     * The consumer fetched the certificate and is processing it. Non-terminal and <em>optional</em>:
-     * an exchange may transition straight from {@code FULFILLED} to a terminal acceptance state without
-     * first reporting {@code RETRIEVED} (CX-0135 &sect;2.1.3).
-     */
-    RETRIEVED(false),
     /** The consumer accepted the certificate. Terminal. */
     ACCEPTED(true),
-    /** The consumer did not accept the certificate content (a business decision). Terminal. */
-    REJECTED(true),
-    /** The consumer found the certificate to be in error (a business error). Terminal. */
-    ERRORED(true);
+    /** The consumer did not accept the certificate; the grounds are carried in the errors array. Terminal. */
+    REJECTED(true);
 
     private final boolean terminal;
 
@@ -30,16 +24,13 @@ public enum AcceptanceStatus {
         return terminal;
     }
 
-    /** Whether an {@code errors} array must accompany this status (CX-0135 &sect;4.4.4). */
+    /** Whether an {@code errors} array must accompany this status. */
     public boolean requiresErrors() {
-        return this == REJECTED || this == ERRORED;
+        return this == REJECTED;
     }
 
-    /** The Acceptance states reachable from this one (CX-0135 &sect;2.1.3 state machine). */
+    /** The Acceptance states reachable from this one: both are terminal, so none. */
     public Set<AcceptanceStatus> allowedNext() {
-        return switch (this) {
-            case RETRIEVED -> Set.of(ACCEPTED, REJECTED, ERRORED);
-            case ACCEPTED, REJECTED, ERRORED -> Set.of();
-        };
+        return Set.of();
     }
 }

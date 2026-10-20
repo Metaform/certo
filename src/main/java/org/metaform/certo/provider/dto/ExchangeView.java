@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * The provider's full view of a {@code Certificate Exchange} — both phases. Management/inspection only
- * (not part of CX-0135); lets callers confirm that a consumer's acceptance callback was recorded.
+ * (not part of the SCE specification); lets callers confirm that a consumer's acceptance callback was recorded.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ExchangeView(

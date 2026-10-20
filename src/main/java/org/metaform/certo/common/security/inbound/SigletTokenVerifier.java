@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Verifies inbound CCM tokens by calling this runtime's siglet <b>verification endpoint</b>
+ * Verifies inbound protocol tokens by calling this runtime's siglet <b>verification endpoint</b>
  * ({@code POST /tokens/verify}) rather than checking signatures locally. Siglet authoritatively checks the
  * token's signature, expiry, <b>and revocation</b> (it looks up the {@code jti} in its renewable-token
  * store), so a token whose flow has been terminated is rejected before it naturally expires — the reason to
@@ -85,11 +85,10 @@ public class SigletTokenVerifier implements SecurityTokenVerifier {
         if (subject == null) {
             throw ApiException.unauthorized("Token is missing a subject (sub)");
         }
-        var bpn = claims.get("bpn") instanceof String b && !b.isBlank() ? b : null;
-        if (bpn == null) {
-            throw ApiException.unauthorized("Token is missing a bpn claim");
-        }
-        return new VerifiedRequestContext(subject, bpn, context.participantContextId(), claims);
+        // The dataspace-assigned identifier is optional (core messaging): present only where the dataspace
+        // assigns one distinct from the participant identity.
+        var dataspaceIdentifier = claims.get("dataspaceidentifier") instanceof String d && !d.isBlank() ? d : null;
+        return new VerifiedRequestContext(subject, dataspaceIdentifier, context.participantContextId(), claims);
     }
 
     /** Reads the token's audience locally (no signature check) to tell siglet which tenant DID it targets. */

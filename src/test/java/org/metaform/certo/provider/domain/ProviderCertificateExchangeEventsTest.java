@@ -6,6 +6,7 @@ import org.metaform.certo.common.event.ExchangePhase;
 import org.metaform.certo.common.event.ExchangeRole;
 import org.metaform.certo.common.model.AcceptanceStatus;
 import org.metaform.certo.common.model.FulfillmentStatus;
+import org.metaform.certo.common.model.LocationFilter;
 import org.metaform.certo.common.model.StatusError;
 
 import java.util.List;
@@ -20,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProviderCertificateExchangeEventsTest {
 
     private static ProviderCertificateExchange newExchange(FulfillmentStatus initial) {
-        return new ProviderCertificateExchange("ex-1", "pctx-1", "cert-1", 3, "BPNL-CONSUMER", "did:web:consumer", initial);
+        return new ProviderCertificateExchange("ex-1", "pctx-1", "cert-1", 3, "did:web:consumer", initial);
     }
 
     private static List<CertificateExchangeStatusChanged> eventsOf(ProviderCertificateExchange exchange) {
@@ -29,39 +30,38 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void openingRecordsTheInitialStatusWithNoPredecessor() {
-        var events = eventsOf(newExchange(FulfillmentStatus.REQUESTED));
+        var events = eventsOf(newExchange(FulfillmentStatus.ACKNOWLEDGED));
 
         assertThat(events).singleElement().satisfies(event -> {
             assertThat(event.role()).isEqualTo(ExchangeRole.PROVIDER);
             assertThat(event.phase()).isEqualTo(ExchangePhase.FULFILLMENT);
-            assertThat(event.status()).isEqualTo("REQUESTED");
+            assertThat(event.status()).isEqualTo("ACKNOWLEDGED");
             // The distinguishing mark of an opened exchange versus a transition into the same state.
             assertThat(event.previousStatus()).isNull();
             assertThat(event.exchangeId()).isEqualTo("ex-1");
             assertThat(event.participantContextId()).isEqualTo("pctx-1");
-            assertThat(event.counterpartyBpn()).isEqualTo("BPNL-CONSUMER");
-            assertThat(event.counterpartyDid()).isEqualTo("did:web:consumer");
+            assertThat(event.counterpartyId()).isEqualTo("did:web:consumer");
             assertThat(event.occurredAt()).isNotNull();
         });
     }
 
     @Test
     void transitionRecordsBothEnds() {
-        var exchange = newExchange(FulfillmentStatus.REQUESTED);
+        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
         exchange.clearDomainEvents();
 
-        exchange.transitionFulfillment(FulfillmentStatus.ACKNOWLEDGED, null);
+        exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
 
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
-            assertThat(event.previousStatus()).isEqualTo("REQUESTED");
-            assertThat(event.status()).isEqualTo("ACKNOWLEDGED");
-            assertThat(event.eventType().subject()).isEqualTo("events.certificate.exchange.acknowledged");
+            assertThat(event.previousStatus()).isEqualTo("ACKNOWLEDGED");
+            assertThat(event.status()).isEqualTo("FULFILLED");
+            assertThat(event.eventType().subject()).isEqualTo("events.certificate.exchange.fulfilled");
         });
     }
 
     @Test
     void terminalTransitionCarriesItsErrors() {
-        var exchange = newExchange(FulfillmentStatus.REQUESTED);
+        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
         exchange.clearDomainEvents();
 
         exchange.transitionFulfillment(FulfillmentStatus.DECLINED, List.of(new StatusError("not our site")));
@@ -73,7 +73,7 @@ class ProviderCertificateExchangeEventsTest {
     @Test
     void fulfillRecordsOneEventCarryingTheNewlyBoundCertificate() {
         var exchange = ProviderCertificateExchange.pending(
-                "ex-2", "pctx-1", "BPNL-CONSUMER", "did:web:consumer", "ISO9001", List.of("BPNS-1"), null);
+                "ex-2", "pctx-1", "did:web:consumer", "iso9001", List.of(new LocationFilter(null, "SITE-1", null)), null);
         exchange.clearDomainEvents();
 
         exchange.fulfill("cert-9", 2);
@@ -81,7 +81,7 @@ class ProviderCertificateExchangeEventsTest {
         // fulfill() delegates to transitionFulfillment, so exactly one event — not one per mutator.
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
             assertThat(event.status()).isEqualTo("FULFILLED");
-            assertThat(event.previousStatus()).isEqualTo("CERTIFICATION_REQUESTED");
+            assertThat(event.previousStatus()).isEqualTo("CERTIFICATE_REQUESTED");
             assertThat(event.certificateId()).isEqualTo("cert-9");
             assertThat(event.revision()).isEqualTo(2);
         });
@@ -90,10 +90,10 @@ class ProviderCertificateExchangeEventsTest {
     @Test
     void pendingExchangeReportsNoCertificateIdentityYet() {
         var exchange = ProviderCertificateExchange.pending(
-                "ex-3", "pctx-1", "BPNL-CONSUMER", "did:web:consumer", "ISO9001", List.of("BPNS-1"), null);
+                "ex-3", "pctx-1", "did:web:consumer", "iso9001", List.of(new LocationFilter(null, "SITE-1", null)), null);
 
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
-            assertThat(event.status()).isEqualTo("CERTIFICATION_REQUESTED");
+            assertThat(event.status()).isEqualTo("CERTIFICATE_REQUESTED");
             assertThat(event.certificateId()).isNull();
             // Revision is meaningless without a certificate; it must not leak a default 0.
             assertThat(event.revision()).isNull();
@@ -102,8 +102,7 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void acceptanceIsRecordedOnTheAcceptancePhase() {
-        var exchange = newExchange(FulfillmentStatus.REQUESTED);
-        exchange.transitionFulfillment(FulfillmentStatus.ACKNOWLEDGED, null);
+        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
         exchange.clearDomainEvents();
 
@@ -119,35 +118,31 @@ class ProviderCertificateExchangeEventsTest {
     }
 
     @Test
-    void acceptanceTransitionCarriesThePreviousVerdict() {
-        var exchange = newExchange(FulfillmentStatus.REQUESTED);
-        exchange.transitionFulfillment(FulfillmentStatus.ACKNOWLEDGED, null);
+    void aDuplicateAcceptanceReportRecordsNothing() {
+        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
-        exchange.recordAcceptance(AcceptanceStatus.RETRIEVED, null);
+        exchange.recordAcceptance(AcceptanceStatus.REJECTED, List.of(new StatusError("wrong scope")));
         exchange.clearDomainEvents();
 
+        // A re-report of the current state is a duplicate (SCE): no transition, no event.
         exchange.recordAcceptance(AcceptanceStatus.REJECTED, List.of(new StatusError("wrong scope")));
 
-        assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
-            assertThat(event.previousStatus()).isEqualTo("RETRIEVED");
-            assertThat(event.status()).isEqualTo("REJECTED");
-        });
+        assertThat(eventsOf(exchange)).isEmpty();
     }
 
     @Test
     void everyTransitionAccumulatesUntilDrained() {
-        var exchange = newExchange(FulfillmentStatus.REQUESTED);
-        exchange.transitionFulfillment(FulfillmentStatus.ACKNOWLEDGED, null);
+        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
 
         // A single save() must publish the whole trail, not just the last hop.
         assertThat(eventsOf(exchange)).extracting(CertificateExchangeStatusChanged::status)
-                .containsExactly("REQUESTED", "ACKNOWLEDGED", "FULFILLED");
+                .containsExactly("ACKNOWLEDGED", "FULFILLED");
     }
 
     @Test
     void clearingPreventsRepublicationOnASecondSave() {
-        var exchange = newExchange(FulfillmentStatus.REQUESTED);
+        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
         assertThat(exchange.domainEvents()).isNotEmpty();
 
         exchange.clearDomainEvents();

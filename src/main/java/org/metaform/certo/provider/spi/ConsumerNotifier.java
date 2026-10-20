@@ -7,8 +7,7 @@ import org.metaform.certo.protocol.domain.ExchangeBinding;
 
 /**
  * Outbound port for provider &rarr; consumer notifications. The {@code @Primary} implementation
- * ({@code DispatchingConsumerNotifier}) routes by protocol version to per-version adapters:
- * v3 {@code Ccm300Notifier}.
+ * ({@code DispatchingConsumerNotifier}) routes by protocol id to per-protocol adapters.
  */
 public interface ConsumerNotifier {
 
@@ -19,7 +18,7 @@ public interface ConsumerNotifier {
      * are resolved from the siglet cache via the {@link OutboundCall}'s flow. Returns {@code true} on
      * successful delivery.
      */
-    boolean notifyLifecycle(ExchangeBinding target, LifecycleStatusData data, OutboundCall call);
+    boolean notifyLifecycle(ExchangeBinding target, String messageId, LifecycleStatusData data, OutboundCall call);
 
     /**
      * Pushes a fulfillment status to the consumer (routed by the exchange's binding); the {@link OutboundCall}

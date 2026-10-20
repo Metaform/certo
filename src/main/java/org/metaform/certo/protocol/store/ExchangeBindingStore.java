@@ -2,17 +2,18 @@ package org.metaform.certo.protocol.store;
 
 import org.metaform.certo.protocol.CounterpartyRole;
 import org.metaform.certo.protocol.domain.ExchangeBinding;
+import org.metaform.certo.protocol.domain.ExchangeBindingId;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
 /**
- * Store of {@link ExchangeBinding}s — which protocol version each exchange's counterparty speaks and how
- * to reach it. A Spring Data JPA repository keyed by {@code exchangeId}; the domain operations are thin
- * default methods over the inherited CRUD plus one derived query.
+ * Store of {@link ExchangeBinding}s — which protocol each exchange's counterparty speaks. A Spring Data
+ * JPA repository keyed by {@code exchangeId}; the domain operations are thin default methods over the
+ * inherited CRUD.
  */
-public interface ExchangeBindingStore extends JpaRepository<ExchangeBinding, String> {
+public interface ExchangeBindingStore extends JpaRepository<ExchangeBinding, ExchangeBindingId> {
 
     /** Persists a binding, but only once its {@code exchangeId} (the key) is assigned. */
     default void record(ExchangeBinding binding) {
@@ -29,12 +30,7 @@ public interface ExchangeBindingStore extends JpaRepository<ExchangeBinding, Str
         if (exchangeId == null) {
             return Optional.empty();
         }
-        return findById(exchangeId).filter(binding -> binding.role() == role);
+        return findById(new ExchangeBindingId(exchangeId, role));
     }
 
-    /**
-     * The secondary correlation, for retrieval dispatch: a retrieval is keyed by {@code certificateId} rather
-     * than {@code exchangeId}, so the binding is resolved by the certificate + the peer's <b>verified</b> DID.
-     */
-    Optional<ExchangeBinding> findByCertificateIdAndPeerDid(String certificateId, String peerDid);
 }

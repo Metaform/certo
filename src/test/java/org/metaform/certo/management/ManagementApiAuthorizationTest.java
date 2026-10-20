@@ -76,7 +76,7 @@ class ManagementApiAuthorizationTest {
         mvc.perform(post("/management/v1/participant-contexts")
                         .header("Authorization", bearer(PARTICIPANT_READ))
                         .contentType("application/json")
-                        .content("{\"bpn\":\"BPNL0000000009XX\",\"source\":\"urn:bpn:BPNL0000000009XX\",\"did\":\"did:web:authz-test\"}"))
+                        .content("{\"dataspaceIdentifier\":\"LE0000000009XX\",\"did\":\"did:web:authz-test\"}"))
                 .andExpect(status().isForbidden());
         // Deleting is a write, too.
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -101,7 +101,7 @@ class ManagementApiAuthorizationTest {
         mvc.perform(post("/management/v1/participant-contexts")
                         .header("Authorization", read)
                         .contentType("application/json")
-                        .content("{\"bpn\":\"BPNL0000000007XX\",\"source\":\"urn:bpn:BPNL0000000007XX\",\"did\":\"did:web:authz-wide\"}"))
+                        .content("{\"dataspaceIdentifier\":\"LE0000000007XX\",\"did\":\"did:web:authz-wide\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -111,7 +111,7 @@ class ManagementApiAuthorizationTest {
         mvc.perform(post("/management/v1/participant-contexts")
                         .header("Authorization", write)
                         .contentType("application/json")
-                        .content("{\"bpn\":\"BPNL0000000006XX\",\"source\":\"urn:bpn:BPNL0000000006XX\",\"did\":\"did:web:authz-write-wide\"}"))
+                        .content("{\"dataspaceIdentifier\":\"LE0000000006XX\",\"did\":\"did:web:authz-write-wide\"}"))
                 .andExpect(status().isCreated());
     }
 
@@ -149,7 +149,7 @@ class ManagementApiAuthorizationTest {
         mvc.perform(post("/management/v1/participant-contexts")
                         .header("Authorization", admin)
                         .contentType("application/json")
-                        .content("{\"bpn\":\"BPNL0000000008XX\",\"source\":\"urn:bpn:BPNL0000000008XX\",\"did\":\"did:web:authz-admin\"}"))
+                        .content("{\"dataspaceIdentifier\":\"LE0000000008XX\",\"did\":\"did:web:authz-admin\"}"))
                 .andExpect(status().isCreated());
         mvc.perform(get("/management/v1/participant-contexts").header("Authorization", admin))
                 .andExpect(status().isOk());

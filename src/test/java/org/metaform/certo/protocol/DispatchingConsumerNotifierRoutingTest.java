@@ -14,7 +14,9 @@ import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.common.model.FulfillmentStatusData;
 import org.metaform.certo.common.pc.store.ParticipantContextStore;
 import org.metaform.certo.common.security.outbound.OutboundCall;
+import org.metaform.certo.protocol.sce.Sce;
 import org.metaform.certo.protocol.domain.ExchangeBinding;
+import org.metaform.certo.protocol.domain.ExchangeBindingId;
 import org.metaform.certo.protocol.store.ExchangeBindingStore;
 import org.metaform.certo.provider.spi.ConsumerNotifier;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,13 +26,14 @@ import org.springframework.context.annotation.Import;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The provider&rarr;consumer notifier is multiplexed: the {@code @Primary} {@link ConsumerNotifier} is
- * {@link DispatchingConsumerNotifier}, which reads each exchange's {@link ExchangeBinding#version()} and routes
- * to that version's adapter. This proves the routing end-to-end: a bound exchange, notified through the
+ * {@link DispatchingConsumerNotifier}, which reads each exchange's {@link ExchangeBinding#protocolId()} and routes
+ * to that protocol's adapter. This proves the routing end-to-end: a bound exchange, notified through the
  * {@code ConsumerNotifier}, reaches its version's wire endpoint — v3 the CloudEvents
- * {@code /certificate-notifications}. A missing binding falls back to {@link ProtocolVersion#NATIVE} (v3),
+ * {@code /certificate-notifications}. A missing binding is a data-integrity error, never a fallback —
  * covered by the no-binding case.
  */
 @SpringBootTest
@@ -59,41 +62,37 @@ class DispatchingConsumerNotifierRoutingTest {
         // Every outbound adapter resolves the counterparty endpoint from the siglet cache; point it at the mock.
         siglet.setEndpoint(consumer.url("/").toString());
         var sender = contexts.find(TestTenants.PROVIDER_PCTX).orElseThrow();
-        call = new OutboundCall(sender, TestTenants.CONSUMER_BPN, TestTenants.CONSUMER_DID, "flow-route");
+        call = new OutboundCall(sender, TestTenants.CONSUMER_DID, "flow-route");
     }
 
     @AfterEach
     void tearDown() throws Exception {
         consumer.shutdown();
-        bindings.deleteById("exch-route-v3");
+        bindings.deleteById(new ExchangeBindingId("exch-route-v3", CounterpartyRole.CONSUMER));
     }
 
     @Test
     void v3BoundExchange_routesToTheCloudEventsEndpoint() throws Exception {
-        bindings.record(new ExchangeBinding("exch-route-v3", "cert-route-v3", ProtocolVersion.CCM_3_0_0,
-                CounterpartyRole.CONSUMER, TestTenants.CONSUMER_DID, null));
+        bindings.record(new ExchangeBinding("exch-route-v3", "cert-route-v3", Sce.PROTOCOL_ID,
+                CounterpartyRole.CONSUMER, TestTenants.CONSUMER_DID));
         consumer.enqueue(new MockResponse().setResponseCode(204));
 
         var delivered = notifier.notifyFulfillment(
-                new FulfillmentStatusData("exch-route-v3", "cert-route-v3", FulfillmentStatus.FULFILLED, null), call);
+                new FulfillmentStatusData("exch-route-v3", "cert-route-v3", 1, FulfillmentStatus.FULFILLED, null), call);
 
         assertThat(delivered).isTrue();
         RecordedRequest request = consumer.takeRequest(5, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
-        assertThat(request.getPath()).isEqualTo("/certificate-notifications");
+        assertThat(request.getPath()).isEqualTo("/notifications");
         assertThat(request.getHeader("Content-Type")).startsWith("application/cloudevents+json");
     }
 
     @Test
-    void noBinding_fallsBackToNativeV3() throws Exception {
-        // No binding recorded for this exchange → NATIVE (v3) → the CloudEvents endpoint.
-        consumer.enqueue(new MockResponse().setResponseCode(204));
-
-        notifier.notifyFulfillment(
-                new FulfillmentStatusData("exch-route-unbound", "cert-x", FulfillmentStatus.FULFILLED, null), call);
-
-        RecordedRequest request = consumer.takeRequest(5, TimeUnit.SECONDS);
-        assertThat(request).isNotNull();
-        assertThat(request.getPath()).isEqualTo("/certificate-notifications");
+    void noBinding_isADataIntegrityError() {
+        // Every exchange records its binding when opened; a missing one is an error, never a fallback.
+        assertThatThrownBy(() -> notifier.notifyFulfillment(
+                new FulfillmentStatusData("exch-route-unbound", "cert-x", 1, FulfillmentStatus.FULFILLED, null), call))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No protocol binding");
     }
 }

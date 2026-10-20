@@ -15,18 +15,18 @@ import java.util.List;
  * statement of fact about committed state rather than an intent.
  *
  * @param role                 which aggregate observed the change; a single Certo may hold both sides
- * @param phase                Fulfillment or Acceptance (CX-0135 &sect;2.1.3)
+ * @param phase                Fulfillment or Acceptance
  * @param eventType            the catalogue entry — carries the subject and CloudEvents type
  * @param exchangeId           the exchange this change belongs to
- * @param participantContextId the tenant that owns the exchange; resolves the CloudEvents source/sourcebpn
- * @param counterpartyBpn      the other party's BPN (the consumer's, seen from the provider, and vice versa)
- * @param counterpartyDid      the other party's DID
+ * @param participantContextId the tenant that owns the exchange; resolves the CloudEvents dataspaceidentifier
+ * @param counterpartyId       the other party's identity (its DID — the consumer's, seen from the provider,
+ *                             and vice versa)
  * @param certificateId        null while the certificate identity is still unknown (a pending request)
  * @param revision             the certificate revision, null alongside an unknown {@code certificateId}
  * @param previousStatus       the status being left, or <b>null when the exchange was just opened</b> —
  *                             which is what distinguishes "opened in state X" from "transitioned to X"
  * @param status               the status now in effect
- * @param errors               CX-0135 &sect;4.4.4 error details accompanying the new status, if any
+ * @param errors               error details accompanying the new status, if any
  * @param occurredAt           when the change was recorded
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -36,8 +36,7 @@ public record CertificateExchangeStatusChanged(
         ExchangeEventType eventType,
         String exchangeId,
         String participantContextId,
-        String counterpartyBpn,
-        String counterpartyDid,
+        String counterpartyId,
         String certificateId,
         Integer revision,
         String previousStatus,

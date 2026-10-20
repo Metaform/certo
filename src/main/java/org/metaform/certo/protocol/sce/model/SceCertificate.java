@@ -1,4 +1,4 @@
-package org.metaform.certo.protocol.ccm300.model;
+package org.metaform.certo.protocol.sce.model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -9,16 +9,15 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * The CX-0135 <b>v3</b> wire representation of a certificate (the {@code BusinessPartnerCertificate}
- * submodel served by {@code GET /certificates/{id}} and returned by search). This is the v3 <em>wire</em>
- * type, kept separate from the version-neutral domain model ({@link org.metaform.certo.common.model.CertificateRecord});
- * {@link org.metaform.certo.protocol.ccm300.Ccm300CertificateCodec} maps between them. When BPC 4.0.0
- * publishes and its shape diverges from the domain (nested {@code type}, {@code issuerBpnl}, {@code uploader},
- * …), those changes land here and in the codec — not in the core.
+ * The SCE wire representation of a certificate record (served by {@code GET /certificates/{id}} and
+ * returned by search). This is the <em>wire</em> type, kept separate from the version-neutral domain model
+ * ({@link org.metaform.certo.common.model.CertificateRecord});
+ * {@link org.metaform.certo.protocol.sce.SceCertificateCodec} maps between them, so a future wire change
+ * lands here and in the codec — not in the core.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record Ccm300Certificate(
+public record SceCertificate(
         String certificateId,
         Integer revision,
         String certificateType,
@@ -26,7 +25,6 @@ public record Ccm300Certificate(
         String registrationNumber,
         @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate validFrom,
         @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate validUntil,
-        String trustLevel,
         String areaOfApplication,
         List<Location> certifiedLocations,
         Issuer issuer,
@@ -35,17 +33,18 @@ public record Ccm300Certificate(
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Location(String bpnl, String bpna, String bpns, LocationRole locationRole, String areaOfApplication) {
+    public record Location(String legalEntityId, String siteId, String addressId, LocationRole locationRole,
+                           String areaOfApplication) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Issuer(String issuerName, String issuerBpn) {
+    public record Issuer(String issuerName, String issuerId) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Validator(String validatorName, String validatorBpn) {
+    public record Validator(String validatorName, String validatorId) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -54,7 +53,6 @@ public record Ccm300Certificate(
             String documentId,
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate createdDate,
             String language,
-            String mediaType,
-            String contentBase64) {
+            String mediaType) {
     }
 }

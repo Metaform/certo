@@ -1,7 +1,7 @@
 package org.metaform.certo.common.security.outbound;
 
 /**
- * Resolves the token and endpoint for an outbound CCM call. The token is scoped to the counterparty
+ * Resolves the token and endpoint for an outbound protocol call. The token is scoped to the counterparty
  * (audience = the counterparty's DID) and issued on behalf of the sender's participant context.
  */
 public interface SecurityTokenSource {

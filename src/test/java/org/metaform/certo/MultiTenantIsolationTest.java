@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Multi-tenancy is enforced with no exceptions: two provider tenants are created through the management API
- * (system-generated ids), each holding a certificate of the same type. A CCM protocol call is scoped to the
+ * (system-generated ids), each holding a certificate of the same type. A protocol call is scoped to the
  * tenant its token audience resolves to — a request fulfils only from that tenant's holdings, a retrieval or
  * search never crosses the tenant boundary.
  */
@@ -30,8 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(MockSigletConfig.class)
 class MultiTenantIsolationTest {
 
-    private static final String TYPE = "MT-SHARED-TYPE";
-    private static final String LOCATION = "BPNS-MT-SITE-1";
+    private static final String TYPE = "mtsharedtype";
+    private static final String LOCATION = "SITE-MT-SITE-1";
 
     @Autowired
     MockMvc mvc;
@@ -44,8 +44,8 @@ class MultiTenantIsolationTest {
 
     @Test
     void certificatesAndRequestsAreScopedToTheAddressedTenant() throws Exception {
-        var tenantA = createContext("BPNL000000000AAA", "urn:bpn:BPNL000000000AAA", "did:web:tenant-a");
-        var tenantB = createContext("BPNL000000000BBB", "urn:bpn:BPNL000000000BBB", "did:web:tenant-b");
+        var tenantA = createContext("LE000000000AAA", "did:web:tenant-a");
+        var tenantB = createContext("LE000000000BBB", "did:web:tenant-b");
         assertThat(tenantA.get("participantContextId").asString())
                 .isNotEqualTo(tenantB.get("participantContextId").asString());
 
@@ -70,18 +70,18 @@ class MultiTenantIsolationTest {
                 .andExpect(jsonPath("$.certificateId").value(certA));
 
         // Search is scoped too: tenant A sees exactly its own certificate for the shared type.
-        var searchA = mapper.readTree(mvc.perform(post("/certificates/search")
+        var searchA = mapper.readTree(mvc.perform(post("/search")
                         .header("Authorization", bearer("did:web:tenant-a"))
                         .contentType(MediaType.APPLICATION_JSON).content(searchByType()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(searchA.size()).isEqualTo(1);
-        assertThat(searchA.get(0).get("certificateId").asString()).isEqualTo(certA);
+        assertThat(searchA.get("result").size()).isEqualTo(1);
+        assertThat(searchA.get("result").get(0).get("certificateId").asString()).isEqualTo(certA);
     }
 
     @Test
     void documentsAndAcceptanceAreScopedToTheAddressedTenant() throws Exception {
-        var tenantC = createContext("BPNL000000000CCC", "urn:bpn:BPNL000000000CCC", "did:web:tenant-c");
-        var tenantD = createContext("BPNL000000000DDD", "urn:bpn:BPNL000000000DDD", "did:web:tenant-d");
+        var tenantC = createContext("LE000000000CCC", "did:web:tenant-c");
+        var tenantD = createContext("LE000000000DDD", "did:web:tenant-d");
         var certC = addCertificate(tenantC.get("participantContextId").asString());
         addCertificate(tenantD.get("participantContextId").asString());
 
@@ -101,11 +101,11 @@ class MultiTenantIsolationTest {
         var fulfilledForC = requestAs("did:web:tenant-c");
         var exchangeId = fulfilledForC.get("exchangeId").asString();
         var certificateId = fulfilledForC.get("certificateId").asString();
-        mvc.perform(post("/certificate-acceptance-notifications").contentType("application/cloudevents+json")
+        mvc.perform(post("/notifications").contentType("application/cloudevents+json")
                         .header("Authorization", bearer("did:web:tenant-d"))
                         .content(acceptanceEvent(exchangeId, certificateId)))
                 .andExpect(status().isNotFound());
-        mvc.perform(post("/certificate-acceptance-notifications").contentType("application/cloudevents+json")
+        mvc.perform(post("/notifications").contentType("application/cloudevents+json")
                         .header("Authorization", bearer("did:web:tenant-c"))
                         .content(acceptanceEvent(exchangeId, certificateId)))
                 .andExpect(status().isNoContent());
@@ -113,8 +113,8 @@ class MultiTenantIsolationTest {
 
     // --- helpers -------------------------------------------------------------------------------
 
-    private JsonNode createContext(String bpn, String source, String did) throws Exception {
-        var body = "{\"bpn\":\"" + bpn + "\",\"source\":\"" + source + "\",\"did\":\"" + did + "\"}";
+    private JsonNode createContext(String dataspaceIdentifier, String did) throws Exception {
+        var body = "{\"dataspaceIdentifier\":\"" + dataspaceIdentifier + "\",\"did\":\"" + did + "\"}";
         var result = mvc.perform(post("/management/v1/participant-contexts")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated()).andReturn();
@@ -130,8 +130,8 @@ class MultiTenantIsolationTest {
 
         var body = """
                 {"certificateType":"%s","registrationNumber":"REG-%s",
-                 "validFrom":"2020-01-01","validUntil":"2035-01-01","trustLevel":"high",
-                 "certifiedLocations":[{"bpnl":"BPNL000000TESTLE","bpna":"BPNA000000TESTAD","bpns":"%s","locationRole":"MAIN_LOCATION"}],
+                 "validFrom":"2020-01-01","validUntil":"2035-01-01",
+                 "certifiedLocations":[{"legalEntityId":"LE000000TESTLE","addressId":"ADDR000000TESTAD","siteId":"%s","locationRole":"MAIN_LOCATION"}],
                  "documentIds":["%s"]}""".formatted(TYPE, participantContextId, LOCATION, documentId);
         var result = mvc.perform(post("/management/v1/participant-contexts/" + participantContextId + "/certificates")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -141,28 +141,28 @@ class MultiTenantIsolationTest {
 
     /** Opens a request addressed (token audience) to the tenant with the given DID. */
     private JsonNode requestAs(String tenantDid) throws Exception {
-        var result = mvc.perform(post("/certificate-requests")
+        var result = mvc.perform(post("/exchanges")
                         .header("Authorization", bearer(tenantDid))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certificateType\":\"" + TYPE + "\",\"certifiedLocations\":[\"" + LOCATION + "\"]}"))
-                .andExpect(status().isAccepted()).andReturn();
+                        .content("{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"" + TYPE + "\",\"certifiedLocations\":[{\"siteId\":\"" + LOCATION + "\"}]}"))
+                .andExpect(status().isCreated()).andReturn();
         return mapper.readTree(result.getResponse().getContentAsString());
     }
 
     /** A bearer addressed to the tenant DID, from an arbitrary consumer counterparty. */
     private String bearer(String tenantDid) {
-        return "Bearer " + siglet.mint(tenantDid, "did:web:mt-consumer", "BPNL000000000CON");
+        return "Bearer " + siglet.mint(tenantDid, "did:web:mt-consumer", "LE000000000CON");
     }
 
     private static String searchByType() {
-        return "{\"$condition\":{\"$match\":[{\"$field\":\"certificateType\",\"$eq\":\"" + TYPE + "\"}]}}";
+        return "{\"certificateType\":\"" + TYPE + "\"}";
     }
 
     /** A minimal {@code CertificateAcceptanceStatus} CloudEvent (ACCEPTED) for the given exchange. */
     private static String acceptanceEvent(String exchangeId, String certificateId) {
         return """
-                { "specversion": "1.0", "type": "org.catena-x.ccm.CertificateAcceptanceStatus.v1",
-                  "source": "urn:bpn:BPNL000000000CON", "sourcebpn": "BPNL000000000CON",
+                { "specversion": "1.0", "type": "org.dsaf.sce.CertificateAcceptanceStatus.v1",
+                  "source": "did:web:mt-consumer",
                   "id": "acc-%s", "time": "2025-05-04T08:00:00Z",
                   "data": { "exchangeId": "%s", "certificateId": "%s", "status": "ACCEPTED" } }
                 """.formatted(exchangeId, exchangeId, certificateId);

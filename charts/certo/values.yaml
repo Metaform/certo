@@ -42,7 +42,7 @@ gateway:
 # Active Spring profile. `prod` (the image default) expects Postgres and an existing schema.
 springProfile: prod
 
-# Base URL of the siglet STS (certo.security.siglet-base-url). Required for the CCM protocol
+# Base URL of the siglet STS (certo.security.siglet-base-url). Required for the protocol
 # layer; point it at a mock siglet for dev/test.
 sigletBaseUrl: ""
 
@@ -72,7 +72,7 @@ tokenExchange:
   # for the given audience and points certo at it; leaving it empty falls back to the default mount.
   subjectTokenAudience: ""
 
-# Certificate-exchange status changes (CX-0135 §2.1.3) published as CloudEvents on NATS JetStream,
+# Certificate-exchange status changes published as CloudEvents on NATS JetStream,
 # on subjects events.certificate.exchange.* — the same shape and stream the platform's EDC runtimes
 # publish to, so consumers of `edc-events` see certo's events alongside the connector's.
 #

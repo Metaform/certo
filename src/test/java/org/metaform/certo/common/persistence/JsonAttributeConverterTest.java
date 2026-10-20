@@ -16,7 +16,7 @@ class JsonAttributeConverterTest {
     @Test
     void statusErrorList_roundTripsWithSpecifier() {
         var converter = new StatusErrorListConverter();
-        var value = List.of(new StatusError("expired", "BPNS-1"), new StatusError("plain"));
+        var value = List.of(new StatusError("expired", "SITE-1"), new StatusError("plain"));
 
         var json = converter.convertToDatabaseColumn(value);
         assertThat(converter.convertToEntityAttribute(json)).isEqualTo(value);
@@ -46,7 +46,7 @@ class JsonAttributeConverterTest {
     @Test
     void singleValueObject_roundTrips() {
         var converter = new CertificateIssuerConverter();
-        var value = new CertificateIssuer("TÜV", "BPNL-ISSUER");
+        var value = new CertificateIssuer("TÜV", "LE-ISSUER");
 
         var json = converter.convertToDatabaseColumn(value);
         assertThat(converter.convertToEntityAttribute(json)).isEqualTo(value);

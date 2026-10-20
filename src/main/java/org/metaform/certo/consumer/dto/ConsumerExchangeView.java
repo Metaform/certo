@@ -6,27 +6,22 @@ import org.metaform.certo.common.model.FulfillmentStatus;
 import org.metaform.certo.consumer.domain.ConsumerCertificateExchange;
 
 /**
- * A management view of one consumer-side exchange, for the reconciliation query. {@code embedded} tells a
- * client whether a {@code retrieve} will return inline content (an embedded push) or fetch from the provider.
+ * A management view of one consumer-side exchange, for the reconciliation query.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ConsumerExchangeView(
         String exchangeId,
         String certificateId,
         Integer revision,
-        boolean consumerInitiated,
         FulfillmentStatus fulfillmentStatus,
-        AcceptanceStatus acceptanceStatus,
-        boolean embedded) {
+        AcceptanceStatus acceptanceStatus) {
 
     public static ConsumerExchangeView of(ConsumerCertificateExchange exchange) {
         return new ConsumerExchangeView(
                 exchange.exchangeId(),
                 exchange.certificateId(),
                 exchange.revision(),
-                exchange.consumerInitiated(),
                 exchange.fulfillmentStatus(),
-                exchange.acceptanceStatus(),
-                exchange.embeddedContent() != null);
+                exchange.acceptanceStatus());
     }
 }

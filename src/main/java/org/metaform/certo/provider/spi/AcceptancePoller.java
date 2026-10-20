@@ -9,15 +9,18 @@ import java.util.Optional;
 /**
  * Provider-side pull of a consumer's acceptance decision — the recovery path when the consumer's pushed
  * acceptance report was lost. The provider GETs the consumer's {@code /certificate-acceptance-status/{id}}
- * (CX-0135 &sect;4.3.3) on a fresh flow, so a lost best-effort push doesn't require a durable outbox.
+ * on a fresh flow, so a lost best-effort push doesn't require a durable outbox.
  *
- * <p><b>This is a native-only capability, not a multiplexed port.</b> Unlike {@code ConsumerNotifier} and
- * {@code AcceptanceReporter} — which are dispatched by protocol version (a {@code Dispatching…} facade picks
+ * <p><b>This is a single-protocol capability, not a multiplexed port.</b> Unlike {@code ConsumerNotifier}
+ * and {@code AcceptanceReporter} — which are dispatched by protocol (a {@code Dispatching…} facade picks
  * the adapter from the exchange's binding) — polling assumes the consumer exposes the acceptance-status GET.
- * So there is a single (native) implementation, injected directly with no dispatcher, and the caller polls
- * only a native consumer.
+ * There is a single implementation, injected directly with no dispatcher; the caller guards on
+ * {@link #protocolId()} matching the exchange's binding before polling.
  */
 public interface AcceptancePoller {
+
+    /** The open protocol id this poller speaks. */
+    String protocolId();
 
     /**
      * Returns the consumer's current acceptance for the exchange, or empty if it has not decided yet

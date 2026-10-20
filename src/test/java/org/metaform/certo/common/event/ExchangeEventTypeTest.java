@@ -59,20 +59,20 @@ class ExchangeEventTypeTest {
     }
 
     @Test
-    void typesAreUniqueAndFollowTheCx0000Convention() {
+    void typesAreUniqueAndFollowTheReverseDnsConvention() {
         var types = Arrays.stream(ExchangeEventType.values()).map(ExchangeEventType::type).toList();
         assertThat(types).doesNotHaveDuplicates()
-                .allMatch(t -> t.startsWith("org.catena-x.ccm."))
+                .allMatch(t -> t.startsWith("org.metaform.certo."))
                 .allMatch(t -> t.endsWith(".v1"));
     }
 
     @Test
     void subjectAndTypeAgreeOnTheStatusTheyName() {
-        assertThat(ExchangeEventType.of(FulfillmentStatus.CERTIFICATION_REQUESTED))
-                .returns("events.certificate.exchange.certificationRequested", ExchangeEventType::subject)
-                .returns("org.catena-x.ccm.CertificateExchangeCertificationRequested.v1", ExchangeEventType::type);
+        assertThat(ExchangeEventType.of(FulfillmentStatus.CERTIFICATE_REQUESTED))
+                .returns("events.certificate.exchange.certificateRequested", ExchangeEventType::subject)
+                .returns("org.metaform.certo.CertificateExchangeCertificateRequested.v1", ExchangeEventType::type);
         assertThat(ExchangeEventType.of(AcceptanceStatus.REJECTED))
                 .returns("events.certificate.exchange.rejected", ExchangeEventType::subject)
-                .returns("org.catena-x.ccm.CertificateExchangeRejected.v1", ExchangeEventType::type);
+                .returns("org.metaform.certo.CertificateExchangeRejected.v1", ExchangeEventType::type);
     }
 }
