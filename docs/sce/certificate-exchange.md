@@ -130,8 +130,7 @@ certification authority) is not modeled as exchange state; while it works, the e
 
 All acceptance feedback is OPTIONAL. An exchange reaches a terminal acceptance state directly from `FULFILLED`
 (`FULFILLED → {ACCEPTED, REJECTED}`). If the consumer never provides feedback, the exchange remains in
-`FULFILLED` indefinitely. Note that no delivery receipt is modeled: delivery is a retrieval from the
-[=Certificate Provider=], which therefore observes it directly.
+`FULFILLED` indefinitely.
 
 #### Terminal States and Immutability
 
