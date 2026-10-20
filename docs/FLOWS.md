@@ -62,7 +62,7 @@ stateDiagram-v2
 | Flow  | What                                                                                         | Variants                                                                                      |
 |-------|----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
 | **A** | Consumer-initiated **request** (exchange creation)                                           | A1 held/immediate · A2 async+push · A3 async+poll · A4 declined                               |
-| **B** | **Notification-initiated** flow (lifecycle notify → request)                                 | B1 accepted · B2 rejected (expired) · B3 provider **polls** the verdict                       |
+| **B** | **Lifecycle notify → request** (the notified consumer requests)                                 | B1 accepted · B2 rejected (expired) · B3 provider **polls** the verdict                       |
 | **C** | Certificate **lifecycle** (`AVAILABLE` / `WITHDRAWN`)                                         | C1 revise · C2 withdraw · C3 consumer reacts                                                  |
 | **D** | **Search** / discovery                                                                       | D1 by type · D2 by location filter · D3 unsupported property (400) · D4 cursor pagination     |
 | **E** | **Cross-cutting** rules (state machine, envelope, batch, **idempotency**, reconciliation)    | E1–E9                                                                                         |
@@ -140,7 +140,7 @@ sequenceDiagram
 
 ---
 
-## Flow B — Notification-initiated flow
+## Flow B — Lifecycle notify → request
 
 The provider publishes a certificate and **notifies** a consumer with an `AVAILABLE` lifecycle event. The
 notification is **purely informational** — it opens nothing. A consumer that wants the certificate opens

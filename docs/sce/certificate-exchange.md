@@ -387,50 +387,39 @@ An error object has the following structure:
 | **Required** | - `message`: A human-readable description of the error.                                                                               |
 | **Optional** | - `specifier`: An identifier scoping the error to a particular element of the certificate, for example a certified location identifier. If omitted, the error applies to the certificate as a whole. |
 
-## Protocol Flows
+## Protocol Flow
 
 *This section is non-normative.*
 
-The following sequence diagrams illustrate typical [=Certificate Exchange=] interactions. HTTP requests are shown
+The following sequence diagram illustrates the [=Certificate Exchange=] interaction. HTTP requests are shown
 with solid lines and their responses with dashed lines.
 
-### Notification-Initiated Flow
-
-The [=Certificate Provider=] publishes a new [=Certificate=] and notifies the [=Certificate Consumer=] with an
-`AVAILABLE` lifecycle event. The notification is purely informational; the consumer opens a [=Certificate Exchange=] by
-submitting a certificate request, which the provider — already holding the certificate — fulfills immediately in the
-request response, delivering the certificate record in the same round trip. The consumer then fetches any documents
-and reports acceptance:
-
-```mermaid
-sequenceDiagram
-    participant con as Certificate Consumer
-    participant prov as Certificate Provider
-    prov ->> con: CertificateLifecycleStatus (AVAILABLE)
-    con ->> prov: POST /exchanges
-    prov -->> con: 201 Exchange (FULFILLED, certificate record)
-    con ->> prov: GET /documents/:documentId
-    prov -->> con: document binary
-    con ->> prov: CertificateAcceptanceStatus (ACCEPTED)
-```
-
-### Request-Initiated Flow
-
-The [=Certificate Consumer=] requests a [=Certificate=] the [=Certificate Provider=] does not yet hold. The provider
-accepts the request (`PENDING`) and reports the Fulfillment outcome with a fulfillment status event, whose
-`FULFILLED` form delivers the certificate record. The consumer then fetches any documents and reports acceptance:
+The [=Certificate Consumer=] opens a [=Certificate Exchange=] by submitting a certificate request. A provider
+already holding a covering certificate fulfills immediately in the creation response, delivering the certificate
+record in the same round trip; otherwise the exchange is `PENDING` and the Fulfillment outcome arrives as a
+fulfillment status event, whose `FULFILLED` form delivers the record. The consumer then fetches any documents and
+reports acceptance:
 
 ```mermaid
 sequenceDiagram
     participant con as Certificate Consumer
     participant prov as Certificate Provider
     con ->> prov: POST /exchanges
-    prov -->> con: 201 Exchange (PENDING)
-    prov ->> con: CertificateFulfillmentStatus (FULFILLED, certificate record)
+    alt certificate held
+        prov -->> con: 201 Exchange (FULFILLED, certificate record)
+    else produced later
+        prov -->> con: 201 Exchange (PENDING)
+        prov ->> con: CertificateFulfillmentStatus (FULFILLED, certificate record)
+    end
     con ->> prov: GET /documents/:documentId
     prov -->> con: document binary
     con ->> prov: CertificateAcceptanceStatus (ACCEPTED)
 ```
+
+How the consumer learned of the certificate — an `AVAILABLE` lifecycle notification, a
+[search](#certificate-search) result — does not affect the flow: lifecycle events are purely informational, and an
+exchange is opened only by the consumer's request. A declined request follows the same shape, with `DECLINED`
+in place of the Fulfillment outcome (see [Exchange State Machine](#exchange-state-machine)).
 
 A [=Certificate Consumer=] that does not expose the [Certificate Consumer API](#certificate-consumer-api) observes
 Fulfillment progress by polling [Exchange Retrieval](#exchange-retrieval) instead of receiving

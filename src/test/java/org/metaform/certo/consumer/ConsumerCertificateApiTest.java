@@ -92,7 +92,7 @@ class ConsumerCertificateApiTest {
         assertThat(known.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
         assertThat(known.get("revision").asInt()).isEqualTo(1);
 
-        // Notification-initiated flow: the notified consumer opens an exchange by submitting a certificate
+        // The notified consumer opens an exchange by submitting a certificate
         // request; the provider already holds the certificate, so it is FULFILLED immediately.
         var initiate = postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests",
                 initiateBody("iso14001", "SITE00000003AYRE"));
