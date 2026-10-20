@@ -99,13 +99,11 @@ The states of a [=Certificate Exchange=] are defined below, which implementation
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ACKNOWLEDGED
+    [*] --> PENDING
+    [*] --> FULFILLED
     [*] --> DECLINED
-    ACKNOWLEDGED --> CERTIFICATE_REQUESTED
-    ACKNOWLEDGED --> FULFILLED
-    ACKNOWLEDGED --> DECLINED
-    CERTIFICATE_REQUESTED --> FULFILLED
-    CERTIFICATE_REQUESTED --> DECLINED
+    PENDING --> FULFILLED
+    PENDING --> DECLINED
     FULFILLED --> ACCEPTED
     FULFILLED --> REJECTED
     DECLINED --> [*]
@@ -113,21 +111,20 @@ stateDiagram-v2
     REJECTED --> [*]
 ```
 
-| State                     | Phase       | Owner    | Terminal | Description                                                                                                     |
-|---------------------------|-------------|----------|----------|------------------------------------------------------------------------------------------------------------------|
-| `ACKNOWLEDGED`            | Fulfillment | Provider | No       | The provider accepted the request and began preparing the certificate.                                          |
-| `CERTIFICATE_REQUESTED` | Fulfillment | Provider | No       | The provider submitted the request to an external certification authority and is awaiting issuance. *(Optional)* |
-| `FULFILLED`               | Fulfillment | Provider | No       | The certificate is prepared and available for retrieval. Hand-off point.                                        |
-| `DECLINED`                | Fulfillment | Provider | Yes      | The provider did not fulfill the request; the grounds are carried in the `errors` array.                         |
-| `ACCEPTED`                | Acceptance  | Consumer | Yes      | The consumer accepted the certificate.                                                                          |
-| `REJECTED`                | Acceptance  | Consumer | Yes      | The consumer did not accept the certificate; the grounds are carried in the `errors` array.                      |
+| State       | Phase       | Owner    | Terminal | Description                                                                                 |
+|-------------|-------------|----------|----------|-----------------------------------------------------------------------------------------------|
+| `PENDING`   | Fulfillment | Provider | No       | The provider accepted the request and is working to make the certificate available.          |
+| `FULFILLED` | Fulfillment | Provider | No       | The certificate is prepared and available for retrieval. Hand-off point.                     |
+| `DECLINED`  | Fulfillment | Provider | Yes      | The provider did not fulfill the request; the grounds are carried in the `errors` array.     |
+| `ACCEPTED`  | Acceptance  | Consumer | Yes      | The consumer accepted the certificate.                                                       |
+| `REJECTED`  | Acceptance  | Consumer | Yes      | The consumer did not accept the certificate; the grounds are carried in the `errors` array.  |
 
 The first Fulfillment status a [=Certificate Consumer=] observes is the one carried in the request response (see
-[Exchange Creation](#exchange-creation)). A provider that can satisfy a request without intermediate steps MAY
-report a later Fulfillment state directly — for example `FULFILLED` when the certificate is already held, or
-`CERTIFICATE_REQUESTED` when the request is immediately forwarded to an external authority — having passed through
-the earlier states instantly. A reported `status` therefore reflects the exchange's current state, not necessarily a
-single transition from the state before it.
+[Exchange Creation](#exchange-creation)). A provider that can satisfy a request immediately MAY report
+`FULFILLED` directly — the certificate is already held and `PENDING` was passed through instantly. A reported
+`status` therefore reflects the exchange's current state, not necessarily a single transition from the state
+before it. How a provider produces a certificate it does not yet hold (an internal process, an external
+certification authority) is not modeled as exchange state; while it works, the exchange is `PENDING`.
 
 #### Acceptance Feedback
 
@@ -295,7 +292,7 @@ The `data` payload is the [Exchange](#exchange-object) representation, restricte
 |--------------|------------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.fulfillment.status.event.schema.json)                                                     |
 | **Required** | - `exchangeId`: The identifier of the [=Certificate Exchange=].                                                            |
-|              | - `status`: One of `ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`, `FULFILLED`, `DECLINED`.                                       |
+|              | - `status`: One of `PENDING`, `FULFILLED`, `DECLINED`.                                                                      |
 | **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns. MUST be present when `status` is `FULFILLED`. |
 |              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED`.          |
 
@@ -406,8 +403,7 @@ sequenceDiagram
 ### Request-Initiated Flow
 
 The [=Certificate Consumer=] requests a [=Certificate=] the [=Certificate Provider=] does not yet hold. The provider
-acknowledges the request and reports Fulfillment progress with fulfillment status events — here including the
-OPTIONAL `CERTIFICATE_REQUESTED` state while an external certification authority issues the certificate. Once
+accepts the request (`PENDING`) and reports Fulfillment progress with fulfillment status events. Once
 `FULFILLED`, the consumer retrieves the certificate and reports acceptance:
 
 ```mermaid
@@ -415,8 +411,7 @@ sequenceDiagram
     participant con as Certificate Consumer
     participant prov as Certificate Provider
     con ->> prov: POST /exchanges
-    prov -->> con: 201 Exchange (ACKNOWLEDGED)
-    prov ->> con: CertificateFulfillmentStatus (CERTIFICATE_REQUESTED)
+    prov -->> con: 201 Exchange (PENDING)
     prov ->> con: CertificateFulfillmentStatus (FULFILLED)
     con ->> prov: GET /certificates/:certificateId
     prov -->> con: certificate record
@@ -465,8 +460,7 @@ A [=Certificate Provider=] MUST push:
   `WITHDRAWN`) of a certificate the consumer is entitled to, and
 - a `CertificateFulfillmentStatus` event when an exchange opened by the consumer reaches `FULFILLED` or `DECLINED`.
 
-A provider MAY additionally push `CertificateFulfillmentStatus` events for intermediate Fulfillment states
-(`ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`).
+A provider MAY additionally push `CertificateFulfillmentStatus` events for the intermediate `PENDING` state.
 
 |                 |                                                                                                                                            |
 |-----------------|--------------------------------------------------------------------------------------------------------------------------------------------|
@@ -576,7 +570,7 @@ The Exchange object is the representation of a [=Certificate Exchange=]:
 |--------------|------------------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/exchange.schema.json)                                                                                   |
 | **Required** | - `exchangeId`: The identifier assigned to the [=Certificate Exchange=].                                                       |
-|              | - `status`: The exchange's current state: one of `ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`, `FULFILLED`, `DECLINED`, `ACCEPTED`, `REJECTED`. |
+|              | - `status`: The exchange's current state: one of `PENDING`, `FULFILLED`, `DECLINED`, `ACCEPTED`, `REJECTED`. |
 | **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns, once assigned. MUST be present when `status` is `FULFILLED`, `ACCEPTED`, or `REJECTED`. |
 |              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED` or `REJECTED`; for `REJECTED` it carries the errors reported by the consumer's acceptance feedback. |
 

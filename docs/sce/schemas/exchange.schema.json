@@ -14,8 +14,7 @@
     "status": {
       "type": "string",
       "enum": [
-        "ACKNOWLEDGED",
-        "CERTIFICATE_REQUESTED",
+        "PENDING",
         "FULFILLED",
         "DECLINED",
         "ACCEPTED",

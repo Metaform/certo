@@ -56,7 +56,7 @@ import java.util.stream.Stream;
 
 import static java.util.UUID.randomUUID;
 import static org.metaform.certo.common.util.TransactionSupport.afterCommit;
-import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATE_REQUESTED;
+import static org.metaform.certo.common.model.FulfillmentStatus.PENDING;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
 import static org.metaform.certo.common.web.ApiException.badRequest;
@@ -106,7 +106,7 @@ public class ProviderExchangeService {
     /**
      * Opens a consumer-initiated {@code Certificate Exchange}. A held certificate
      * covering the requested locations &rarr; immediate {@code FULFILLED}; otherwise
-     * {@code CERTIFICATE_REQUESTED} — the exchange waits for the backend to {@code addCertificate} the
+     * {@code PENDING} — the exchange waits for the backend to {@code addCertificate} the
      * certificate (then {@code fulfill}) or {@link #declineRequest decline} it.
      *
      * <p>Idempotent on (counterparty, {@code messageId}): a retried request repeats the pair and gets the
@@ -199,14 +199,14 @@ public class ProviderExchangeService {
 
     /**
      * Backend outcome — fulfills <b>one</b> waiting consumer-initiated exchange with a now-held certificate
-     * that covers it ({@code CERTIFICATE_REQUESTED → FULFILLED}) and pushes {@code FULFILLED} over
+     * that covers it ({@code PENDING → FULFILLED}) and pushes {@code FULFILLED} over
      * {@code flowId}. Rejected (409) if the exchange is not awaiting fulfillment, or no held certificate
      * covers the request yet.
      */
     public CertificateRequestStatus fulfill(String contextId, String exchangeId, String flowId) {
         requireFlow(flowId);
         var exchange = requireExchange(contextId, exchangeId);
-        if (exchange.fulfillmentStatus() != CERTIFICATE_REQUESTED) {
+        if (exchange.fulfillmentStatus() != PENDING) {
             throw ApiException.conflict("Exchange " + exchangeId + " is not awaiting fulfillment"
                                         + " (current fulfillment status: " + exchange.fulfillmentStatus() + ")");
         }
@@ -222,13 +222,13 @@ public class ProviderExchangeService {
 
     /**
      * UC1 — request-centric query: the consumer-initiated exchanges matching the filter (by default those
-     * still {@code CERTIFICATE_REQUESTED}), optionally narrowed by {@code certificateType} and
+     * still {@code PENDING}), optionally narrowed by {@code certificateType} and
      * {@code certifiedLocations}. Not part of the SCE specification.
      */
     @Transactional(readOnly = true)
     public CertificateRequestPage queryRequests(String contextId, CertificateRequestQuery query) {
         requireContextExists(contextId);
-        var status = (query != null && query.status() != null) ? query.status() : CERTIFICATE_REQUESTED;
+        var status = (query != null && query.status() != null) ? query.status() : PENDING;
         var type = query == null ? null : query.certificateType();
         var locations = (query == null || query.certifiedLocations() == null)
                 ? List.<String>of() : query.certifiedLocations();
@@ -249,7 +249,7 @@ public class ProviderExchangeService {
         // Pre-filter in the database on tenant/status/type, then apply the location-filter coverage rule
         // (every requested filter matched by some certified location) in memory — the waiting backlog per
         // tenant and type is small, and the AND-per-filter match does not reduce to a column predicate.
-        var spec = ExchangeSpecifications.pendingMatching(contextId, CERTIFICATE_REQUESTED,
+        var spec = ExchangeSpecifications.pendingMatching(contextId, PENDING,
                 certificate.certificateType(), List.of());
         var items = exchangeStore.findAll(spec, Sort.by("exchangeId")).stream()
                 .filter(exchange -> LocationFilter.coveredBy(exchange.requestedLocations(), certificate.certifiedLocations()))

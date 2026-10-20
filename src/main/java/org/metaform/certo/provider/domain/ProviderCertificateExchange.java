@@ -35,7 +35,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATE_REQUESTED;
+import static org.metaform.certo.common.model.FulfillmentStatus.PENDING;
 
 /**
  * The provider's record of a {@code Certificate Exchange} — one end-to-end
@@ -45,7 +45,7 @@ import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATE_REQU
  * states are immutable, and Acceptance may only be recorded once the exchange is {@code FULFILLED}.
  *
  * <p>A consumer-initiated request for a certificate the provider does not yet hold is opened as a
- * {@link #pending} exchange in {@code CERTIFICATE_REQUESTED} — awaiting a certification-authority
+ * {@link #pending} exchange in {@code PENDING} — awaiting a certification-authority
  * (backend) response — carrying the requested type and locations so a later issuance can be matched to
  * it. The certificate identity is unknown until the backend issues it, so {@code certificateId}/{@code
  * revision} are assigned at {@link #fulfill} time.
@@ -166,7 +166,7 @@ public class ProviderCertificateExchange {
 
     /**
      * Opens a consumer-initiated exchange that is waiting for the backend to issue a certificate: no
-     * certificate identity yet, status {@code CERTIFICATE_REQUESTED}, and the requested type/locations
+     * certificate identity yet, status {@code PENDING}, and the requested type/locations
      * retained so an issuance can be matched to it.
      */
     public static ProviderCertificateExchange pending(String exchangeId,
@@ -180,7 +180,7 @@ public class ProviderCertificateExchange {
                 null,
                 0,
                 counterpartyId,
-                CERTIFICATE_REQUESTED);
+                PENDING);
         exchange.requestedType = requestedType;
         exchange.requestedLocations = copyOrNull(requestedLocations);
         exchange.requestedAt = requestedAt;

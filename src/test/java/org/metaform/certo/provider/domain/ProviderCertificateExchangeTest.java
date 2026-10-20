@@ -15,7 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATE_REQUESTED;
+import static org.metaform.certo.common.model.FulfillmentStatus.PENDING;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
 
@@ -46,7 +46,7 @@ class ProviderCertificateExchangeTest {
     @Test
     void pending_opensInCertificationRequested_withRequestDetail() {
         var exchange = pending();
-        assertThat(exchange.fulfillmentStatus()).isEqualTo(CERTIFICATE_REQUESTED);
+        assertThat(exchange.fulfillmentStatus()).isEqualTo(PENDING);
         assertThat(exchange.certificateId()).isNull();
         assertThat(exchange.requestedType()).isEqualTo("iso9001");
         assertThat(exchange.requestedLocations()).containsExactly(new LocationFilter(null, "SITE-1", null));
@@ -56,8 +56,8 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void transitionFulfillment_rejectsAnIllegalMove() {
-        // CERTIFICATE_REQUESTED cannot go straight to ACKNOWLEDGED.
-        assertThatThrownBy(() -> pending().transitionFulfillment(FulfillmentStatus.ACKNOWLEDGED, null))
+        // PENDING cannot go straight to PENDING.
+        assertThatThrownBy(() -> pending().transitionFulfillment(FulfillmentStatus.PENDING, null))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
     }
 

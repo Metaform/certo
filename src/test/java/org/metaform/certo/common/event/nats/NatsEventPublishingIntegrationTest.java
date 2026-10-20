@@ -99,14 +99,10 @@ class NatsEventPublishingIntegrationTest {
 
             var exchangeId = "ex-" + UUID.randomUUID();
             var exchange = new ProviderCertificateExchange(exchangeId, tenantId, "cert-1", 1,
-                    "did:web:consumer", FulfillmentStatus.ACKNOWLEDGED);
+                    "did:web:consumer", FulfillmentStatus.PENDING);
             exchangeStore.save(exchange);
 
             var loaded = exchangeStore.findById(exchangeId).orElseThrow();
-            loaded.transitionFulfillment(FulfillmentStatus.ACKNOWLEDGED, null);
-            exchangeStore.save(loaded);
-
-            loaded = exchangeStore.findById(exchangeId).orElseThrow();
             loaded.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
             loaded.recordAcceptance(AcceptanceStatus.ACCEPTED, null);
             exchangeStore.save(loaded);
@@ -120,8 +116,7 @@ class NatsEventPublishingIntegrationTest {
             }
 
             assertThat(received).extracting(node -> node.get("type").asString()).containsExactly(
-                    "org.metaform.certo.CertificateExchangeRequested.v1",
-                    "org.metaform.certo.CertificateExchangeAcknowledged.v1",
+                    "org.metaform.certo.CertificateExchangePending.v1",
                     "org.metaform.certo.CertificateExchangeFulfilled.v1",
                     "org.metaform.certo.CertificateExchangeAccepted.v1");
 
@@ -133,7 +128,7 @@ class NatsEventPublishingIntegrationTest {
             assertThat(first.get("specversion").asString()).isEqualTo("1.0");
             assertThat(first.get("data").get("exchangeId").asString()).isEqualTo(exchangeId);
             assertThat(first.get("data").get("previousStatus")).isNull();
-            assertThat(received.get(1).get("data").get("previousStatus").asString()).isEqualTo("REQUESTED");
+            assertThat(received.get(1).get("data").get("previousStatus").asString()).isEqualTo("PENDING");
             assertThat(received.getLast().get("data").get("role").asString()).isEqualTo("PROVIDER");
             assertThat(received.getLast().get("data").get("phase").asString()).isEqualTo("ACCEPTANCE");
 
@@ -194,20 +189,20 @@ class NatsEventPublishingIntegrationTest {
                     .containsOnly(exchangeId);
 
             assertThat(received).extracting(node -> node.get("type").asString()).containsExactly(
-                    "org.metaform.certo.CertificateExchangeCertificateRequested.v1",
+                    "org.metaform.certo.CertificateExchangePending.v1",
                     "org.metaform.certo.CertificateExchangeFulfilled.v1",
                     "org.metaform.certo.CertificateExchangeRejected.v1");
 
             // Opened, not transitioned — and with no certificate identity to report yet.
             var opened = received.getFirst().get("data");
             assertThat(opened.get("previousStatus")).isNull();
-            assertThat(opened.get("status").asString()).isEqualTo("CERTIFICATE_REQUESTED");
+            assertThat(opened.get("status").asString()).isEqualTo("PENDING");
             assertThat(opened.get("certificateId")).isNull();
             assertThat(opened.get("revision")).isNull();
 
             // Fulfilment binds the certificate the backend issued.
             var fulfilled = received.get(1).get("data");
-            assertThat(fulfilled.get("previousStatus").asString()).isEqualTo("CERTIFICATE_REQUESTED");
+            assertThat(fulfilled.get("previousStatus").asString()).isEqualTo("PENDING");
             assertThat(fulfilled.get("certificateId").asString()).isEqualTo("cert-pull-1");
             assertThat(fulfilled.get("revision").asInt()).isEqualTo(4);
 
@@ -236,7 +231,7 @@ class NatsEventPublishingIntegrationTest {
             // standing between a rolled-back transition and a consumer being told it happened.
             new TransactionTemplate(transactionManager).execute(status -> {
                 exchangeStore.save(new ProviderCertificateExchange("ex-" + UUID.randomUUID(), "pctx-rollback",
-                        "cert-1", 1, "did:web:consumer", FulfillmentStatus.ACKNOWLEDGED));
+                        "cert-1", 1, "did:web:consumer", FulfillmentStatus.PENDING));
                 status.setRollbackOnly();
                 return null;
             });

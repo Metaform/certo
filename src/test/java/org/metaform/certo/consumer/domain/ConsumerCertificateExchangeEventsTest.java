@@ -30,10 +30,10 @@ class ConsumerCertificateExchangeEventsTest {
 
     @Test
     void openingRecordsTheInitialStatusAsTheConsumerSide() {
-        assertThat(eventsOf(newExchange(FulfillmentStatus.ACKNOWLEDGED))).singleElement().satisfies(event -> {
+        assertThat(eventsOf(newExchange(FulfillmentStatus.PENDING))).singleElement().satisfies(event -> {
             assertThat(event.role()).isEqualTo(ExchangeRole.CONSUMER);
             assertThat(event.phase()).isEqualTo(ExchangePhase.FULFILLMENT);
-            assertThat(event.status()).isEqualTo("ACKNOWLEDGED");
+            assertThat(event.status()).isEqualTo("PENDING");
             assertThat(event.previousStatus()).isNull();
             // From the consumer's vantage point the counterparty is the provider.
             assertThat(event.counterpartyId()).isEqualTo("did:web:provider");
@@ -42,12 +42,12 @@ class ConsumerCertificateExchangeEventsTest {
 
     @Test
     void mirroringAnUnchangedStatusRecordsNothing() {
-        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
+        var exchange = newExchange(FulfillmentStatus.PENDING);
         exchange.clearDomainEvents();
 
         // pollRequest() calls updateFulfillment on every poll, whether or not the provider moved.
-        exchange.updateFulfillment(FulfillmentStatus.ACKNOWLEDGED, null, null, null);
-        exchange.updateFulfillment(FulfillmentStatus.ACKNOWLEDGED, null, null, null);
+        exchange.updateFulfillment(FulfillmentStatus.PENDING, null, null, null);
+        exchange.updateFulfillment(FulfillmentStatus.PENDING, null, null, null);
 
         assertThat(eventsOf(exchange))
                 .as("a poll that reports no change must not publish an event")
@@ -56,13 +56,13 @@ class ConsumerCertificateExchangeEventsTest {
 
     @Test
     void mirroringARealChangeRecordsIt() {
-        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
+        var exchange = newExchange(FulfillmentStatus.PENDING);
         exchange.clearDomainEvents();
 
         exchange.updateFulfillment(FulfillmentStatus.FULFILLED, "cert-7", null, null);
 
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
-            assertThat(event.previousStatus()).isEqualTo("ACKNOWLEDGED");
+            assertThat(event.previousStatus()).isEqualTo("PENDING");
             assertThat(event.status()).isEqualTo("FULFILLED");
             // The certificate identity the provider has just disclosed rides along.
             assertThat(event.certificateId()).isEqualTo("cert-7");
@@ -86,7 +86,7 @@ class ConsumerCertificateExchangeEventsTest {
 
     @Test
     void clearingPreventsRepublicationOnASecondSave() {
-        var exchange = newExchange(FulfillmentStatus.ACKNOWLEDGED);
+        var exchange = newExchange(FulfillmentStatus.PENDING);
         assertThat(exchange.domainEvents()).isNotEmpty();
 
         exchange.clearDomainEvents();

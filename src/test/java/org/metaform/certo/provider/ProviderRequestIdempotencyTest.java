@@ -17,7 +17,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.metaform.certo.common.model.FulfillmentStatus.CERTIFICATE_REQUESTED;
+import static org.metaform.certo.common.model.FulfillmentStatus.PENDING;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 
 /**
@@ -25,7 +25,7 @@ import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
  * same message and returns the already-created exchange — whatever state it is in, terminal included. A
  * genuinely new request carries a new {@code messageId} and opens a new exchange, even for identical
  * content. Each test uses a unique {@code certificateType} so the shared context's H2 database keeps them
- * isolated (and none matches a seeded certificate, so every open enters {@code CERTIFICATE_REQUESTED}).
+ * isolated (and none matches a seeded certificate, so every open enters {@code PENDING}).
  */
 @SpringBootTest
 class ProviderRequestIdempotencyTest {
@@ -48,7 +48,7 @@ class ProviderRequestIdempotencyTest {
         var first = exchanges.requestCertificate(request, consumer(), Sce.PROTOCOL_ID);
         var second = exchanges.requestCertificate(request, consumer(), Sce.PROTOCOL_ID);
 
-        assertThat(first.fulfillmentStatus()).isEqualTo(CERTIFICATE_REQUESTED);
+        assertThat(first.fulfillmentStatus()).isEqualTo(PENDING);
         assertThat(second.exchangeId()).isEqualTo(first.exchangeId());
     }
 

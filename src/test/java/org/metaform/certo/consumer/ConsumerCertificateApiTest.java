@@ -174,7 +174,7 @@ class ConsumerCertificateApiTest {
         assertThat(initiate.statusCode()).isEqualTo(202);
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
-        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("CERTIFICATE_REQUESTED");
+        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("PENDING");
 
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
 

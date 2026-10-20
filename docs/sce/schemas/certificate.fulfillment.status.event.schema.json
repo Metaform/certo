@@ -24,8 +24,7 @@
               "properties": {
                 "status": {
                   "enum": [
-                    "ACKNOWLEDGED",
-                    "CERTIFICATE_REQUESTED",
+                    "PENDING",
                     "FULFILLED",
                     "DECLINED"
                   ]

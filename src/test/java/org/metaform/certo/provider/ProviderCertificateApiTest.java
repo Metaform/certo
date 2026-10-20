@@ -74,7 +74,7 @@ class ProviderCertificateApiTest {
         var result = mvc.perform(post("/exchanges")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"iso50001\",\"certifiedLocations\":[{\"siteId\":\"SITE-DECLINE\"}]}"))
-                .andExpect(jsonPath("$.status").value("CERTIFICATE_REQUESTED"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
@@ -263,7 +263,7 @@ class ProviderCertificateApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"iatf16949\",\"certifiedLocations\":[{\"siteId\":\"SITE-NEW-SITE\"}]}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("CERTIFICATE_REQUESTED"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
@@ -299,7 +299,7 @@ class ProviderCertificateApiTest {
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].exchangeId").value(exchangeId))
                 .andExpect(jsonPath("$.items[0].counterpartyId").exists())
-                .andExpect(jsonPath("$.items[0].status").value("CERTIFICATE_REQUESTED"));
+                .andExpect(jsonPath("$.items[0].status").value("PENDING"));
     }
 
     @Test
@@ -307,7 +307,7 @@ class ProviderCertificateApiTest {
         var result = mvc.perform(post("/exchanges")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"iso9001\",\"certifiedLocations\":[{\"siteId\":\"SITE-NEW-SITE\"}]}"))
-                .andExpect(jsonPath("$.status").value("CERTIFICATE_REQUESTED"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andReturn();
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
@@ -326,7 +326,7 @@ class ProviderCertificateApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"certificateType\":\"iso9001\",\"certifiedLocations\":[{\"siteId\":\"SITE-NEW-SITE\"}]}"))
                 .andReturn();
-        // CERTIFICATE_REQUESTED — not yet FULFILLED, and no certificate assigned yet.
+        // PENDING — not yet FULFILLED, and no certificate assigned yet.
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
