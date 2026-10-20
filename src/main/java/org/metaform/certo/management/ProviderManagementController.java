@@ -92,7 +92,7 @@ public class ProviderManagementController {
 
     /**
      * {@code POST /certificate-requests/query} (UC1) — browse/reconcile the backlog of consumer-initiated
-     * exchanges (by default those still {@code PENDING}), filtered by the request body.
+     * exchanges (by default those still {@code RECEIVED}), filtered by the request body.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:read')")
     @PostMapping(path = "/certificate-requests/query",

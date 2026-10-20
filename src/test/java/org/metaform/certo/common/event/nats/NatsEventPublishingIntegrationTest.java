@@ -99,7 +99,7 @@ class NatsEventPublishingIntegrationTest {
 
             var exchangeId = "ex-" + UUID.randomUUID();
             var exchange = new ProviderCertificateExchange(exchangeId, tenantId, "cert-1", 1,
-                    "did:web:consumer", FulfillmentStatus.PENDING);
+                    "did:web:consumer", FulfillmentStatus.RECEIVED);
             exchangeStore.save(exchange);
 
             var loaded = exchangeStore.findById(exchangeId).orElseThrow();
@@ -116,7 +116,7 @@ class NatsEventPublishingIntegrationTest {
             }
 
             assertThat(received).extracting(node -> node.get("type").asString()).containsExactly(
-                    "org.metaform.certo.CertificateExchangePending.v1",
+                    "org.metaform.certo.CertificateExchangeReceived.v1",
                     "org.metaform.certo.CertificateExchangeFulfilled.v1",
                     "org.metaform.certo.CertificateExchangeAccepted.v1");
 
@@ -128,7 +128,7 @@ class NatsEventPublishingIntegrationTest {
             assertThat(first.get("specversion").asString()).isEqualTo("1.0");
             assertThat(first.get("data").get("exchangeId").asString()).isEqualTo(exchangeId);
             assertThat(first.get("data").get("previousStatus")).isNull();
-            assertThat(received.get(1).get("data").get("previousStatus").asString()).isEqualTo("PENDING");
+            assertThat(received.get(1).get("data").get("previousStatus").asString()).isEqualTo("RECEIVED");
             assertThat(received.getLast().get("data").get("role").asString()).isEqualTo("PROVIDER");
             assertThat(received.getLast().get("data").get("phase").asString()).isEqualTo("ACCEPTANCE");
 
@@ -144,7 +144,7 @@ class NatsEventPublishingIntegrationTest {
      * <p>The provider-initiated publish covered above constructs its exchange directly in
      * {@code FULFILLED} when the certificate is already held, so it never announces the earlier states. A
      * consumer asking for a certificate the provider does not yet hold opens a
-     * {@link ProviderCertificateExchange#pending} exchange instead, which walks the state machine
+     * {@link ProviderCertificateExchange#received} exchange instead, which walks the state machine
      * properly — and that walk is what this asserts.
      *
      */
@@ -161,7 +161,7 @@ class NatsEventPublishingIntegrationTest {
             // The consumer asked for a certificate the provider does not hold yet: no certificate
             // identity, and the request retained so a later issuance can be matched to it.
             var exchangeId = "ex-" + UUID.randomUUID();
-            var pending = ProviderCertificateExchange.pending(exchangeId, tenantId,
+            var pending = ProviderCertificateExchange.received(exchangeId, tenantId,
                     "did:web:consumer", "iso9001", List.of(new LocationFilter(null, "SITE-SITE-1", null)),
                     OffsetDateTime.parse("2026-08-12T09:00:00Z"));
             exchangeStore.save(pending);
@@ -189,20 +189,20 @@ class NatsEventPublishingIntegrationTest {
                     .containsOnly(exchangeId);
 
             assertThat(received).extracting(node -> node.get("type").asString()).containsExactly(
-                    "org.metaform.certo.CertificateExchangePending.v1",
+                    "org.metaform.certo.CertificateExchangeReceived.v1",
                     "org.metaform.certo.CertificateExchangeFulfilled.v1",
                     "org.metaform.certo.CertificateExchangeRejected.v1");
 
             // Opened, not transitioned — and with no certificate identity to report yet.
             var opened = received.getFirst().get("data");
             assertThat(opened.get("previousStatus")).isNull();
-            assertThat(opened.get("status").asString()).isEqualTo("PENDING");
+            assertThat(opened.get("status").asString()).isEqualTo("RECEIVED");
             assertThat(opened.get("certificateId")).isNull();
             assertThat(opened.get("revision")).isNull();
 
             // Fulfilment binds the certificate the backend issued.
             var fulfilled = received.get(1).get("data");
-            assertThat(fulfilled.get("previousStatus").asString()).isEqualTo("PENDING");
+            assertThat(fulfilled.get("previousStatus").asString()).isEqualTo("RECEIVED");
             assertThat(fulfilled.get("certificateId").asString()).isEqualTo("cert-pull-1");
             assertThat(fulfilled.get("revision").asInt()).isEqualTo(4);
 
@@ -231,7 +231,7 @@ class NatsEventPublishingIntegrationTest {
             // standing between a rolled-back transition and a consumer being told it happened.
             new TransactionTemplate(transactionManager).execute(status -> {
                 exchangeStore.save(new ProviderCertificateExchange("ex-" + UUID.randomUUID(), "pctx-rollback",
-                        "cert-1", 1, "did:web:consumer", FulfillmentStatus.PENDING));
+                        "cert-1", 1, "did:web:consumer", FulfillmentStatus.RECEIVED));
                 status.setRollbackOnly();
                 return null;
             });

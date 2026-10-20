@@ -5,14 +5,14 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
-import static org.metaform.certo.common.model.FulfillmentStatus.PENDING;
+import static org.metaform.certo.common.model.FulfillmentStatus.RECEIVED;
 
 /** The Fulfillment-phase state machine (SCE exchange state machine). */
 class FulfillmentStatusTest {
 
     @Test
     void allowedTransitions_matchTheStateMachine() {
-        assertThat(PENDING.allowedNext()).containsExactlyInAnyOrder(FULFILLED, DECLINED);
+        assertThat(RECEIVED.allowedNext()).containsExactlyInAnyOrder(FULFILLED, DECLINED);
     }
 
     @Test
@@ -27,7 +27,7 @@ class FulfillmentStatusTest {
         // continues into the Acceptance phase; DECLINED is the one negative dead end.
         assertThat(DECLINED.isTerminal()).isTrue();
         assertThat(FULFILLED.isTerminal()).isFalse();
-        assertThat(PENDING.isTerminal()).isFalse();
+        assertThat(RECEIVED.isTerminal()).isFalse();
     }
 
     @Test

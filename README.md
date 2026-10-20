@@ -68,7 +68,7 @@ it (the grounds travel in the `errors` array).
 ## Domain model
 
 - A **Certificate Exchange** (`exchangeId`) is one end-to-end delivery interaction. It runs through a
-  provider-owned **Fulfillment** phase (`PENDING → FULFILLED`, or `DECLINED`)
+  provider-owned **Fulfillment** phase (`RECEIVED → FULFILLED`, or `DECLINED`)
   and then a consumer-owned **Acceptance** phase (a terminal `ACCEPTED`/`REJECTED` reached directly from
   `FULFILLED`). Acceptance feedback is optional — an exchange without it rests at `FULFILLED`.
 - A **Certificate Lifecycle** tracks the artifact itself (`AVAILABLE → WITHDRAWN`; revisions are not
@@ -84,7 +84,7 @@ The state machine is enforced: only legal transitions are allowed, terminal stat
 acceptance can only be reported once an exchange is `FULFILLED` (illegal attempts → `409 Conflict`; a
 re-report of the current state is a duplicate → `204`). A request for a certificate the provider **already
 holds** (covering every requested location filter) is fulfilled immediately (`FULFILLED`); otherwise the
-exchange waits in `PENDING` for the certification-authority backend. Exchange creation is
+exchange waits in `RECEIVED` for the certification-authority backend. Exchange creation is
 **idempotent on (counterparty, `messageId`)**: a retried request repeats the pair and gets the
 already-created exchange back — whatever state it is in — and a genuinely new request carries a new
 `messageId`.
@@ -110,7 +110,7 @@ curl -s -X POST "$B/search" -H 'Content-Type: application/json' \
 curl -s -X POST $B/exchanges -H 'Content-Type: application/json' \
   -d '{"messageId":"'$(uuidgen)'","certificateType":"iso9001","certifiedLocations":[{"siteId":"SITE00000003AYRE"}]}'
 
-# Request a not-yet-held certificate -> PENDING (waits for the backend)
+# Request a not-yet-held certificate -> RECEIVED (waits for the backend)
 curl -s -X POST $B/exchanges -H 'Content-Type: application/json' \
   -d '{"messageId":"'$(uuidgen)'","certificateType":"iso14001","certifiedLocations":[{"siteId":"SITE-NEW-PLANT"}]}'
 
@@ -198,7 +198,7 @@ B=http://localhost:8080
 CM=$B/management/v1/participant-contexts/$CPC/consumer   # CPC = the consumer tenant's participantContextId
 PM=$B/management/v1/participant-contexts/$PPC            # PPC = the provider tenant's participantContextId
 
-# Consumer opens a request for a not-yet-held certificate -> PENDING
+# Consumer opens a request for a not-yet-held certificate -> RECEIVED
 OPEN=$(curl -s -X POST $CM/certificate-requests -H 'Content-Type: application/json' \
   -d '{"messageId":"'$(uuidgen)'","protocol":"sce-1.0","providerId":"did:web:provider",
        "certificateType":"iso14001","certifiedLocations":[{"siteId":"SITE-PLANT-9"}],"flowId":"<flowId>"}')

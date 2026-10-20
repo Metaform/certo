@@ -68,9 +68,9 @@ class ExchangeEventTypeTest {
 
     @Test
     void subjectAndTypeAgreeOnTheStatusTheyName() {
-        assertThat(ExchangeEventType.of(FulfillmentStatus.PENDING))
-                .returns("events.certificate.exchange.pending", ExchangeEventType::subject)
-                .returns("org.metaform.certo.CertificateExchangePending.v1", ExchangeEventType::type);
+        assertThat(ExchangeEventType.of(FulfillmentStatus.RECEIVED))
+                .returns("events.certificate.exchange.received", ExchangeEventType::subject)
+                .returns("org.metaform.certo.CertificateExchangeReceived.v1", ExchangeEventType::type);
         assertThat(ExchangeEventType.of(AcceptanceStatus.REJECTED))
                 .returns("events.certificate.exchange.rejected", ExchangeEventType::subject)
                 .returns("org.metaform.certo.CertificateExchangeRejected.v1", ExchangeEventType::type);

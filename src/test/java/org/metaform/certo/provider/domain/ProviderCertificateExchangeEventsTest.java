@@ -30,12 +30,12 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void openingRecordsTheInitialStatusWithNoPredecessor() {
-        var events = eventsOf(newExchange(FulfillmentStatus.PENDING));
+        var events = eventsOf(newExchange(FulfillmentStatus.RECEIVED));
 
         assertThat(events).singleElement().satisfies(event -> {
             assertThat(event.role()).isEqualTo(ExchangeRole.PROVIDER);
             assertThat(event.phase()).isEqualTo(ExchangePhase.FULFILLMENT);
-            assertThat(event.status()).isEqualTo("PENDING");
+            assertThat(event.status()).isEqualTo("RECEIVED");
             // The distinguishing mark of an opened exchange versus a transition into the same state.
             assertThat(event.previousStatus()).isNull();
             assertThat(event.exchangeId()).isEqualTo("ex-1");
@@ -47,13 +47,13 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void transitionRecordsBothEnds() {
-        var exchange = newExchange(FulfillmentStatus.PENDING);
+        var exchange = newExchange(FulfillmentStatus.RECEIVED);
         exchange.clearDomainEvents();
 
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
 
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
-            assertThat(event.previousStatus()).isEqualTo("PENDING");
+            assertThat(event.previousStatus()).isEqualTo("RECEIVED");
             assertThat(event.status()).isEqualTo("FULFILLED");
             assertThat(event.eventType().subject()).isEqualTo("events.certificate.exchange.fulfilled");
         });
@@ -61,7 +61,7 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void terminalTransitionCarriesItsErrors() {
-        var exchange = newExchange(FulfillmentStatus.PENDING);
+        var exchange = newExchange(FulfillmentStatus.RECEIVED);
         exchange.clearDomainEvents();
 
         exchange.transitionFulfillment(FulfillmentStatus.DECLINED, List.of(new StatusError("not our site")));
@@ -72,7 +72,7 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void fulfillRecordsOneEventCarryingTheNewlyBoundCertificate() {
-        var exchange = ProviderCertificateExchange.pending(
+        var exchange = ProviderCertificateExchange.received(
                 "ex-2", "pctx-1", "did:web:consumer", "iso9001", List.of(new LocationFilter(null, "SITE-1", null)), null);
         exchange.clearDomainEvents();
 
@@ -81,7 +81,7 @@ class ProviderCertificateExchangeEventsTest {
         // fulfill() delegates to transitionFulfillment, so exactly one event — not one per mutator.
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
             assertThat(event.status()).isEqualTo("FULFILLED");
-            assertThat(event.previousStatus()).isEqualTo("PENDING");
+            assertThat(event.previousStatus()).isEqualTo("RECEIVED");
             assertThat(event.certificateId()).isEqualTo("cert-9");
             assertThat(event.revision()).isEqualTo(2);
         });
@@ -89,11 +89,11 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void pendingExchangeReportsNoCertificateIdentityYet() {
-        var exchange = ProviderCertificateExchange.pending(
+        var exchange = ProviderCertificateExchange.received(
                 "ex-3", "pctx-1", "did:web:consumer", "iso9001", List.of(new LocationFilter(null, "SITE-1", null)), null);
 
         assertThat(eventsOf(exchange)).singleElement().satisfies(event -> {
-            assertThat(event.status()).isEqualTo("PENDING");
+            assertThat(event.status()).isEqualTo("RECEIVED");
             assertThat(event.certificateId()).isNull();
             // Revision is meaningless without a certificate; it must not leak a default 0.
             assertThat(event.revision()).isNull();
@@ -102,7 +102,7 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void acceptanceIsRecordedOnTheAcceptancePhase() {
-        var exchange = newExchange(FulfillmentStatus.PENDING);
+        var exchange = newExchange(FulfillmentStatus.RECEIVED);
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
         exchange.clearDomainEvents();
 
@@ -119,7 +119,7 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void aDuplicateAcceptanceReportRecordsNothing() {
-        var exchange = newExchange(FulfillmentStatus.PENDING);
+        var exchange = newExchange(FulfillmentStatus.RECEIVED);
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
         exchange.recordAcceptance(AcceptanceStatus.REJECTED, List.of(new StatusError("wrong scope")));
         exchange.clearDomainEvents();
@@ -132,17 +132,17 @@ class ProviderCertificateExchangeEventsTest {
 
     @Test
     void everyTransitionAccumulatesUntilDrained() {
-        var exchange = newExchange(FulfillmentStatus.PENDING);
+        var exchange = newExchange(FulfillmentStatus.RECEIVED);
         exchange.transitionFulfillment(FulfillmentStatus.FULFILLED, null);
 
         // A single save() must publish the whole trail, not just the last hop.
         assertThat(eventsOf(exchange)).extracting(CertificateExchangeStatusChanged::status)
-                .containsExactly("PENDING", "FULFILLED");
+                .containsExactly("RECEIVED", "FULFILLED");
     }
 
     @Test
     void clearingPreventsRepublicationOnASecondSave() {
-        var exchange = newExchange(FulfillmentStatus.PENDING);
+        var exchange = newExchange(FulfillmentStatus.RECEIVED);
         assertThat(exchange.domainEvents()).isNotEmpty();
 
         exchange.clearDomainEvents();

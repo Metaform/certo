@@ -44,7 +44,7 @@ class SecurityConsumerOutboundTest {
         provider.start();
         provider.enqueue(new MockResponse().setResponseCode(202)
                 .setHeader("Content-Type", "application/json")
-                .setBody("{\"exchangeId\":\"exch-out-1\",\"status\":\"PENDING\"}"));
+                .setBody("{\"exchangeId\":\"exch-out-1\",\"status\":\"RECEIVED\"}"));
         var providerBase = provider.url("/").toString();
 
         siglet = new MockWebServer();

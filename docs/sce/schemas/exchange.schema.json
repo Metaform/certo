@@ -14,7 +14,7 @@
     "status": {
       "type": "string",
       "enum": [
-        "PENDING",
+        "RECEIVED",
         "FULFILLED",
         "DECLINED",
         "ACCEPTED",

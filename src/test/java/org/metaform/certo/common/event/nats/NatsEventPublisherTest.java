@@ -44,7 +44,7 @@ class NatsEventPublisherTest {
                 "did:web:consumer",
                 "cert-1",
                 2,
-                "PENDING",
+                "RECEIVED",
                 "FULFILLED",
                 null,
                 OffsetDateTime.parse("2026-08-12T10:15:30Z"));

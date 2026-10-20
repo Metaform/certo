@@ -37,7 +37,7 @@ class ConsumerCertificateExchangeTest {
     @Test
     void updateFulfillment_adoptsACertificateIdWhenProvided_elseKeepsExisting() {
         var exchange = new ConsumerCertificateExchange("e", null, null,
-                FulfillmentStatus.PENDING, null, "pctx", "did");
+                FulfillmentStatus.RECEIVED, null, "pctx", "did");
 
         exchange.updateFulfillment(FulfillmentStatus.FULFILLED, "cert-new", null, null);
         assertThat(exchange.certificateId()).isEqualTo("cert-new");

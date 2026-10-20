@@ -393,7 +393,7 @@ public class ConsumerExchangeService {
         if (data == null || data.exchangeId() == null || data.status() == null) {
             throw badRequest("Fulfillment event is missing exchangeId or status");
         }
-        // PENDING is resource state, never an event: it is only entered at creation and reported in the
+        // RECEIVED is resource state, never an event: it is only entered at creation and reported in the
         // 201 response or via the exchange status endpoint.
         if (data.status() != FULFILLED && data.status() != DECLINED) {
             throw badRequest("Status " + data.status() + " cannot be pushed; a fulfillment event reports FULFILLED or DECLINED");

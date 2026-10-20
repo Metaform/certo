@@ -173,7 +173,7 @@ class ConsumerCertificateApiTest {
         assertThat(initiate.statusCode()).isEqualTo(202);
         var opened = mapper.readTree(initiate.body());
         var exchangeId = opened.get("exchangeId").asString();
-        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("PENDING");
+        assertThat(opened.get("fulfillmentStatus").asString()).isEqualTo("RECEIVED");
 
         assertThat(getAcceptanceStatus(exchangeId).statusCode()).isEqualTo(404);
 
@@ -335,7 +335,7 @@ class ConsumerCertificateApiTest {
 
     @Test
     void fulfillmentNotification_pendingIsNotAnEvent_badRequest() throws Exception {
-        // PENDING is resource state, only ever entered at creation and reported in the 201 response —
+        // RECEIVED is resource state, only ever entered at creation and reported in the 201 response —
         // a fulfillment event reports the outcome (FULFILLED or DECLINED).
         var event = """
                 {
@@ -344,7 +344,7 @@ class ConsumerCertificateApiTest {
                   "source": "did:web:provider",
                   "id": "22222222-2222-2222-2222-222222222223",
                   "time": "2025-05-04T07:30:00Z",
-                  "data": { "exchangeId": "exch-f-1", "status": "PENDING" }
+                  "data": { "exchangeId": "exch-f-1", "status": "RECEIVED" }
                 }
                 """;
         assertThat(postNotification(event).statusCode()).isEqualTo(400);

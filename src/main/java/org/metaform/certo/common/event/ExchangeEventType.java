@@ -24,7 +24,7 @@ import java.util.Map;
  */
 public enum ExchangeEventType {
 
-    PENDING(ExchangePhase.FULFILLMENT, "pending", "CertificateExchangePending"),
+    RECEIVED(ExchangePhase.FULFILLMENT, "received", "CertificateExchangeReceived"),
     FULFILLED(ExchangePhase.FULFILLMENT, "fulfilled", "CertificateExchangeFulfilled"),
     DECLINED(ExchangePhase.FULFILLMENT, "declined", "CertificateExchangeDeclined"),
 

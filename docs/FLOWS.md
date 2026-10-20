@@ -35,11 +35,11 @@ to pull **documents** (and re-pull the pinned record).
 stateDiagram-v2
     direction LR
     state "Fulfillment / provider-owned" as F {
-        [*] --> PENDING
+        [*] --> RECEIVED
         [*] --> FULFILLED
         [*] --> DECLINED
-        PENDING --> FULFILLED
-        PENDING --> DECLINED
+        RECEIVED --> FULFILLED
+        RECEIVED --> DECLINED
     }
     FULFILLED --> ACCEPTED: consumer verdict
     FULFILLED --> REJECTED: consumer verdict
@@ -91,7 +91,7 @@ sequenceDiagram
     alt A1 provider already holds a covering cert
         P-->>C: 201 Exchange {status FULFILLED, certificateId, revision}
     else otherwise provider must produce it
-        P-->>C: 201 Exchange {status PENDING}
+        P-->>C: 201 Exchange {status RECEIVED}
         Note over P: backend issues cert via mgmt API, each waiting exchange fulfilled per-exchange
         alt A2 consumer learns via push
             P->>C: POST /notifications, CertificateFulfillmentStatus FULFILLED (certificateId, revision)
@@ -115,7 +115,7 @@ sequenceDiagram
    declined exchange** (`status DECLINED`, still correlatable). Creation is **idempotent on
    (counterparty, `messageId`)** (see [E5](#flow-e--cross-cutting-rules)).
 2. **Become available** — a held certificate **covering every requested location filter** → `FULFILLED`
-   at once; otherwise `PENDING`, and the exchange waits for the certification-authority
+   at once; otherwise `RECEIVED`, and the exchange waits for the certification-authority
    backend (driven through the management API — see
    [Simplifications](#simplifications-not-protocol-limitations)). The consumer learns the outcome by
    **push** (A2) or **poll** (A3); a request the provider cannot (or will not) fulfill ends `DECLINED`
@@ -134,7 +134,7 @@ sequenceDiagram
 | #      | Variant                                                                                                           |
 |--------|-------------------------------------------------------------------------------------------------------------------|
 | **A1** | Provider already holds a covering cert → immediate `FULFILLED` → accepted                                         |
-| **A2** | Nothing held → `PENDING`; async fulfillment learned via **push** (`CertificateFulfillmentStatus`)   |
+| **A2** | Nothing held → `RECEIVED`; async fulfillment learned via **push** (`CertificateFulfillmentStatus`)   |
 | **A3** | Same, but the consumer learns fulfillment via **poll** (`GET /exchanges/{id}`)                                    |
 | **A4** | Backend declines → `DECLINED` with `errors[]` (business grounds and backend failures alike)                       |
 

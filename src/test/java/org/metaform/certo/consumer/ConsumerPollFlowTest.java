@@ -66,7 +66,7 @@ class ConsumerPollFlowTest {
 
     @Test
     void consumerInitiatedPull_pollForFulfillment_retrievesAndAccepts() throws Exception {
-        // Open a request for a not-yet-held certificate -> PENDING (awaiting backend).
+        // Open a request for a not-yet-held certificate -> RECEIVED (awaiting backend).
         var exchangeId = mapper.readTree(postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests",
                 "{\"protocol\":\"sce-1.0\",\"messageId\":\"" + java.util.UUID.randomUUID() + "\",\"providerId\":\"" + TestTenants.PROVIDER_DID
                         + "\",\"flowId\":\"flow-1\",\"certificateType\":\"iso14001\",\"certifiedLocations\":[{\"siteId\":\"SITE-POLL-1\"}]}").body())

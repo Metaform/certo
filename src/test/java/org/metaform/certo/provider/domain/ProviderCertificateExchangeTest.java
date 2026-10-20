@@ -15,15 +15,15 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.metaform.certo.common.model.FulfillmentStatus.PENDING;
+import static org.metaform.certo.common.model.FulfillmentStatus.RECEIVED;
 import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
 
 /** The provider exchange aggregate: the SCE state machine, liveness, and the messageId idempotency key. */
 class ProviderCertificateExchangeTest {
 
-    private static ProviderCertificateExchange pending() {
-        return ProviderCertificateExchange.pending("exch-1", "pctx-p", "did:web:c",
+    private static ProviderCertificateExchange received() {
+        return ProviderCertificateExchange.received("exch-1", "pctx-p", "did:web:c",
                 "iso9001", List.of(new LocationFilter(null, "SITE-1", null)), OffsetDateTime.parse("2026-01-01T00:00:00Z"));
     }
 
@@ -45,8 +45,8 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void pending_opensInCertificationRequested_withRequestDetail() {
-        var exchange = pending();
-        assertThat(exchange.fulfillmentStatus()).isEqualTo(PENDING);
+        var exchange = received();
+        assertThat(exchange.fulfillmentStatus()).isEqualTo(RECEIVED);
         assertThat(exchange.certificateId()).isNull();
         assertThat(exchange.requestedType()).isEqualTo("iso9001");
         assertThat(exchange.requestedLocations()).containsExactly(new LocationFilter(null, "SITE-1", null));
@@ -56,14 +56,14 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void transitionFulfillment_rejectsAnIllegalMove() {
-        // PENDING cannot go straight to PENDING.
-        assertThatThrownBy(() -> pending().transitionFulfillment(FulfillmentStatus.PENDING, null))
+        // RECEIVED cannot go straight to RECEIVED.
+        assertThatThrownBy(() -> received().transitionFulfillment(FulfillmentStatus.RECEIVED, null))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
     }
 
     @Test
     void fulfill_bindsCertificateAndTransitionsToFulfilled() {
-        var exchange = pending();
+        var exchange = received();
         exchange.fulfill("cert-9", 3);
         assertThat(exchange.fulfillmentStatus()).isEqualTo(FULFILLED);
         assertThat(exchange.certificateId()).isEqualTo("cert-9");
@@ -72,7 +72,7 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void fulfill_rejectsABlankCertificateId() {
-        assertThatThrownBy(() -> pending().fulfill(" ", 1))
+        assertThatThrownBy(() -> received().fulfill(" ", 1))
                 .isInstanceOf(NullPointerException.class).hasMessageContaining("certificateId");
     }
 
@@ -87,13 +87,13 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void recordAcceptance_isRejectedBeforeAFulfillmentOutcome() {
-        assertThatThrownBy(() -> pending().recordAcceptance(AcceptanceStatus.ACCEPTED, null))
+        assertThatThrownBy(() -> received().recordAcceptance(AcceptanceStatus.ACCEPTED, null))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
     }
 
     @Test
     void recordAcceptance_isRejectedAfterADeclinedOutcome() {
-        var declined = pending();
+        var declined = received();
         declined.transitionFulfillment(DECLINED, List.of(new StatusError("declined")));
         assertThatThrownBy(() -> declined.recordAcceptance(AcceptanceStatus.REJECTED, List.of(new StatusError("no"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT));
@@ -117,10 +117,10 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void isLive_trueUntilAnyPhaseGoesTerminal() {
-        assertThat(pending().isLive()).isTrue();                 // in-progress fulfillment
+        assertThat(received().isLive()).isTrue();                 // in-progress fulfillment
         assertThat(held().isLive()).isTrue();                    // FULFILLED, not yet accepted
 
-        var declined = pending();
+        var declined = received();
         declined.transitionFulfillment(DECLINED, List.of(new StatusError("d")));
         assertThat(declined.isLive()).isFalse();                 // terminal fulfillment
 
@@ -135,7 +135,7 @@ class ProviderCertificateExchangeTest {
     void messageId_isRetainedThroughTerminalStates() {
         // The creation-idempotency key is never released: a repeat of the same message resolves to this
         // exchange even after a terminal outcome (a new request carries a new messageId).
-        var exchange = pending();
+        var exchange = received();
         exchange.assignMessageId("4c0e8e2e-0000-4000-8000-000000000001");
 
         exchange.transitionFulfillment(DECLINED, List.of(new StatusError("d")));
@@ -146,7 +146,7 @@ class ProviderCertificateExchangeTest {
 
     @Test
     void errorLists_areCopiedIn_soCallerMutationDoesNotLeak() {
-        var exchange = pending();
+        var exchange = received();
         var errors = new ArrayList<>(List.of(new StatusError("first")));
         exchange.transitionFulfillment(DECLINED, errors);
         errors.add(new StatusError("added-after"));                   // mutate the caller's list
