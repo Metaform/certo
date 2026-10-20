@@ -154,7 +154,7 @@ public class ConsumerExchangeService {
         // this exchange) routes to the right adapter — keyed by exchangeId, counterparty = the provider.
         if (version != ProtocolVersion.NATIVE) {
             bindings.record(new ExchangeBinding(result.exchangeId(), result.certificateId(), version,
-                    CounterpartyRole.PROVIDER, providerBpn, providerDid, null));
+                    CounterpartyRole.PROVIDER, providerDid, null));
         }
         return exchange;
     }
@@ -339,37 +339,11 @@ public class ConsumerExchangeService {
     }
 
     /**
-     * Receives a certificate pushed by an external provider through a protocol adapter (e.g. a v2.4.0
-     * push), as an embedded-document {@code CREATED}: records the lifecycle view + the inline content on the
-     * exchange and emits the event, for a client to later {@code retrieve} (returning the inline content) and
-     * {@code accept}. The {@code exchangeId} is supplied by the adapter — a consumer-local surrogate, since a
-     * source protocol without an exchange concept cannot provide the provider-assigned one.
-     */
-    @Transactional
-    public void receivePushedCertificate(String exchangeId, CertificateRecord certificate, VerifiedRequestContext requestContext) {
-        applyLifecycle(new LifecycleStatusData(CREATED, exchangeId, certificate), requestContext);
-    }
-
-    /**
-     * Receives an <b>availability notice</b> from an external provider through a protocol adapter (a v2.4.0
-     * {@code /companycertificate/available}): records the by-reference certificate as a {@code CREATED}
-     * exchange and emits the event, for a client to later {@code retrieve} — which, because no content was
-     * embedded, pulls it from the provider over a flow. The {@code certificate} carries only what the notice
-     * stated (id, type, locations); the full record is filled in on retrieval. The {@code exchangeId} is a
-     * consumer-local surrogate minted by the adapter (v2.4.0 has no exchange concept).
-     */
-    @Transactional
-    public void receiveAvailableCertificate(String exchangeId, CertificateRecord certificate, VerifiedRequestContext requestContext) {
-        applyLifecycle(new LifecycleStatusData(CREATED, exchangeId, certificate), requestContext);
-    }
-
-    /**
-     * Proactive discovery pull (CX-0135 v2 asset-based pull, consumer-initiated with no prior notification):
-     * pulls a partner's certificate over the caller-supplied live {@code flowId} in the stated
-     * {@code protocolVersion}, records it in the tenant's known-certificate view, and returns it for display.
-     * The flow (EDC catalog / negotiation / transfer) is established upstream by the caller; this performs the
-     * data-plane read and up-conversion. Used to satisfy a "retrieve &amp; display a partner's certificate"
-     * without a push.
+     * Proactive discovery pull (consumer-initiated with no prior notification): pulls a partner's certificate
+     * over the caller-supplied live {@code flowId} in the stated {@code protocolVersion}, records it in the
+     * tenant's known-certificate view, and returns it for display. The flow is established upstream by the
+     * caller; this performs the data-plane read. Used to satisfy a "retrieve &amp; display a partner's
+     * certificate" without a push.
      */
     // Non-transactional across the outbound call: pull outside any transaction, then record the known
     // certificate in its own short transaction, so no DB connection is held across the provider read.

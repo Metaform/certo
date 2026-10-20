@@ -11,14 +11,13 @@ import org.metaform.certo.protocol.ProtocolVersion;
  *   <li>{@code lifecycleStatus} — {@code CREATED} (default; opens an exchange, the consumer accepts),
  *       {@code MODIFIED} or {@code WITHDRAWN} (one-way, no exchange). The artifact state change itself is a
  *       separate operation (revise / withdraw); this call only notifies.</li>
- *   <li>{@code protocolVersion} — {@code 3.0.0} (default; the configured native consumer) or {@code 2.4.0}
- *       (an older consumer that must be named);</li>
+ *   <li>{@code protocolVersion} — {@code 3.0.0} (default; the configured native consumer);</li>
  *   <li>{@code embedded} — full certificate content inline ({@code true}) or by reference ({@code false},
  *       default), so the consumer pulls it (ignored for {@code WITHDRAWN});</li>
  *   <li>{@code revision} — which revision to publish; {@code 0} (default) means the latest;</li>
- *   <li>{@code consumerBpn} / {@code consumerDid} — the target consumer's BPN (message subject / v2.4.0
- *       receiver) and DID (the token audience). Both name the counterparty; the DID is supplied here so no
- *       component has to resolve it from the BPN.</li>
+ *   <li>{@code consumerBpn} / {@code consumerDid} — the target consumer's BPN (message subject) and DID
+ *       (the token audience). Both name the counterparty; the DID is supplied here so no component has to
+ *       resolve it from the BPN.</li>
  *   <li>{@code flowId} — the live siglet flow for this push. <b>Required</b>; the token and the counterparty
  *       endpoint are resolved from the siglet cache keyed by it.</li>
  *   <li>{@code idempotencyKey} — optional. A stable key the caller reuses across retries of the same logical

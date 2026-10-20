@@ -3,7 +3,7 @@ package org.metaform.certo.common.http;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Timeouts and retry policy for the shared outbound {@link okhttp3.OkHttpClient} (all v3/v2.4.0 adapters,
+ * Timeouts and retry policy for the shared outbound {@link okhttp3.OkHttpClient} (all protocol adapters,
  * routed through {@link RetryingHttpClient}). Timeout values are in seconds; a {@code 0} disables that
  * timeout (OkHttp's convention). The retry defaults mirror Eclipse Dataspace Components' {@code EdcHttpClient}
  * (5 retries, 500&nbsp;ms&ndash;10&nbsp;s exponential backoff).

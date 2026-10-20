@@ -44,8 +44,8 @@ public class DispatchingCertificateRetriever implements CertificateRetriever {
 
     @Override
     public RetrievedCertificate fetch(String certificateId, OutboundCall call) throws IOException {
-        // Correlate the exchange's binding on the verified peer DID (the provider), exactly as inbound v2.4.0
-        // status does; a v2.4.0 by-reference exchange resolves to the 2.4.0 retriever, everything else to native.
+        // Correlate the exchange's binding on the verified peer DID (the provider): a retrieval is keyed by
+        // certificateId, not exchangeId. A bound exchange resolves to its version's retriever, else native.
         var version = bindings.findByCertificateIdAndPeerDid(certificateId, call.counterpartyDid())
                 .map(binding -> binding.version())
                 .orElse(ProtocolVersion.NATIVE);

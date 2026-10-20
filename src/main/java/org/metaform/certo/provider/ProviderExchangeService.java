@@ -250,14 +250,6 @@ public class ProviderExchangeService {
                         "No held certificate covers the request for exchange " + exchangeId + " yet"));
         exchange.fulfill(certificate.certificateId(), certificate.latestRevision().revision());
         exchangeStore.save(exchange);
-        // Backfill a non-native binding's certificateId (unknown while the request was pending) so a v2.4.0
-        // consumer's later acceptance /status correlates back to this exchange.
-        bindingStore.resolve(exchangeId, CounterpartyRole.CONSUMER)
-                .filter(binding -> binding.certificateId() == null)
-                .ifPresent(binding -> {
-                    binding.assignCertificateId(certificate.certificateId());
-                    bindingStore.save(binding);
-                });
         afterCommit(() -> pushFulfillmentStatus(exchange, flowId));
         return toRequestStatus(exchange);
     }
@@ -317,18 +309,18 @@ public class ProviderExchangeService {
     /**
      * Provider-initiated recovery of a consumer's acceptance decision (CX-0135 &sect;4.3.3): GETs the
      * consumer's acceptance-status over a fresh {@code flowId} and records any verdict on the exchange — the
-     * pull fallback for a lost best-effort acceptance push, avoiding a durable outbox. Only a native v3
-     * consumer exposes this endpoint (a v2.4.0 consumer pushes {@code /status}), so a non-native binding is
-     * rejected. Idempotent: re-recording the same verdict is a no-op.
+     * pull fallback for a lost best-effort acceptance push, avoiding a durable outbox. Only a native
+     * consumer exposes this endpoint, so a non-native binding is rejected. Idempotent: re-recording the same
+     * verdict is a no-op.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ExchangeView pollAcceptance(String contextId, String exchangeId, String flowId) {
         requireFlow(flowId);
         var exchange = requireExchange(contextId, exchangeId);
-        // Polling is a v3-only capability (there is no v2.4.0 acceptance-status pull — see AcceptancePoller),
-        // so it applies only to a native/v3 consumer: a non-native binding means the counterparty can't be polled.
+        // Polling applies only to a native consumer: a non-native binding means the counterparty does not
+        // expose the acceptance-status pull.
         if (!isNativeConsumer(exchangeId)) {
-            throw ApiException.conflict("Cannot poll acceptance for a v2.4.0 consumer (it pushes /status)");
+            throw ApiException.conflict("Cannot poll acceptance for a non-native consumer");
         }
         var call = new OutboundCall(requireContext(contextId),
                 exchange.counterpartyBpn(), exchange.counterpartyDid(), flowId);
@@ -374,17 +366,6 @@ public class ProviderExchangeService {
             pending.add(prepareAcceptance(event.data(), caller, codec.dedupKey(event)));
         }
         EventBatch.applyDeduplicated(pending, eventStore);
-    }
-
-    /**
-     * Records a single acceptance delivered over a <b>non-CloudEvent</b> protocol (the v2.4.0 {@code /status}
-     * adapter), with an adapter-supplied {@code dedupKey}. Avoids the v2.4.0 path having to synthesize a
-     * CloudEvent only for this service to decode it back. Same tenant + counterparty guard and dedup as the
-     * CloudEvent path.
-     */
-    @Transactional
-    public void recordAcceptance(AcceptanceStatusData data, String dedupKey, VerifiedRequestContext caller) {
-        EventBatch.applyDeduplicated(List.of(prepareAcceptance(data, caller, dedupKey)), eventStore);
     }
 
     /**
@@ -473,7 +454,7 @@ public class ProviderExchangeService {
         }
 
         var target = new ExchangeBinding(exchangeId, certificateId, version, CounterpartyRole.CONSUMER,
-                req.consumerBpn(), req.consumerDid(), null);
+                req.consumerDid(), null);
         // Persist a newly-opened exchange and its binding in one transaction, then notify once committed so the
         // DB connection is not held across the outbound push. Reuse skips persist (the existing row stands);
         // a concurrent duplicate open loses the liveDedupKey unique constraint and its transaction rolls back.

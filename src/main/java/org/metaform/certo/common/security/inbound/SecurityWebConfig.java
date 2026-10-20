@@ -5,8 +5,8 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Registers {@link SecurityTokenInterceptor} on the CCM protocol paths only (both v3.0.0 and v2.4.0),
- * explicitly excluding the management surface and actuator. Security is always on.
+ * Registers {@link SecurityTokenInterceptor} on the protocol paths only, explicitly excluding the
+ * management surface and actuator. Security is always on.
  */
 @Configuration
 public class SecurityWebConfig implements WebMvcConfigurer {
@@ -24,9 +24,7 @@ public class SecurityWebConfig implements WebMvcConfigurer {
                         // v3.0.0 (ccm300)
                         "/certificate-requests/**", "/certificates/**", "/documents/**",
                         "/certificate-notifications", "/certificate-acceptance-notifications",
-                        "/certificate-acceptance-status/**",
-                        // v2.4.0 (ccm240)
-                        "/companycertificate/**")
+                        "/certificate-acceptance-status/**")
                 .excludePathPatterns("/management/**", "/actuator/**", "/error");
     }
 }

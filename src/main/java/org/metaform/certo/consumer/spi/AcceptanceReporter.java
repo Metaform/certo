@@ -10,8 +10,7 @@ import java.util.List;
  * Outbound port for consumer &rarr; provider acceptance reporting. The {@code @Primary} implementation is
  * {@code org.metaform.certo.protocol.DispatchingAcceptanceReporter}, which routes by protocol version to a
  * per-version {@code ProtocolAcceptanceReporter}: v3 ({@code org.metaform.certo.protocol.ccm300.consumer.Ccm300Reporter})
- * sends a v3 CloudEvent, v2.4.0 ({@code org.metaform.certo.protocol.ccm240.consumer.Ccm240Reporter})
- * posts to the v2.4.0 {@code /companycertificate/status}.
+ * sends a v3 CloudEvent.
  */
 public interface AcceptanceReporter {
 

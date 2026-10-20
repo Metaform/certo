@@ -32,18 +32,9 @@ public interface ExchangeBindingStore extends JpaRepository<ExchangeBinding, Str
         return findById(exchangeId).filter(binding -> binding.role() == role);
     }
 
-    /** The secondary correlation: a v2.4.0 {@code documentId} (== certificateId) + the peer's verified DID. */
-    Optional<ExchangeBinding> findByCertificateIdAndPeerDid(String certificateId, String peerDid);
-
     /**
-     * Resolves the v3 {@code exchangeId} for a {@code certificateId} reported by the peer with the given
-     * <b>verified</b> DID. Keying on the verified identity (not a self-declared header BPN) prevents a caller
-     * from resolving another counterparty's exchange.
+     * The secondary correlation, for retrieval dispatch: a retrieval is keyed by {@code certificateId} rather
+     * than {@code exchangeId}, so the binding is resolved by the certificate + the peer's <b>verified</b> DID.
      */
-    default Optional<String> exchangeFor(String certificateId, String peerDid) {
-        if (certificateId == null || peerDid == null) {
-            return Optional.empty();
-        }
-        return findByCertificateIdAndPeerDid(certificateId, peerDid).map(ExchangeBinding::exchangeId);
-    }
+    Optional<ExchangeBinding> findByCertificateIdAndPeerDid(String certificateId, String peerDid);
 }

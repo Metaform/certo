@@ -14,7 +14,7 @@ import java.util.List;
  * per protocol version registers itself under {@link #version()}; {@link DispatchingAcceptanceReporter}
  * selects the right one from the exchange's {@link ExchangeBinding} and delegates. Each adapter renders its
  * own wire format; the token and provider endpoint are resolved from the siglet cache via the
- * {@link OutboundCall}'s flow. The v2.4.0 adapter uses the binding's per-exchange detail; the v3 adapter does not.
+ * {@link OutboundCall}'s flow. The {@code binding} carries per-exchange detail for adapters that need it.
  */
 public interface ProtocolAcceptanceReporter {
 

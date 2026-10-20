@@ -10,8 +10,7 @@ import java.util.List;
 /**
  * The <b>version-neutral</b> domain representation of a certificate — the internal model the core works
  * in, independent of any wire protocol version. Each protocol adapter maps it to/from its wire shape:
- * v3 via {@code Ccm300CertificateCodec} (&harr; {@code Ccm300Certificate}), v2.4.0 via
- * {@code Ccm240Translation} (&harr; {@code BusinessPartnerCertificate31}). Every certificate wire boundary
+ * v3 via {@code Ccm300CertificateCodec} (&harr; {@code Ccm300Certificate}). Every certificate wire boundary
  * crosses a codec — retrieval, search, the consumer pull, and the lifecycle notification (the last via
  * {@code Ccm300LifecycleStatus}) — so this type never serializes to the wire directly.
  *

@@ -28,10 +28,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * The provider&rarr;consumer notifier is multiplexed: the {@code @Primary} {@link ConsumerNotifier} is
  * {@link DispatchingConsumerNotifier}, which reads each exchange's {@link ExchangeBinding#version()} and routes
- * to that version's adapter. This proves the routing end-to-end: two exchanges whose bindings differ only in
- * protocol version, notified through the <em>same</em> {@code ConsumerNotifier}, reach different wire endpoints —
- * v3 the CloudEvents {@code /certificate-notifications}, v2.4.0 the message-envelope {@code /companycertificate/available}.
- * A missing binding falls back to {@link ProtocolVersion#NATIVE} (v3), covered by the no-binding case.
+ * to that version's adapter. This proves the routing end-to-end: a bound exchange, notified through the
+ * {@code ConsumerNotifier}, reaches its version's wire endpoint — v3 the CloudEvents
+ * {@code /certificate-notifications}. A missing binding falls back to {@link ProtocolVersion#NATIVE} (v3),
+ * covered by the no-binding case.
  */
 @SpringBootTest
 @Import(MockSigletConfig.class)
@@ -66,13 +66,12 @@ class DispatchingConsumerNotifierRoutingTest {
     void tearDown() throws Exception {
         consumer.shutdown();
         bindings.deleteById("exch-route-v3");
-        bindings.deleteById("exch-route-v240");
     }
 
     @Test
     void v3BoundExchange_routesToTheCloudEventsEndpoint() throws Exception {
         bindings.record(new ExchangeBinding("exch-route-v3", "cert-route-v3", ProtocolVersion.CCM_3_0_0,
-                CounterpartyRole.CONSUMER, TestTenants.CONSUMER_BPN, TestTenants.CONSUMER_DID, null));
+                CounterpartyRole.CONSUMER, TestTenants.CONSUMER_DID, null));
         consumer.enqueue(new MockResponse().setResponseCode(204));
 
         var delivered = notifier.notifyFulfillment(
@@ -83,23 +82,6 @@ class DispatchingConsumerNotifierRoutingTest {
         assertThat(request).isNotNull();
         assertThat(request.getPath()).isEqualTo("/certificate-notifications");
         assertThat(request.getHeader("Content-Type")).startsWith("application/cloudevents+json");
-    }
-
-    @Test
-    void v240BoundExchange_routesToTheMessageEnvelopeEndpoint() throws Exception {
-        bindings.record(new ExchangeBinding("exch-route-v240", "cert-route-v240", ProtocolVersion.CCM_2_4_0,
-                CounterpartyRole.CONSUMER, TestTenants.CONSUMER_BPN, TestTenants.CONSUMER_DID, "msg-1"));
-        consumer.enqueue(new MockResponse().setResponseCode(200));
-
-        var delivered = notifier.notifyFulfillment(
-                new FulfillmentStatusData("exch-route-v240", "cert-route-v240", FulfillmentStatus.FULFILLED, null), call);
-
-        assertThat(delivered).isTrue();
-        RecordedRequest request = consumer.takeRequest(5, TimeUnit.SECONDS);
-        assertThat(request).isNotNull();
-        assertThat(request.getPath()).isEqualTo("/companycertificate/available");
-        // Not a CloudEvent — the v2.4.0 adapter renders the message-envelope JSON.
-        assertThat(request.getHeader("Content-Type")).startsWith("application/json");
     }
 
     @Test

@@ -11,12 +11,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * change to the core.
  *
  * <p>The <b>wire form</b> (used on the management API and to key {@link ExchangeBinding}s) is the version
- * number, e.g. {@code "2.4.0"} — not the enum name; JSON binds via {@link #wireValue()} / {@link #fromWire}.
+ * number, e.g. {@code "3.0.0"} — not the enum name; JSON binds via {@link #wireValue()} / {@link #fromWire}.
  */
 public enum ProtocolVersion {
-
-    /** CX-0135 v2.4.0 — the message-envelope {@code /companycertificate/*} protocol. */
-    CCM_2_4_0("2.4.0"),
 
     /** CX-0135 v3.0.0 — the CloudEvents protocol the canonical model is currently expressed in. */
     CCM_3_0_0("3.0.0");
@@ -30,7 +27,7 @@ public enum ProtocolVersion {
         this.wireValue = wireValue;
     }
 
-    /** The version number as it appears on the wire / management API, e.g. {@code "2.4.0"}. */
+    /** The version number as it appears on the wire / management API, e.g. {@code "3.0.0"}. */
     @JsonValue
     public String wireValue() {
         return wireValue;

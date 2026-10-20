@@ -12,7 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.io.IOException;
 
 /**
- * The shared best-effort outbound JSON POST used by the notification/report adapters (v3 and v2.4.0):
+ * The shared best-effort outbound JSON POST used by the notification/report adapters:
  * serialize a payload to JSON, POST it (with an optional bearer token) over the retrying HTTP client, and
  * return {@code true} on a {@code 2xx}. Every failure — an unserializable payload, a malformed URL, a non-2xx
  * response, or a transport error — is logged with the caller's {@code context} and returns {@code false}; the

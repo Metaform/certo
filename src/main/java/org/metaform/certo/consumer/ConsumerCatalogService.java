@@ -30,20 +30,6 @@ public class ConsumerCatalogService {
     }
 
     /**
-     * The next revision to assign to a certificate pushed over a protocol that carries no revision (v2.4.0):
-     * one more than the tenant's currently-known revision for {@code certificateId}, or {@code 1} if the tenant
-     * has not seen it before. A protocol adapter that mints a <b>stable</b> {@code certificateId} for a
-     * re-pushed certificate uses this so an updated push becomes a new <em>revision</em> of the same known
-     * certificate rather than a duplicate record.
-     */
-    @Transactional(readOnly = true)
-    public int nextPushedRevision(String contextId, String certificateId) {
-        return certificateStore.findByParticipantContextIdAndCertificateId(contextId, certificateId)
-                .map(c -> (c.revision() == null ? 1 : c.revision()) + 1)
-                .orElse(1);
-    }
-
-    /**
      * Creates or updates the <b>calling tenant's</b> lifecycle view of the certificate from a lifecycle
      * event. Runs inside the caller's transaction; the {@code (participantContextId, certificateId)} unique
      * constraint serializes concurrent creates. Updates mutate the managed {@code certifiedLocations}

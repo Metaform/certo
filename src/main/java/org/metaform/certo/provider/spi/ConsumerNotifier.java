@@ -8,7 +8,7 @@ import org.metaform.certo.protocol.domain.ExchangeBinding;
 /**
  * Outbound port for provider &rarr; consumer notifications. The {@code @Primary} implementation
  * ({@code DispatchingConsumerNotifier}) routes by protocol version to per-version adapters:
- * v3 {@code Ccm300Notifier}, v2.4.0 {@code Ccm240Notifier}.
+ * v3 {@code Ccm300Notifier}.
  */
 public interface ConsumerNotifier {
 

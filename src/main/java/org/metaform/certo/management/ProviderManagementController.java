@@ -156,8 +156,8 @@ public class ProviderManagementController {
 
     /**
      * {@code POST /certificates/{id}/publish} — provider-initiated push of a held certificate. The
-     * {@link PublishRequest} body selects the protocol {@code protocolVersion} (default {@code 3.0.0} to the native
-     * consumer; {@code 2.4.0} to a caller-named consumer), whether the certificate is sent {@code embedded}
+     * {@link PublishRequest} body selects the protocol {@code protocolVersion} (default {@code 3.0.0}, the
+     * native consumer), whether the certificate is sent {@code embedded}
      * (full content inline) or by reference, and the {@code revision}. An empty body publishes the latest
      * revision to the native consumer, by reference.
      */

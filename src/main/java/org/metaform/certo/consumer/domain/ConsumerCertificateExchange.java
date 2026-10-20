@@ -93,7 +93,7 @@ public class ConsumerCertificateExchange {
     private boolean acceptanceReported;
 
     /**
-     * The certificate content when it arrived <b>inline</b> (an embedded v2.4.0 push), retained so a later
+     * The certificate content when it arrived <b>inline</b> (an embedded push), retained so a later
      * management-driven {@code retrieve}/{@code accept} can evaluate it — there is no pull endpoint to
      * re-fetch it from. Null for by-reference exchanges, which are (re-)fetched from the provider on demand.
      */

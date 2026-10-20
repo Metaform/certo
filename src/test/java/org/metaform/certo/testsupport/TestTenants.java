@@ -23,7 +23,7 @@ public final class TestTenants {
     public static final String CONSUMER_BPN = "BPNL0000000002CD";
     public static final String CONSUMER_SOURCE = "urn:bpn:BPNL0000000002CD";
 
-    // Seeded certificate ids (UUIDs — also the v2.4.0 documentId).
+    // Seeded certificate ids (UUIDs).
     public static final String ISO9001_CERT_ID = ProviderCertificateSeeder.SEED_ISO9001_CERTIFICATE_ID;
     public static final String ISO14001_CERT_ID = ProviderCertificateSeeder.SEED_ISO14001_CERTIFICATE_ID;
     public static final String EXPIRED_CERT_ID = ProviderCertificateSeeder.SEED_EXPIRED_CERTIFICATE_ID;

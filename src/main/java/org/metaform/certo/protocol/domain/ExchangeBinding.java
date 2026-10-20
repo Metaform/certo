@@ -12,18 +12,16 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 /**
- * The protocol binding of a Certificate Exchange: which wire-protocol version the counterparty speaks and
- * how to reach it. Recorded when an interaction originates over a non-native protocol (an inbound
- * request) or when a caller initiates one explicitly; the absence of a binding means the counterparty is
- * native v3 ({@link ProtocolVersion#NATIVE}). This is the per-exchange attribute outbound routing keys
- * on — keyed by the {@code exchangeId}; {@code certificateId} + {@code peerDid} additionally correlate a
- * v2.4.0 {@code documentId} back to the exchange for inbound status. The {@code peerDid} is the counterparty's
- * <b>verified</b> identity (the token subject), used for that inbound correlation; {@code peerBpn} is retained
- * only as the v2.4.0 wire receiver for outbound messages.
+ * The protocol binding of a Certificate Exchange: which wire-protocol version the counterparty speaks.
+ * Recorded when an interaction originates over a non-native protocol (an inbound request) or when a caller
+ * initiates one explicitly; the absence of a binding means the counterparty is native
+ * ({@link ProtocolVersion#NATIVE}). This is the per-exchange attribute outbound routing keys on — keyed by
+ * the {@code exchangeId}; {@code certificateId} + {@code peerDid} additionally resolve the binding for a
+ * retrieval, which is keyed by certificate rather than exchange. The {@code peerDid} is the counterparty's
+ * <b>verified</b> identity (the token subject).
  *
- * <p>Persisted via JPA. Recorded once and mutated at most once — {@link #assignCertificateId} backfills the
- * {@code certificateId} when a pending consumer-initiated request is later fulfilled — so it carries a
- * {@code @Version} like the other mutable aggregates.
+ * <p>Persisted via JPA. Recorded once and immutable thereafter; the {@code @Version} guards the record
+ * like the other aggregates.
  */
 @Entity
 @Table(name = "exchange_binding")
@@ -38,7 +36,6 @@ public class ExchangeBinding {
     @Enumerated(EnumType.STRING)
     @Column(name = "counterparty_role")
     private CounterpartyRole role;
-    private String peerBpn;
     private String peerDid;
     private String messageId;
     /** Optimistic-lock version (distinct from {@link #version} = the protocol version). */
@@ -50,12 +47,11 @@ public class ExchangeBinding {
     }
 
     public ExchangeBinding(String exchangeId, String certificateId, ProtocolVersion version,
-                           CounterpartyRole role, String peerBpn, String peerDid, String messageId) {
+                           CounterpartyRole role, String peerDid, String messageId) {
         this.exchangeId = exchangeId;
         this.certificateId = certificateId;
         this.version = version;
         this.role = role;
-        this.peerBpn = peerBpn;
         this.peerDid = peerDid;
         this.messageId = messageId;
     }
@@ -68,15 +64,6 @@ public class ExchangeBinding {
         return certificateId;
     }
 
-    /**
-     * Backfills the {@code certificateId} once the provider issues it (a consumer-initiated request is bound
-     * while still pending, before the certificate exists), so an inbound v2.4.0 {@code /status} — which keys
-     * on the certificateId — correlates back to this exchange.
-     */
-    public void assignCertificateId(String certificateId) {
-        this.certificateId = certificateId;
-    }
-
     public ProtocolVersion version() {
         return version;
     }
@@ -85,11 +72,7 @@ public class ExchangeBinding {
         return role;
     }
 
-    public String peerBpn() {
-        return peerBpn;
-    }
-
-    /** The counterparty's verified DID (token subject) — the key for inbound v2.4.0 status correlation. */
+    /** The counterparty's verified DID (token subject) — with {@link #certificateId} the retrieval-dispatch key. */
     public String peerDid() {
         return peerDid;
     }

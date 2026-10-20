@@ -12,7 +12,7 @@
  *       ({@code ProviderManagementController}, {@code ConsumerManagementController},
  *       {@code ParticipantContextController}) keeps the operator surface in one place.</li>
  *   <li><b>Wire protocol</b> — the CX-0135 §3.3/§4.x endpoints a counterparty calls. Those controllers
- *       live <em>with their protocol</em> under {@code protocol.ccm240.*} / {@code protocol.ccm300.*}, so
+ *       live <em>with their protocol</em> under {@code protocol.ccm300.*}, so
  *       each protocol adapter contains only its own spec endpoints.</li>
  * </ul>
  *

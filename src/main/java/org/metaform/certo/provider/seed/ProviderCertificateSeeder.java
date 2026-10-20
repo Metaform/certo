@@ -39,7 +39,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
     public static final String SEED_CONSUMER_PARTICIPANT_CONTEXT_ID = "pctx-seed-consumer";
     public static final String SEED_CONSUMER_DID = "did:web:consumer";
 
-    /** Stable (fixed) UUID ids for the seeded certificates — certificate ids are UUIDs (also the v2.4.0 documentId). */
+    /** Stable (fixed) UUID ids for the seeded certificates — certificate ids are UUIDs. */
     public static final String SEED_ISO9001_CERTIFICATE_ID = "00000000-0000-0000-0000-000000009001";
     public static final String SEED_ISO14001_CERTIFICATE_ID = "00000000-0000-0000-0000-000000014001";
     public static final String SEED_EXPIRED_CERTIFICATE_ID = "00000000-0000-0000-0000-000000000001";
