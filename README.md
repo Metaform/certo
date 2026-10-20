@@ -273,7 +273,8 @@ fulfils only from that tenant's holdings, a retrieval or search never crosses th
 
 ## Security & the consumer extension point
 
-Security tokens on the protocol layer are **always on** and always come from a **siglet** STS; the
+Security tokens on the protocol layer are **always on** and always come from a
+**[siglet](https://github.com/eclipse-dataplane-core/dsdk-facet-rs)** STS; the
 management API is OAuth2-protected, never siglet-secured. A deployment must point at a siglet —
 `certo.security.siglet-base-url` is required (dev/test point at a mock siglet).
 
