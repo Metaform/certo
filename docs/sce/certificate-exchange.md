@@ -829,12 +829,87 @@ binaries MUST be served only over the authenticated channel and only to counterp
 If a client is not authorized for an endpoint request, the endpoint MUST return `401 Unauthorized` or
 `404 Not Found`.
 
+## Dataspace Protocol Integration
+
+This section defines how the APIs specified by this document are offered in dataspaces based on the Dataspace
+Protocol [[dsp]]. It applies to deployments that publish the APIs through [[dsp]] catalogs.
+
+### Dataset Definitions
+
+Each API is offered as a [[dsp]] dataset. A dataset offering an API defined by this specification MUST carry exactly
+one of the following `dct:conformsTo` values, which identifies both the API and the specification major version:
+
+| Conformance URI                                | API                                                    |
+|------------------------------------------------|----------------------------------------------------------|
+| `https://w3id.org/dsaf/sce/v1/provider-api`    | [Certificate Provider API](#certificate-provider-api) |
+| `https://w3id.org/dsaf/sce/v1/consumer-api`    | [Certificate Consumer API](#certificate-consumer-api) |
+
+A [=Certificate Provider=] publishes a dataset conforming to `provider-api`. A [=Certificate Consumer=] that
+implements the [Certificate Consumer API](#certificate-consumer-api) publishes a dataset conforming to
+`consumer-api` — in [[dsp]] terms the consumer is the provider of that dataset, and a [=Certificate Provider=]
+obtains access to the consumer's endpoint by negotiating it. Publishing a `consumer-api` dataset declares that the
+participant receives notifications; a participant that does not wish to receive notifications does not publish one.
+Per-endpoint opt-out remains `HTTP 501` as defined in [Notifications](#notifications).
+
+A participant SHOULD publish one dataset per API.
+
+A dataset's distribution MUST use the HTTP Transfer Profile defined by Data Plane Signaling [[dps-http]] as its
+`dct:format` (pull direction).
+
+### Identity Binding
+
+An agreement on a dataset is bound to the counterparty's verified identity — the same identity that appears in an
+event's `source` attribute and is verified per [Security and Authorization](#security-and-authorization). A
+[=Certificate Provider=]'s notification obligations (see [Notifications](#notifications)) extend to each
+[=Certificate Consumer=] whose `consumer-api` dataset it holds an agreement on.
+
+### Examples
+
+The following is a non-normative example of a `provider-api` dataset:
+
+```json
+{
+  "@type": "dcat:Dataset",
+  "@id": "urn:uuid:3dd1b1e2-8b3e-4f2a-9c7d-1a2b3c4d5e6f",
+  "dct:conformsTo": { "@id": "https://w3id.org/dsaf/sce/v1/provider-api" },
+  "odrl:hasPolicy": [ { "...": "..." } ],
+  "dcat:distribution": [{
+    "@type": "dcat:Distribution",
+    "dct:format": { "@id": "https://w3id.org/dspace-sig/profile/http-pull" },
+    "dcat:accessService": { "@id": "urn:uuid:9afb64c1-2d7e-4b8a-8f3c-5d6e7f8a9b0c" }
+  }]
+}
+```
+
+The following is a non-normative example of a `consumer-api` dataset:
+
+```json
+{
+  "@type": "dcat:Dataset",
+  "@id": "urn:uuid:77c2a9d4-6e1f-4c3b-b8a5-2f3e4d5c6b7a",
+  "dct:conformsTo": { "@id": "https://w3id.org/dsaf/sce/v1/consumer-api" },
+  "odrl:hasPolicy": [ { "...": "..." } ],
+  "dcat:distribution": [{
+    "@type": "dcat:Distribution",
+    "dct:format": { "@id": "https://w3id.org/dspace-sig/profile/http-pull" },
+    "dcat:accessService": { "@id": "urn:uuid:c04e5f6a-7b8c-4d9e-a0f1-3b4c5d6e7f8a" }
+  }]
+}
+```
+
 ## References
 
 *Note: when this document is converted to ReSpec, inline `[[citation]]` references will be resolved automatically via
 SpecRef, and this section will be generated.*
 
 ### Normative References
+
+<a id="dsp"></a>
+**[dsp]** Eclipse Dataspace Working Group, "Dataspace Protocol 2025-1",
+<https://eclipse-dataspace-protocol-base.github.io/DataspaceProtocol/2025-1/>.
+
+<a id="dps-http"></a>
+**[dps-http]** Eclipse Data Plane Signaling, "HTTP Transfer Profile", <https://w3id.org/dspace-sig/profile/http>.
 
 <a id="sce-cm"></a>
 **[sce-cm]** "Supply Chain Core Messaging", [core-messaging.md](./core-messaging.md).
