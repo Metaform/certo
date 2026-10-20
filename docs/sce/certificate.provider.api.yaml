@@ -4,9 +4,9 @@ info:
   version: 1.0.0
   description: |
     HTTP API exposed by a Certificate Provider under the Supply Chain Certificate
-    Exchange (SCE) specification to accept certificate requests, report
-    fulfillment status, serve certificate data, answer search queries, and
-    receive acceptance status events.
+    Exchange (SCE) specification to manage Certificate Exchanges, serve
+    certificate data, answer search queries, and receive acceptance status
+    events.
 
     A certificate version is identified by the (`certificateId`, `revision`)
     pair. A Certificate Exchange is identified by the `exchangeId` assigned by
@@ -26,14 +26,19 @@ servers:
         default: https://provider.example.com/sce
 
 paths:
-  /requests:
+  /exchanges:
     post:
-      summary: Request a certificate
+      summary: Create a Certificate Exchange
       description: |
-        Invoked by a Certificate Consumer to request a certificate. A request
-        opens a Certificate Exchange. The response carries the assigned
-        `exchangeId` and the current exchange `status`.
-      operationId: createCertificateRequest
+        Invoked by a Certificate Consumer to request a certificate, creating a
+        Certificate Exchange. Creation is idempotent on the request's
+        `messageId`: a request repeating a (counterparty, `messageId`) pair
+        returns the already-created exchange. The response carries the Exchange representation
+        with the assigned `exchangeId` and the current exchange `status`, and a
+        `Location` header pointing at the created exchange. An exchange is
+        created even when the provider declines the request (`status` is then
+        `DECLINED`).
+      operationId: createExchange
       requestBody:
         required: true
         content:
@@ -44,17 +49,23 @@ paths:
               byTypeAndLocation:
                 summary: Request a certificate by type and location
                 value:
+                  messageId: b1d5f9e2-3c4b-4f7a-9c3e-2f1e5d6c7b8a
                   certificateType: iso9001
                   certifiedLocations:
                     - legalEntityId: PRT000000001234
                       siteId: site-0021
       responses:
-        '200':
-          description: The request was accepted and a Certificate Exchange opened.
+        '201':
+          description: The Certificate Exchange was created.
+          headers:
+            Location:
+              description: The relative URL of the created exchange.
+              schema:
+                type: string
           content:
             application/json:
               schema:
-                $ref: './schemas/certificate.request.status.schema.json'
+                $ref: './schemas/exchange.schema.json'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -64,29 +75,29 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /requests/{exchangeId}:
+  /exchanges/{exchangeId}:
     get:
-      summary: Poll the fulfillment status of a certificate request
+      summary: Retrieve a Certificate Exchange
       description: |
-        Invoked by a Certificate Consumer to poll the Fulfillment-phase status
-        of an exchange it opened. Serves as a fallback and recovery mechanism
-        when fulfillment status events are pushed; it reports the same `status`
-        as the pushed events.
-      operationId: getCertificateRequestStatus
+        Returns the current state of a Certificate Exchange, covering both the
+        Fulfillment and Acceptance phases. A Certificate Consumer polls it to
+        observe Fulfillment progress when it missed pushed fulfillment events,
+        and to confirm that acceptance feedback it reported has been recorded.
+      operationId: getExchange
       parameters:
         - name: exchangeId
           in: path
           required: true
-          description: The `exchangeId` returned in the certificate request response.
+          description: The `exchangeId` assigned when the exchange was created.
           schema:
             type: string
       responses:
         '200':
-          description: The current fulfillment status of the exchange.
+          description: The current state of the exchange.
           content:
             application/json:
               schema:
-                $ref: './schemas/certificate.request.status.schema.json'
+                $ref: './schemas/exchange.schema.json'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -178,7 +189,9 @@ paths:
         Invoked by a Certificate Consumer to report the Acceptance-phase status
         of a Certificate Exchange. The event is correlated to its exchange by
         `data.exchangeId`. An event referencing an unknown `exchangeId` is
-        rejected with `HTTP 404`; an event reporting a transition that is
+        rejected with `HTTP 404`. An event re-reporting the exchange's current
+        state is treated as a duplicate and acknowledged with `HTTP 204`
+        without applying a transition; an event reporting a transition that is
         invalid for the exchange's current state is rejected with `HTTP 409`.
       operationId: postAcceptanceNotifications
       requestBody:

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "CertificateRequestStatus",
+  "title": "Exchange",
   "type": "object",
   "required": [
     "exchangeId",
@@ -18,7 +18,8 @@
         "CERTIFICATE_REQUESTED",
         "FULFILLED",
         "DECLINED",
-        "FAILED"
+        "ACCEPTED",
+        "REJECTED"
       ]
     },
     "certificateId": {
@@ -40,7 +41,11 @@
       "if": {
         "properties": {
           "status": {
-            "const": "FULFILLED"
+            "enum": [
+              "FULFILLED",
+              "ACCEPTED",
+              "REJECTED"
+            ]
           }
         }
       },
@@ -57,7 +62,7 @@
           "status": {
             "enum": [
               "DECLINED",
-              "FAILED"
+              "REJECTED"
             ]
           }
         }

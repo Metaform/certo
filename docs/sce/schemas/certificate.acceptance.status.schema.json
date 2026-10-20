@@ -14,10 +14,8 @@
     "status": {
       "type": "string",
       "enum": [
-        "RETRIEVED",
         "ACCEPTED",
-        "REJECTED",
-        "ERRORED"
+        "REJECTED"
       ]
     },
     "certificateId": {
@@ -39,10 +37,7 @@
       "if": {
         "properties": {
           "status": {
-            "enum": [
-              "REJECTED",
-              "ERRORED"
-            ]
+            "const": "REJECTED"
           }
         }
       },

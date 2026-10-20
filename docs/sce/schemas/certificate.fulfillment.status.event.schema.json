@@ -8,6 +8,7 @@
     {
       "type": "object",
       "required": [
+        "subject",
         "data"
       ],
       "properties": {
@@ -15,7 +16,23 @@
           "const": "org.dsaf.sce.CertificateFulfillmentStatus.v1"
         },
         "data": {
-          "$ref": "./certificate.request.status.schema.json"
+          "allOf": [
+            {
+              "$ref": "./exchange.schema.json"
+            },
+            {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "ACKNOWLEDGED",
+                    "CERTIFICATE_REQUESTED",
+                    "FULFILLED",
+                    "DECLINED"
+                  ]
+                }
+              }
+            }
+          ]
         }
       }
     }

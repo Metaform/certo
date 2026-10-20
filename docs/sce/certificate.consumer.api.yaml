@@ -72,7 +72,9 @@ paths:
       description: |
         Invoked by a Certificate Provider to query the current Acceptance-phase
         status of a Certificate Exchange it fulfilled. This is the pull
-        counterpart of the `CertificateAcceptanceStatus` event.
+        counterpart of the `CertificateAcceptanceStatus` event. Responds with
+        `HTTP 404` when the exchange is unknown or no acceptance status has
+        been reported for it.
       operationId: getAcceptanceStatus
       parameters:
         - name: exchangeId

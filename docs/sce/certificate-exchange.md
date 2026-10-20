@@ -59,7 +59,7 @@ An exchange concerns a specific [=Certificate=] version — a (`certificateId`, 
 a counterparty, the authenticated [=Certificate Consumer=].
 
 A [=Certificate Exchange=] is opened only by the [=Certificate Consumer=], by submitting a certificate request (see
-[Certificate Request](#certificate-request)). The [=Certificate Provider=] assigns the `exchangeId` and returns it in
+[Exchange Creation](#exchange-creation)). The [=Certificate Provider=] assigns the `exchangeId` and returns it in
 the response. Every request opens an exchange — including one the provider declines, which opens an exchange that
 terminates immediately at `DECLINED`; the `exchangeId` is still returned so the outcome remains correlatable.
 
@@ -73,8 +73,8 @@ exchange rather than opening a new one. Multiple exchanges MAY concern the same 
 
 Acceptance feedback is correlated to the exchange by its `exchangeId`.
 
-A re-attempt after a terminal outcome — for example, re-evaluating a `REJECTED` or `ERRORED` [=Certificate=] — is a
-new [=Certificate Exchange=], with a new `exchangeId`, for the same [=Certificate=].
+A re-attempt after a terminal outcome — for example, re-evaluating a `REJECTED` [=Certificate=] — is a new
+[=Certificate Exchange=], with a new `exchangeId`, for the same [=Certificate=].
 
 #### Phases and Ownership
 
@@ -86,11 +86,12 @@ A [=Certificate Exchange=] progresses through two sequential phases, each owned 
 
 The phases never overlap: the Acceptance phase begins only once Fulfillment has made the [=Certificate=] available.
 Provider-owned and consumer-owned states use deliberately disjoint vocabulary, so the owner of a state is unambiguous.
-Each phase can end in a negative decision or a business error: `DECLINED`/`REJECTED` are decisions (the provider
-declines the request, or the consumer does not accept the certificate), while `FAILED`/`ERRORED` indicate a business
-error such as an invalid certificate. These states represent business-level problems only; technical and transport
-failures (for example, connectivity errors or timeouts) are not modeled as [=Certificate Exchange=] states and are
-handled at the transport layer.
+Each phase has one negative terminal state: `DECLINED` (the provider does not fulfill the request) and `REJECTED`
+(the consumer does not accept the certificate). The grounds for a negative outcome — for example, the certificate
+type is not offered, or the certificate is invalid — are carried in the status payload's `errors` array (see
+[Error Object](#error-object)), not in the state. These states represent business-level outcomes only; technical and
+transport failures (for example, connectivity errors or timeouts) are not modeled as [=Certificate Exchange=] states
+and are handled at the transport layer.
 
 #### Exchange State Machine
 
@@ -102,22 +103,14 @@ stateDiagram-v2
     [*] --> DECLINED
     ACKNOWLEDGED --> CERTIFICATE_REQUESTED
     ACKNOWLEDGED --> FULFILLED
-    ACKNOWLEDGED --> FAILED
+    ACKNOWLEDGED --> DECLINED
     CERTIFICATE_REQUESTED --> FULFILLED
     CERTIFICATE_REQUESTED --> DECLINED
-    CERTIFICATE_REQUESTED --> FAILED
-    FULFILLED --> RETRIEVED
     FULFILLED --> ACCEPTED
     FULFILLED --> REJECTED
-    FULFILLED --> ERRORED
-    RETRIEVED --> ACCEPTED
-    RETRIEVED --> REJECTED
-    RETRIEVED --> ERRORED
     DECLINED --> [*]
-    FAILED --> [*]
     ACCEPTED --> [*]
     REJECTED --> [*]
-    ERRORED --> [*]
 ```
 
 | State                     | Phase       | Owner    | Terminal | Description                                                                                                     |
@@ -125,15 +118,12 @@ stateDiagram-v2
 | `ACKNOWLEDGED`            | Fulfillment | Provider | No       | The provider accepted the request and began preparing the certificate.                                          |
 | `CERTIFICATE_REQUESTED` | Fulfillment | Provider | No       | The provider submitted the request to an external certification authority and is awaiting issuance. *(Optional)* |
 | `FULFILLED`               | Fulfillment | Provider | No       | The certificate is prepared and available for retrieval. Hand-off point.                                        |
-| `DECLINED`                | Fulfillment | Provider | Yes      | The provider declined the request (a business decision; e.g., the certificate type is not offered).             |
-| `FAILED`                  | Fulfillment | Provider | Yes      | The provider could not produce a valid certificate (a business error; e.g., the certificate is invalid).        |
-| `RETRIEVED`               | Acceptance  | Consumer | No       | The consumer fetched the certificate and is processing it. *(Optional — see below.)*                            |
+| `DECLINED`                | Fulfillment | Provider | Yes      | The provider did not fulfill the request; the grounds are carried in the `errors` array.                         |
 | `ACCEPTED`                | Acceptance  | Consumer | Yes      | The consumer accepted the certificate.                                                                          |
-| `REJECTED`                | Acceptance  | Consumer | Yes      | The consumer did not accept the certificate content (a business decision).                                      |
-| `ERRORED`                 | Acceptance  | Consumer | Yes      | The consumer found the certificate to be in error (a business error; e.g., the certificate is invalid).         |
+| `REJECTED`                | Acceptance  | Consumer | Yes      | The consumer did not accept the certificate; the grounds are carried in the `errors` array.                      |
 
 The first Fulfillment status a [=Certificate Consumer=] observes is the one carried in the request response (see
-[Certificate Request](#certificate-request)). A provider that can satisfy a request without intermediate steps MAY
+[Exchange Creation](#exchange-creation)). A provider that can satisfy a request without intermediate steps MAY
 report a later Fulfillment state directly — for example `FULFILLED` when the certificate is already held, or
 `CERTIFICATE_REQUESTED` when the request is immediately forwarded to an external authority — having passed through
 the earlier states instantly. A reported `status` therefore reflects the exchange's current state, not necessarily a
@@ -141,18 +131,23 @@ single transition from the state before it.
 
 #### Acceptance Feedback
 
-All acceptance feedback is OPTIONAL. `RETRIEVED` is a non-terminal acknowledgment that the [=Certificate Consumer=]
-has fetched the [=Certificate=] and is evaluating it; the consumer MAY report it as a delivery receipt but is not
-required to. An exchange therefore reaches a terminal acceptance state either by way of `RETRIEVED`
-(`FULFILLED → RETRIEVED → {ACCEPTED, REJECTED, ERRORED}`) or directly from `FULFILLED`
-(`FULFILLED → {ACCEPTED, REJECTED, ERRORED}`). If the consumer never provides feedback, the exchange remains in
-`FULFILLED` indefinitely.
+All acceptance feedback is OPTIONAL. An exchange reaches a terminal acceptance state directly from `FULFILLED`
+(`FULFILLED → {ACCEPTED, REJECTED}`). If the consumer never provides feedback, the exchange remains in
+`FULFILLED` indefinitely. Note that no delivery receipt is modeled: delivery is a retrieval from the
+[=Certificate Provider=], which therefore observes it directly.
 
 #### Terminal States and Immutability
 
-A [=Certificate Exchange=] is single-shot. The five terminal states — `DECLINED`, `FAILED`, `ACCEPTED`, `REJECTED`,
-and `ERRORED` — conclude the exchange permanently. A terminal exchange MUST NOT be reopened, reused, or transitioned
-further.
+A [=Certificate Exchange=] is single-shot. The three terminal states — `DECLINED`, `ACCEPTED`, and `REJECTED` —
+conclude the exchange permanently. A terminal exchange MUST NOT be reopened, reused, or transitioned further.
+
+#### Exchange Retention
+
+How long a party retains a [=Certificate Exchange=] — after it reaches a terminal state, or after it comes to rest at
+`FULFILLED` without acceptance feedback — is defined by deployment profiles, not by this specification. After the
+retention period has elapsed, [Exchange Retrieval](#exchange-retrieval) and the
+[Acceptance Status Query](#acceptance-status-query) MAY respond with `HTTP 404 Not Found` for that exchange. While
+retained, a terminal exchange remains immutable.
 
 #### Relationship to the Certificate Lifecycle
 
@@ -160,6 +155,13 @@ A [=Certificate Exchange=] governs the *delivery* of a [=Certificate=], not the 
 withdrawals of a certificate are changes to the certificate artifact and are not transitions of a
 [=Certificate Exchange=]. A change to a certificate that has already been delivered does not reopen or alter the
 (possibly terminal) exchange that delivered it.
+
+A certificate MAY be withdrawn while an exchange that delivered it is not yet terminal. The withdrawal does not alter
+the exchange; however, the certificate may no longer be retrievable (see
+[Certificate Retrieval](#certificate-retrieval)). The [=Certificate Consumer=] learns of the withdrawal via the
+`WITHDRAWN` lifecycle event or the withdrawal status body returned by certificate retrieval, and MAY conclude the
+exchange by reporting `REJECTED` with an [error](#error-object) referencing the withdrawal; otherwise the exchange
+remains at `FULFILLED`.
 
 ### Certificate Lifecycle
 
@@ -254,7 +256,7 @@ consumer triage relevance without retrieving the certificate: `certificateId`, `
 
 For `WITHDRAWN`, the `certificate` object MUST contain only `certificateId`.
 
-The `subject` attribute of the event SHOULD be set to the `certificateId`.
+The `subject` attribute of the event MUST be set to the `certificateId`.
 
 The following is a non-normative example of a `CREATED` notification:
 
@@ -285,15 +287,17 @@ The following is a non-normative example of a `CREATED` notification:
 A `CertificateFulfillmentStatus` event reports the Fulfillment-phase status of a [=Certificate Exchange=] to the
 [=Certificate Consumer=] that opened it. It never carries a certificate record.
 
-The `data` payload has the following structure:
+The `subject` attribute of the event MUST be set to the `exchangeId`.
+
+The `data` payload is the [Exchange](#exchange-object) representation, restricted to Fulfillment-phase states:
 
 |              |                                                                                                                            |
 |--------------|------------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.fulfillment.status.event.schema.json)                                                     |
 | **Required** | - `exchangeId`: The identifier of the [=Certificate Exchange=].                                                            |
-|              | - `status`: One of `ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`, `FULFILLED`, `DECLINED`, `FAILED`.                           |
+|              | - `status`: One of `ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`, `FULFILLED`, `DECLINED`.                                       |
 | **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns. MUST be present when `status` is `FULFILLED`. |
-|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED` or `FAILED`. |
+|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED`.          |
 
 The following is a non-normative example of a `FULFILLED` notification:
 
@@ -303,6 +307,7 @@ The following is a non-normative example of a `FULFILLED` notification:
   "type": "org.dsaf.sce.CertificateFulfillmentStatus.v1",
   "source": "did:web:provider.example.com",
   "id": "f0e1d2c3-b4a5-6789-0abc-def012345678",
+  "subject": "7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44",
   "time": "2026-05-04T07:30:00Z",
   "datacontenttype": "application/json",
   "data": {
@@ -319,15 +324,17 @@ The following is a non-normative example of a `FULFILLED` notification:
 A `CertificateAcceptanceStatus` event reports the Acceptance-phase status of a [=Certificate Exchange=] to the
 [=Certificate Provider=]. The event is correlated to its exchange by the `exchangeId`.
 
+The `subject` attribute of the event MUST be set to the `exchangeId`.
+
 The `data` payload has the following structure:
 
 |              |                                                                                                                                    |
 |--------------|----------------------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.acceptance.status.event.schema.json)                                                              |
 | **Required** | - `exchangeId`: The identifier of the [=Certificate Exchange=] the status applies to.                                              |
-|              | - `status`: One of `RETRIEVED`, `ACCEPTED`, `REJECTED`, `ERRORED`.                                                                 |
+|              | - `status`: One of `ACCEPTED`, `REJECTED`.                                                                                         |
 | **Optional** | - `certificateId`, `revision`: The certificate version the status applies to.                                                      |
-|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `REJECTED` or `ERRORED`; MUST NOT be present otherwise. |
+|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `REJECTED`; MUST NOT be present otherwise. |
 
 The following is a non-normative example of a `REJECTED` acceptance status event:
 
@@ -337,6 +344,7 @@ The following is a non-normative example of a `REJECTED` acceptance status event
   "type": "org.dsaf.sce.CertificateAcceptanceStatus.v1",
   "source": "did:web:consumer.example.com",
   "id": "f1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c",
+  "subject": "7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44",
   "time": "2026-05-04T09:00:00Z",
   "datacontenttype": "application/json",
   "data": {
@@ -363,6 +371,7 @@ An error object has the following structure:
 
 |              |                                                                                                                                       |
 |--------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| **Schema**   | [JSON Schema](./schemas/common.schema.json) (`StatusError`)                                                                            |
 | **Required** | - `message`: A human-readable description of the error.                                                                               |
 | **Optional** | - `specifier`: An identifier scoping the error to a particular element of the certificate, for example a certified location identifier. If omitted, the error applies to the certificate as a whole. |
 
@@ -385,8 +394,8 @@ sequenceDiagram
     participant con as Certificate Consumer
     participant prov as Certificate Provider
     prov ->> con: CertificateLifecycleStatus (CREATED)
-    con ->> prov: POST /requests
-    prov -->> con: CertificateRequestStatus (FULFILLED)
+    con ->> prov: POST /exchanges
+    prov -->> con: 201 Exchange (FULFILLED)
     con ->> prov: GET /certificates/:certificateId
     prov -->> con: certificate record
     con ->> prov: GET /documents/:documentId
@@ -405,8 +414,8 @@ OPTIONAL `CERTIFICATE_REQUESTED` state while an external certification authority
 sequenceDiagram
     participant con as Certificate Consumer
     participant prov as Certificate Provider
-    con ->> prov: POST /requests
-    prov -->> con: CertificateRequestStatus (ACKNOWLEDGED)
+    con ->> prov: POST /exchanges
+    prov -->> con: 201 Exchange (ACKNOWLEDGED)
     prov ->> con: CertificateFulfillmentStatus (CERTIFICATE_REQUESTED)
     prov ->> con: CertificateFulfillmentStatus (FULFILLED)
     con ->> prov: GET /certificates/:certificateId
@@ -417,8 +426,13 @@ sequenceDiagram
 ```
 
 A [=Certificate Consumer=] that does not expose the [Certificate Consumer API](#certificate-consumer-api) observes
-Fulfillment progress by polling [Certificate Request Status](#certificate-request-status) instead of receiving
+Fulfillment progress by polling [Exchange Retrieval](#exchange-retrieval) instead of receiving
 fulfillment status events.
+
+## Base URL
+
+All endpoint URLs in this specification are relative. The base URL MUST use the HTTPS scheme. The base URL is
+implementation-specific and may include additional context information such as a sub-path that indicates a version.
 
 ## Certificate Consumer API
 
@@ -436,14 +450,9 @@ endpoint.
 A [=Certificate Provider=] MUST push notifications as defined in this section to every [=Certificate Consumer=] whose
 Consumer API endpoint it knows. This obligation applies only to the endpoints the consumer actually serves: if the
 consumer returns `HTTP 501` for an endpoint, the provider is relieved of the obligation to push to that endpoint.
-Polling ([Certificate Request Status](#certificate-request-status)) remains available as a fallback and is not a
+Polling ([Exchange Retrieval](#exchange-retrieval)) remains available as a fallback and is not a
 substitute for the push obligation. How a provider discovers a consumer's endpoint is out of scope of this
 specification.
-
-### Base URL
-
-All endpoint URLs in this specification are relative. The base URL MUST use the HTTPS scheme. The base URL is
-implementation-specific and may include additional context information such as a sub-path that indicates a version.
 
 ### Notifications
 
@@ -454,8 +463,7 @@ A [=Certificate Provider=] MUST push:
 
 - a `CertificateLifecycleStatus` event for every [=Certificate Lifecycle=] transition (`CREATED`, `MODIFIED`,
   `WITHDRAWN`) of a certificate the consumer is entitled to, and
-- a `CertificateFulfillmentStatus` event when an exchange opened by the consumer reaches `FULFILLED`, `DECLINED`, or
-  `FAILED`.
+- a `CertificateFulfillmentStatus` event when an exchange opened by the consumer reaches `FULFILLED` or `DECLINED`.
 
 A provider MAY additionally push `CertificateFulfillmentStatus` events for intermediate Fulfillment states
 (`ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`).
@@ -465,15 +473,18 @@ A provider MAY additionally push `CertificateFulfillmentStatus` events for inter
 | **HTTP Method** | `POST`                                                                                                                                     |
 | **URL Path**    | `/notifications`                                                                                                                           |
 | **Request**     | A [`CertificateLifecycleStatus`](#certificate-lifecycle-status-event) or [`CertificateFulfillmentStatus`](#certificate-fulfillment-status-event) event, or a batch |
-| **Response**    | `HTTP 204` OR `HTTP 4xx Client Error`                                                                                                      |
+| **Response**    | `HTTP 204` OR `HTTP 4xx Client Error` OR `HTTP 501`                                                                                        |
 
 ### Acceptance Status Query
 
 The `acceptance-status` endpoint allows a [=Certificate Provider=] to query the current Acceptance-phase status of a
 [=Certificate Exchange=]. It is the pull counterpart of the
-[`CertificateAcceptanceStatus`](#certificate-acceptance-status-event) event.
+[`CertificateAcceptanceStatus`](#certificate-acceptance-status-event) event and serves as a fallback and recovery
+mechanism — for example, when the provider was unavailable at the time an acceptance status event was pushed. It MUST
+report the same `status` as the pushed events.
 
-If the `exchangeId` is unknown to the consumer, it MUST respond with `HTTP 404 Not Found`.
+If the `exchangeId` is unknown to the consumer, or the consumer has not reported an acceptance status for the
+exchange, it MUST respond with `HTTP 404 Not Found`.
 
 |                 |                                                                                                        |
 |-----------------|----------------------------------------------------------------------------------------------------------|
@@ -489,34 +500,49 @@ The Certificate Provider API enables [=Certificate Providers=] to accept certifi
 status, serve certificate data, answer search queries, and receive acceptance status events. A [=Certificate
 Provider=] MUST implement all endpoints in this section.
 
-### Certificate Request
+### Exchange Creation
 
-The `requests` endpoint opens a [=Certificate Exchange=]. The request identifies the certificate type sought and
-optionally the certified locations the request targets.
+A [=Certificate Exchange=] is a resource owned by the [=Certificate Provider=]. The `exchanges` endpoint creates one.
+The certificate request carried in the body identifies the certificate type sought and optionally the certified
+locations the request targets.
 
 The request body has the following structure:
 
 |              |                                                                                                                                |
 |--------------|------------------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.request.schema.json)                                                                        |
-| **Required** | - `certificateType`: The [certificate type](#certificate-type) requested.                                                      |
-| **Optional** | - `certifiedLocations`: An array of location objects the request targets. Each object MAY contain any of the properties `legalEntityId`, `siteId`, and `addressId` of a [certified location](#certified-locations), and MUST contain at least one. If the array is omitted, the request applies to the requesting party's counterparty as a whole. |
+| **Required** | - `messageId`: A unique identifier for this message. MUST be a UUID [[rfc9562]].                                                |
+|              | - `certificateType`: The [certificate type](#certificate-type) requested.                                                      |
+| **Optional** | - `certifiedLocations`: An array of location objects the request targets. Each object MAY contain any of the properties `legalEntityId`, `siteId`, and `addressId` of a [certified location](#certified-locations), and MUST contain at least one. If the array is omitted, the request applies to the [=Certificate Provider=]'s legal entity. |
 
-The response carries the assigned `exchangeId` and the current exchange `status` as a
-[Certificate Request Status](#certificate-request-status-object) object (see
-[Exchange State Machine](#exchange-state-machine)).
+The `messageId` identifies the message, not the exchange, and makes creation idempotent: a retried request MUST reuse
+the same `messageId`, and the provider MUST treat a request repeating a (counterparty, `messageId`) pair as the same
+request — returning the already-created exchange rather than creating a new one. A genuinely new request MUST carry a
+new `messageId`.
+
+The requested `certifiedLocations` define a coverage obligation: the certificate delivered by the exchange MUST, for
+every requested location object, contain a [certified location](#certified-locations) entry matching it, applying the
+matching rules defined for the [certificate search](#certificate-search) `certifiedLocations` filter. The certificate
+MAY cover additional locations beyond those requested. A [=Certificate Provider=] that cannot fulfill the request with
+a covering certificate MUST `DECLINE` the exchange rather than fulfill it with partial coverage.
+
+The response MUST be `HTTP 201 Created` with the `Location` header set to the created exchange's
+[relative URL](#exchange-retrieval) and a body carrying the [Exchange](#exchange-object) representation, whose
+`status` reflects the exchange's current state (see [Exchange State Machine](#exchange-state-machine)). Note that an
+exchange is created even when the provider declines the request: the response is `HTTP 201` with `status` `DECLINED`.
 
 |                 |                                                                                     |
 |-----------------|---------------------------------------------------------------------------------------|
 | **HTTP Method** | `POST`                                                                              |
-| **URL Path**    | `/requests`                                                                         |
-| **Request**     | The request body defined above                                                      |
-| **Response**    | `HTTP 200` with a [`CertificateRequestStatus`](#certificate-request-status-object) OR `HTTP 4xx Client Error` |
+| **URL Path**    | `/exchanges`                                                                        |
+| **Request**     | The certificate request defined above                                               |
+| **Response**    | `HTTP 201` with an [`Exchange`](#exchange-object) OR `HTTP 4xx Client Error`        |
 
-The following is a non-normative example of a request body:
+The following is a non-normative example of a certificate request:
 
 ```json
 {
+  "messageId": "b1d5f9e2-3c4b-4f7a-9c3e-2f1e5d6c7b8a",
   "certificateType": "iso9001",
   "certifiedLocations": [
     {
@@ -527,31 +553,32 @@ The following is a non-normative example of a request body:
 }
 ```
 
-### Certificate Request Status
+### Exchange Retrieval
 
-The `requests` status endpoint allows a [=Certificate Consumer=] to poll the Fulfillment-phase status of an exchange
-it opened. It reports only the Fulfillment phase; the consumer's acceptance outcome is reported separately via the
-provider's [Acceptance Notifications](#acceptance-notifications) endpoint. When the provider pushes fulfillment
-events to the consumer, this endpoint serves as a fallback and recovery mechanism and MUST report the same `status`
-as the pushed events.
+The `exchanges` retrieval endpoint returns the current state of a [=Certificate Exchange=], covering both phases: a
+[=Certificate Consumer=] polls it to observe Fulfillment progress when it missed pushed fulfillment events, and to
+confirm that acceptance feedback it reported has been recorded. When the provider pushes fulfillment events, this
+endpoint MUST report the same `status` as the pushed events.
 
 If the `exchangeId` is unknown, the provider MUST respond with `HTTP 404 Not Found`.
 
 |                 |                                                                                     |
 |-----------------|---------------------------------------------------------------------------------------|
 | **HTTP Method** | `GET`                                                                               |
-| **URL Path**    | `/requests/:exchangeId`                                                             |
-| **Response**    | `HTTP 200` with a [`CertificateRequestStatus`](#certificate-request-status-object) OR `HTTP 4xx Client Error` |
+| **URL Path**    | `/exchanges/:exchangeId`                                                            |
+| **Response**    | `HTTP 200` with an [`Exchange`](#exchange-object) OR `HTTP 4xx Client Error`        |
 
-#### Certificate Request Status Object
+#### Exchange Object
+
+The Exchange object is the representation of a [=Certificate Exchange=]:
 
 |              |                                                                                                                                |
 |--------------|------------------------------------------------------------------------------------------------------------------------------------|
-| **Schema**   | [JSON Schema](./schemas/certificate.request.status.schema.json)                                                                  |
+| **Schema**   | [JSON Schema](./schemas/exchange.schema.json)                                                                                   |
 | **Required** | - `exchangeId`: The identifier assigned to the [=Certificate Exchange=].                                                       |
-|              | - `status`: One of `ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`, `FULFILLED`, `DECLINED`, `FAILED`.                               |
-| **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns, once assigned. MUST be present when `status` is `FULFILLED`. |
-|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED` or `FAILED`. |
+|              | - `status`: The exchange's current state: one of `ACKNOWLEDGED`, `CERTIFICATE_REQUESTED`, `FULFILLED`, `DECLINED`, `ACCEPTED`, `REJECTED`. |
+| **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns, once assigned. MUST be present when `status` is `FULFILLED`, `ACCEPTED`, or `REJECTED`. |
+|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED` or `REJECTED`; for `REJECTED` it carries the errors reported by the consumer's acceptance feedback. |
 
 The following is a non-normative example:
 
@@ -569,6 +596,11 @@ The following is a non-normative example:
 The `certificates` endpoint returns a certificate record conforming to the
 [certificate data model](#certificate-data-model). By default the latest [=Revision=] is returned; the `revision`
 query parameter selects a specific one.
+
+When retrieving the certificate delivered by a [=Certificate Exchange=], the [=Certificate Consumer=] SHOULD pin the
+retrieval to the exchange's `revision` via the `revision` query parameter: the certificate may have been modified
+since the exchange was fulfilled, in which case an unpinned retrieval returns a later revision than the one the
+exchange concerns.
 
 The response includes [=Document=] references only and MUST NOT include document content. Document content is
 retrieved separately (see [Document Retrieval](#document-retrieval)).
@@ -604,9 +636,12 @@ which a [=Certificate Consumer=] reports acceptance feedback for an exchange. Th
 or a batch (a JSON array) as defined by [[sce-cm]].
 
 The event is correlated to its [=Certificate Exchange=] by `data.exchangeId`. An event referencing an unknown
-`exchangeId` MUST be rejected with `HTTP 404 Not Found`. An event reporting a transition that is invalid for the
-exchange's current state (see [Exchange State Machine](#exchange-state-machine)) MUST be rejected with
-`HTTP 409 Conflict`.
+`exchangeId` MUST be rejected with `HTTP 404 Not Found`. An event that reports the exchange's current state (a
+re-report, for example after a recovery) MUST be treated as a duplicate and acknowledged with `HTTP 204` without
+applying a transition. An event reporting a transition that is invalid for the exchange's current state (see
+[Exchange State Machine](#exchange-state-machine)) MUST be rejected with `HTTP 409 Conflict`. An accepted event MUST
+be applied to the [=Certificate Exchange=]; the resulting state is observable via
+[Exchange Retrieval](#exchange-retrieval).
 
 |                 |                                                                                                  |
 |-----------------|----------------------------------------------------------------------------------------------------|

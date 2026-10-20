@@ -8,6 +8,7 @@
     {
       "type": "object",
       "required": [
+        "subject",
         "data"
       ],
       "properties": {

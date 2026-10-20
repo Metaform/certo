@@ -3,10 +3,14 @@
   "title": "CertificateRequest",
   "type": "object",
   "required": [
+    "messageId",
     "certificateType"
   ],
   "additionalProperties": false,
   "properties": {
+    "messageId": {
+      "$ref": "./common.schema.json#/definitions/Uuid"
+    },
     "certificateType": {
       "type": "string",
       "pattern": "^[a-z0-9]+$"
