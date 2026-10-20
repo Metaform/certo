@@ -18,15 +18,15 @@ class KnownCertificateTest {
     }
 
     private static KnownCertificate created() {
-        return new KnownCertificate("cert-1", "pctx-c", 1, LifecycleStatus.CREATED, "iso9001",
+        return new KnownCertificate("cert-1", "pctx-c", 1, LifecycleStatus.AVAILABLE, "iso9001",
                 LocalDate.parse("2024-01-01"), LocalDate.parse("2030-01-01"), List.of(loc("LE-A")));
     }
 
     @Test
     void apply_updatesTheLifecycleStatus() {
         var known = created();
-        known.apply(2, LifecycleStatus.MODIFIED, "iso9001", null, null, null);
-        assertThat(known.lifecycleStatus()).isEqualTo(LifecycleStatus.MODIFIED);
+        known.apply(2, LifecycleStatus.AVAILABLE, "iso9001", null, null, null);
+        assertThat(known.lifecycleStatus()).isEqualTo(LifecycleStatus.AVAILABLE);
         assertThat(known.revision()).isEqualTo(2);
     }
 
@@ -46,14 +46,14 @@ class KnownCertificateTest {
     @Test
     void apply_replacesCertifiedLocationsWhenProvided() {
         var known = created();
-        known.apply(2, LifecycleStatus.MODIFIED, null, null, null, List.of(loc("LE-B"), loc("LE-C")));
+        known.apply(2, LifecycleStatus.AVAILABLE, null, null, null, List.of(loc("LE-B"), loc("LE-C")));
         assertThat(known.certifiedLocations()).extracting(CertifiedLocation::legalEntityId).containsExactly("LE-B", "LE-C");
     }
 
     @Test
     void apply_leavesCertifiedLocationsWhenNull() {
         var known = created();
-        known.apply(2, LifecycleStatus.MODIFIED, null, null, null, null);
+        known.apply(2, LifecycleStatus.AVAILABLE, null, null, null, null);
         assertThat(known.certifiedLocations()).extracting(CertifiedLocation::legalEntityId).containsExactly("LE-A");
     }
 }

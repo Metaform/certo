@@ -24,7 +24,6 @@
               "properties": {
                 "status": {
                   "enum": [
-                    "PENDING",
                     "FULFILLED",
                     "DECLINED"
                   ]

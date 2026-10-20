@@ -82,15 +82,12 @@ public class Certificate {
         this.certifiedLocations = certifiedLocations == null ? List.of() : List.copyOf(certifiedLocations);
         this.issuer = issuer;
         this.validator = validator;
-        this.lifecycleStatus = LifecycleStatus.CREATED;
+        this.lifecycleStatus = LifecycleStatus.AVAILABLE;
     }
 
-    /** Publishes a new revision, advancing the lifecycle to MODIFIED for any revision after the first. */
+    /** Publishes a new revision; the lifecycle stays AVAILABLE — the revision counter carries the versioning. */
     public CertificateRevision addRevision(CertificateRevision revision) {
         revisions.add(revision);
-        if (revisions.size() > 1) {
-            lifecycleStatus = LifecycleStatus.MODIFIED;
-        }
         return revision;
     }
 

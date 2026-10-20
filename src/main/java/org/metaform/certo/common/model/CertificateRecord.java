@@ -35,7 +35,7 @@ public record CertificateRecord(
         CertificateValidator validator,
         List<CertificateDocument> documents) {
 
-    /** The light-triage subset pushed in a {@code CREATED}/{@code MODIFIED} lifecycle event. */
+    /** The light-triage subset pushed in an {@code AVAILABLE} lifecycle event. */
     public static CertificateRecord lightTriage(String certificateId, int revision, String certificateType,
                                                 LocalDate validFrom, LocalDate validUntil) {
         return new CertificateRecord(certificateId, revision, certificateType, null, null,

@@ -29,7 +29,7 @@ import static org.metaform.certo.protocol.sce.SceCertificateCodec.toWire;
  *
  * <p>The event {@code subject} follows SCE (certificateId for lifecycle, exchangeId for fulfillment); the token and
  * endpoint are resolved from the siglet cache via the call's flow, and the POST is delegated to
- * {@link OutboundJsonClient}. This adapter does not read the {@link ExchangeBinding} (a native v3 target has none).
+ * {@link OutboundJsonClient}. This adapter does not read the {@link ExchangeBinding} (a transient notify target has none).
  */
 @Component
 public class SceNotifier implements ProtocolNotifier {
@@ -64,7 +64,7 @@ public class SceNotifier implements ProtocolNotifier {
     public boolean notifyLifecycle(ExchangeBinding binding, String messageId, LifecycleStatusData data, OutboundCall call) {
         // Token + counterparty endpoint from the siglet cache (scoped to the counterparty, keyed by the flow).
         var resolved = outboundTokenCache.forCall(call);
-        // Render the neutral domain event to the v3 wire payload (the certificate goes through the codec).
+        // Render the neutral domain event to the SCE wire payload (the certificate goes through the codec).
         var wire = new SceLifecycleStatus(data.status(), toWire(data.certificate()));
         var certificateId = data.certificate() == null ? null : data.certificate().certificateId();
         // SCE: the subject of a lifecycle event is the certificateId.

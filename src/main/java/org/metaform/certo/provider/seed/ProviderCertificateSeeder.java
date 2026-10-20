@@ -73,7 +73,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
 
         var tuvSud = new CertificateIssuer("TÜV Süd", "LE0000000003EF");
 
-        // An ISO9001 certificate with two revisions (CREATED then MODIFIED).
+        // An ISO9001 certificate with two revisions (AVAILABLE throughout).
         var iso9001 = new Certificate(
                 SEED_ISO9001_CERTIFICATE_ID, pctx, "iso9001", "2015", "12 100 4711",
                 "Production and assembly of powertrain components",

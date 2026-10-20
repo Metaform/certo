@@ -45,8 +45,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.metaform.certo.common.model.FulfillmentStatus.DECLINED;
 import static org.metaform.certo.common.model.FulfillmentStatus.FULFILLED;
-import static org.metaform.certo.common.model.LifecycleStatus.CREATED;
+import static org.metaform.certo.common.model.LifecycleStatus.AVAILABLE;
 import static org.metaform.certo.common.util.TransactionSupport.afterCommit;
 import static org.metaform.certo.common.web.ApiException.badRequest;
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
@@ -344,7 +345,7 @@ public class ConsumerExchangeService {
             throw new ApiException(BAD_GATEWAY, "Certificate pull failed: " + e.getMessage());
         }
         tx.executeWithoutResult(_ ->
-                catalog.recordKnownCertificate(new LifecycleStatusData(CREATED, retrieved.metadata()), contextId));
+                catalog.recordKnownCertificate(new LifecycleStatusData(AVAILABLE, retrieved.metadata()), contextId));
         return retrieved;
     }
 
@@ -361,7 +362,7 @@ public class ConsumerExchangeService {
      * an exchange via {@link #initiateRequest}.
      */
     private void applyLifecycle(LifecycleStatusData data, VerifiedRequestContext requestContext) {
-        // Keep the consumer's known-certificate view in sync (CREATED/MODIFIED/WITHDRAWN), owned by the
+        // Keep the consumer's known-certificate view in sync (AVAILABLE/WITHDRAWN), owned by the
         // receiving tenant (the verified audience).
         catalog.recordKnownCertificate(data, requestContext.participantContextId());
         var cert = data.certificate();
@@ -378,8 +379,13 @@ public class ConsumerExchangeService {
         if (data == null || data.exchangeId() == null || data.status() == null) {
             throw badRequest("Fulfillment event is missing exchangeId or status");
         }
+        // PENDING is resource state, never an event: it is only entered at creation and reported in the
+        // 201 response or via the exchange status endpoint.
+        if (data.status() != FULFILLED && data.status() != DECLINED) {
+            throw badRequest("Status " + data.status() + " cannot be pushed; a fulfillment event reports FULFILLED or DECLINED");
+        }
         var hasErrors = data.errors() != null && !data.errors().isEmpty();
-        if (data.status().isTerminal() && data.status() != FULFILLED && !hasErrors) {
+        if (data.status() == DECLINED && !hasErrors) {
             throw badRequest("Status " + data.status() + " requires a non-empty 'errors' array");
         }
     }

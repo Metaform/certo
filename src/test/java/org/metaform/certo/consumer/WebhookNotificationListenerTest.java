@@ -54,7 +54,7 @@ class WebhookNotificationListenerTest {
     @Test
     void postsTheRecordedEventToTheConfiguredWebhook() throws Exception {
         WEBHOOK.enqueue(new MockResponse().setResponseCode(200));
-        var event = new InboundNotification(InboundNotification.Kind.LIFECYCLE, "exch-wh-1", "cert-wh-1", 2, "MODIFIED", "LE-provider");
+        var event = new InboundNotification(InboundNotification.Kind.LIFECYCLE, "exch-wh-1", "cert-wh-1", 2, "AVAILABLE", "LE-provider");
 
         listener.onNotification(event);
 
@@ -66,7 +66,7 @@ class WebhookNotificationListenerTest {
         var body = mapper.readTree(request.getBody().readUtf8());
         assertThat(body.get("exchangeId").asString()).isEqualTo("exch-wh-1");
         assertThat(body.get("certificateId").asString()).isEqualTo("cert-wh-1");
-        assertThat(body.get("status").asString()).isEqualTo("MODIFIED");
+        assertThat(body.get("status").asString()).isEqualTo("AVAILABLE");
     }
 
     @Test

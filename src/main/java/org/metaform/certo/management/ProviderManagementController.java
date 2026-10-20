@@ -116,7 +116,7 @@ public class ProviderManagementController {
 
     /**
      * {@code POST /certificates/{id}/revisions} — create a new version of the certificate: append a
-     * revision with the caller's issued validity + documents (lifecycle {@code MODIFIED}). A <b>state change
+     * revision with the caller's issued validity + documents (the lifecycle stays {@code AVAILABLE}). A <b>state change
      * only</b>; notifying consumers is a separate {@code notify} per counterparty.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
@@ -179,7 +179,8 @@ public class ProviderManagementController {
     /**
      * {@code POST /certificate-exchanges/{id}/poll-acceptance} — recover a possibly-lost acceptance by pulling
      * the consumer's acceptance-status over {@code flowId} and recording any verdict on the exchange (the pull
-     * fallback to the consumer's best-effort push). Native v3 consumers only. Returns the refreshed view.
+     * fallback to the consumer's best-effort push). Only for exchanges whose bound protocol has an
+     * acceptance poller (SCE). Returns the refreshed view.
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'provider:write')")
     @PostMapping(path = "/certificate-exchanges/{id}/poll-acceptance", produces = MediaType.APPLICATION_JSON_VALUE)

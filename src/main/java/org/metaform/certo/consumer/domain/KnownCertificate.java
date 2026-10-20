@@ -22,7 +22,7 @@ import java.util.UUID;
 
 /**
  * The consumer's view of a certificate's lifecycle, kept in sync from {@code CertificateLifecycleStatus}
- * events so the consumer can react to {@code MODIFIED} (a new revision is available)
+ * events so the consumer can react to an {@code AVAILABLE} with a higher revision (a new revision is available)
  * and {@code WITHDRAWN} (no longer available). It belongs to the {@code participantContextId} tenant the
  * lifecycle event was addressed to (the verified token audience).
  *

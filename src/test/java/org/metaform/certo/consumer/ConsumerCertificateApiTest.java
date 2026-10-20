@@ -83,13 +83,13 @@ class ConsumerCertificateApiTest {
     }
 
     @Test
-    void createdLifecycleEvent_recordsKnownCertificate_thenRequestDelivers() throws Exception {
+    void availableLifecycleEvent_recordsKnownCertificate_thenRequestDelivers() throws Exception {
         // A lifecycle event is purely informational: it updates the known-certificate view, opens no exchange.
-        var post = postNotification(lifecycleCreated("evt-created-1", TestTenants.ISO14001_CERT_ID, 1));
+        var post = postNotification(lifecycleAvailable("evt-created-1", TestTenants.ISO14001_CERT_ID, 1));
         assertThat(post.statusCode()).isEqualTo(204);
 
         var known = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/" + TestTenants.ISO14001_CERT_ID + "").body());
-        assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
+        assertThat(known.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
         assertThat(known.get("revision").asInt()).isEqualTo(1);
 
         // Notification-initiated flow: the notified consumer opens an exchange by submitting a certificate
@@ -110,12 +110,12 @@ class ConsumerCertificateApiTest {
     }
 
     @Test
-    void lifecycleModified_updatesConsumerKnownCertificate() throws Exception {
-        assertThat(postNotification(lifecycleModified("cert-mod-x", 2)).statusCode()).isEqualTo(204);
+    void lifecycleAvailable_newRevision_updatesConsumerKnownCertificate() throws Exception {
+        assertThat(postNotification(lifecycleAvailable("evt-mod-cert-mod-x", "cert-mod-x", 2)).statusCode()).isEqualTo(204);
 
         var view = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-mod-x").body());
         assertThat(view.get("revision").asInt()).isEqualTo(2);
-        assertThat(view.get("lifecycleStatus").asString()).isEqualTo("MODIFIED");
+        assertThat(view.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
     }
 
     @Test
@@ -130,7 +130,7 @@ class ConsumerCertificateApiTest {
     void notifiedExpiredCertificate_requestedAndRejected() throws Exception {
         // cert-expired-0001 r1 is expired (until 2020-01-01). The notification is informational; the consumer
         // opens an exchange by request, retrieves, and the caller decides REJECTED because it is expired.
-        assertThat(postNotification(lifecycleCreated("evt-created-2", TestTenants.EXPIRED_CERT_ID, 1)).statusCode())
+        assertThat(postNotification(lifecycleAvailable("evt-created-2", TestTenants.EXPIRED_CERT_ID, 1)).statusCode())
                 .isEqualTo(204);
 
         var initiate = postJson("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificate-requests",
@@ -263,15 +263,15 @@ class ConsumerCertificateApiTest {
         cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of("doc-e2e-lc-r1")));
         providerCertificates.save(cert);
 
-        // Notify the consumer: the event is derived from the certificate's current state (CREATED, r1).
+        // Notify the consumer: the event is derived from the certificate's current state (AVAILABLE, r1).
         postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/cert-e2e-lc/notify",
                 "{\"protocol\":\"sce-1.0\",\"messageId\":\"3f0e8e2e-0000-4000-8000-00000000e2e1\",\"flowId\":\"flow-1\"," + SELF_TARGET + "}");
         var created = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-e2e-lc").body());
-        assertThat(created.get("lifecycleStatus").asString()).isEqualTo("CREATED");
+        assertThat(created.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
         assertThat(created.get("revision").asInt()).isEqualTo(1);
 
-        // State change: a new revision (upload its document, add the revision) moves the certificate to
-        // MODIFIED; the notify derives MODIFIED r2 from that state.
+        // State change: a new revision (upload its document, add the revision); the lifecycle stays
+        // AVAILABLE and the notify derives AVAILABLE r2 from that state.
         var docId = mapper.readTree(postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/documents",
                 "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}").body()).get("documentId").asString();
         postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/cert-e2e-lc/revisions",
@@ -279,7 +279,7 @@ class ConsumerCertificateApiTest {
         postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/cert-e2e-lc/notify",
                 "{\"protocol\":\"sce-1.0\",\"messageId\":\"3f0e8e2e-0000-4000-8000-00000000e2e2\",\"flowId\":\"flow-1\"," + SELF_TARGET + "}");
         var modified = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-e2e-lc").body());
-        assertThat(modified.get("lifecycleStatus").asString()).isEqualTo("MODIFIED");
+        assertThat(modified.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
         assertThat(modified.get("revision").asInt()).isEqualTo(2);
 
         // State change (withdraw), then a notify per counterparty — the WITHDRAWN event is derived.
@@ -292,13 +292,13 @@ class ConsumerCertificateApiTest {
 
     @Test
     void duplicateLifecycleEvent_isIgnored() throws Exception {
-        assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "CREATED", 1)).statusCode())
+        assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "AVAILABLE", 1)).statusCode())
                 .isEqualTo(204);
-        assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "MODIFIED", 2)).statusCode())
+        assertThat(postNotification(lifecycleEvent("dup-1", "cert-cdup", "AVAILABLE", 2)).statusCode())
                 .isEqualTo(204);
 
+        // The duplicate (same source+id) was dropped: the view still holds the first event's revision.
         var known = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-cdup").body());
-        assertThat(known.get("lifecycleStatus").asString()).isEqualTo("CREATED");
         assertThat(known.get("revision").asInt()).isEqualTo(1);
     }
 
@@ -333,8 +333,25 @@ class ConsumerCertificateApiTest {
     }
 
     @Test
+    void fulfillmentNotification_pendingIsNotAnEvent_badRequest() throws Exception {
+        // PENDING is resource state, only ever entered at creation and reported in the 201 response —
+        // a fulfillment event reports the outcome (FULFILLED or DECLINED).
+        var event = """
+                {
+                  "specversion": "1.0",
+                  "type": "org.dsaf.sce.CertificateFulfillmentStatus.v1",
+                  "source": "did:web:provider",
+                  "id": "22222222-2222-2222-2222-222222222223",
+                  "time": "2025-05-04T07:30:00Z",
+                  "data": { "exchangeId": "exch-f-1", "status": "PENDING" }
+                }
+                """;
+        assertThat(postNotification(event).statusCode()).isEqualTo(400);
+    }
+
+    @Test
     void notificationBatch_isAtomic_oneBadEventAppliesNone() throws Exception {
-        var batch = "[" + lifecycleCreated("evt-atomic-1", "cert-atomic-1", 1)
+        var batch = "[" + lifecycleAvailable("evt-atomic-1", "cert-atomic-1", 1)
                 + "," + lifecycleMissingCertificate() + "]";
         assertThat(postNotification(batch).statusCode()).isEqualTo(400);
 
@@ -345,12 +362,12 @@ class ConsumerCertificateApiTest {
 
     @Test
     void batchOfEvents_accepted() throws Exception {
-        var batch = "[" + lifecycleCreated("evt-batch-1", "cert-batch-1", 1)
+        var batch = "[" + lifecycleAvailable("evt-batch-1", "cert-batch-1", 1)
                 + "," + lifecycleWithdrawn("cert-eee") + "]";
         assertThat(postNotification(batch).statusCode()).isEqualTo(204);
 
         assertThat(mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-batch-1").body())
-                .get("lifecycleStatus").asString()).isEqualTo("CREATED");
+                .get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
         assertThat(mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-eee").body())
                 .get("lifecycleStatus").asString()).isEqualTo("WITHDRAWN");
     }
@@ -368,7 +385,7 @@ class ConsumerCertificateApiTest {
                   "type": "org.dsaf.sce.SomethingElse.v1",
                   "source": "did:web:provider",
                   "id": "33333333-3333-3333-3333-333333333333",
-                  "data": { "certificate": { "certificateId": "cert-x" }, "status": "CREATED" }
+                  "data": { "certificate": { "certificateId": "cert-x" }, "status": "AVAILABLE" }
                 }
                 """;
         assertThat(postNotification(event).statusCode()).isEqualTo(400);
@@ -434,7 +451,7 @@ class ConsumerCertificateApiTest {
                 .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private static String lifecycleCreated(String eventId, String certificateId, int revision) {
+    private static String lifecycleAvailable(String eventId, String certificateId, int revision) {
         return """
                 {
                   "specversion": "1.0",
@@ -444,7 +461,7 @@ class ConsumerCertificateApiTest {
                   "id": "%s",
                   "time": "2025-05-04T07:00:00Z",
                   "data": {
-                    "status": "CREATED",
+                    "status": "AVAILABLE",
                     "certificate": {
                       "certificateId": "%s",
                       "revision": %d,
@@ -467,32 +484,12 @@ class ConsumerCertificateApiTest {
                   "source": "did:web:provider",
                   "id": "evt-bad-no-cert",
                   "data": {
-                    "status": "CREATED"
+                    "status": "AVAILABLE"
                   }
                 }
                 """;
     }
 
-    private static String lifecycleModified(String certificateId, int revision) {
-        return """
-                {
-                  "specversion": "1.0",
-                  "type": "org.dsaf.sce.CertificateLifecycleStatus.v1",
-                  "source": "did:web:provider",
-                  "id": "evt-mod-%s",
-                  "data": {
-                    "status": "MODIFIED",
-                    "certificate": {
-                      "certificateId": "%s",
-                      "revision": %d,
-                      "certificateType": "iso9001",
-                      "validFrom": "2024-06-01",
-                      "validUntil": "2028-05-31"
-                    }
-                  }
-                }
-                """.formatted(certificateId, certificateId, revision);
-    }
 
     private static String lifecycleWithdrawn(String certificateId) {
         return """

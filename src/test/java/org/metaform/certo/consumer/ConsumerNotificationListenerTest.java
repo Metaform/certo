@@ -73,7 +73,7 @@ class ConsumerNotificationListenerTest {
         assertThat(listener.events).hasSize(1);
         var event = listener.events.get(0);
         assertThat(event.kind()).isEqualTo(InboundNotification.Kind.LIFECYCLE);
-        assertThat(event.status()).isEqualTo("CREATED");
+        assertThat(event.status()).isEqualTo("AVAILABLE");
         // A lifecycle event is informational and correlates to no exchange.
         assertThat(event.exchangeId()).isNull();
         assertThat(event.certificateId()).isEqualTo("cert-listen-1");
@@ -84,7 +84,7 @@ class ConsumerNotificationListenerTest {
                 {
                   "specversion":"1.0","type":"org.dsaf.sce.CertificateLifecycleStatus.v1",
                   "source":"did:web:provider","id":"evt-listen-1",
-                  "data":{"status":"CREATED","certificate":{
+                  "data":{"status":"AVAILABLE","certificate":{
                     "certificateId":"cert-listen-1","revision":1,"certificateType":"iso9001",
                     "validFrom":"2024-06-01","validUntil":"2028-05-31"}}
                 }""";

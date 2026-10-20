@@ -24,20 +24,20 @@ class CertificateTest {
     }
 
     @Test
-    void firstRevision_keepsLifecycleCreated() {
+    void firstRevision_isAvailable() {
         var certificate = certificate();
         certificate.addRevision(revision(1));
-        assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.CREATED);
+        assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.AVAILABLE);
         assertThat(certificate.latestRevision().revision()).isEqualTo(1);
         assertThat(certificate.nextRevisionNumber()).isEqualTo(2);
     }
 
     @Test
-    void secondRevision_advancesLifecycleToModified() {
+    void secondRevision_staysAvailable_revisionCarriesTheVersioning() {
         var certificate = certificate();
         certificate.addRevision(revision(1));
         certificate.addRevision(revision(2));
-        assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.MODIFIED);
+        assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.AVAILABLE);
         assertThat(certificate.latestRevision().revision()).isEqualTo(2);
         assertThat(certificate.nextRevisionNumber()).isEqualTo(3);
     }

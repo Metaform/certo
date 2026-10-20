@@ -19,7 +19,8 @@ Every flow derives from two independent state machines:
 - A **Certificate Exchange** (correlated by `exchangeId`) — one delivery interaction: a provider-owned
   **Fulfillment** phase, then a consumer-owned **Acceptance** phase. Opened **only by the consumer**, by
   submitting a certificate request.
-- A **Certificate Lifecycle** — the artifact over time (`CREATED → MODIFIED* → WITHDRAWN`), keyed by
+- A **Certificate Lifecycle** — the artifact over time (`AVAILABLE → WITHDRAWN`; revisions are not
+  lifecycle transitions), keyed by
   `certificateId` + `revision`, independent of any exchange. Lifecycle events are **purely
   informational**: they never open, alter, or close an exchange. A certificate is JSON metadata that
   references `documents[]` retrieved separately by opaque, revision-independent id.
@@ -56,7 +57,7 @@ stateDiagram-v2
 |-------|----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
 | **A** | Consumer-initiated **request** (exchange creation)                                           | A1 held/immediate · A2 async+push · A3 async+poll · A4 declined                               |
 | **B** | **Notification-initiated** flow (lifecycle notify → request)                                 | B1 accepted · B2 rejected (expired) · B3 provider **polls** the verdict                       |
-| **C** | Certificate **lifecycle** (`MODIFIED` / `WITHDRAWN`)                                         | C1 revise · C2 withdraw · C3 consumer reacts                                                  |
+| **C** | Certificate **lifecycle** (`AVAILABLE` / `WITHDRAWN`)                                         | C1 revise · C2 withdraw · C3 consumer reacts                                                  |
 | **D** | **Search** / discovery                                                                       | D1 by type · D2 by location filter · D3 unsupported property (400) · D4 cursor pagination     |
 | **E** | **Cross-cutting** rules (state machine, envelope, batch, **idempotency**, reconciliation)    | E1–E9                                                                                         |
 
@@ -135,7 +136,7 @@ sequenceDiagram
 
 ## Flow B — Notification-initiated flow
 
-The provider publishes a certificate and **notifies** a consumer with a `CREATED` lifecycle event. The
+The provider publishes a certificate and **notifies** a consumer with an `AVAILABLE` lifecycle event. The
 notification is **purely informational** — it opens nothing. A consumer that wants the certificate opens
 an exchange by submitting a request, which the provider — already holding the certificate — fulfills
 immediately; the usual retrieve + accept tail follows. The notify itself is the management trigger
@@ -150,7 +151,7 @@ sequenceDiagram
     participant P as Provider
     participant C as Consumer
     T->>P: POST …/certificates/{id}/notify {messageId, protocol, consumerId, flowId}
-    P->>C: POST /notifications, CertificateLifecycleStatus CREATED (light-triage subset)
+    P->>C: POST /notifications, CertificateLifecycleStatus AVAILABLE (light-triage subset)
     P-->>T: 202 {certificateId, revision, lifecycleStatus, consumerNotified}
     Note over C: records the known certificate + emits to listeners — no exchange is opened
     T->>C: POST …/consumer/certificate-requests {messageId, protocol, providerId, certificateType, …}
@@ -176,7 +177,7 @@ counterpart, `404`/no-verdict before the consumer decides).
 
 ---
 
-## Flow C — Certificate lifecycle (MODIFIED / WITHDRAWN)
+## Flow C — Certificate lifecycle (revise / withdraw)
 
 The provider changes a certificate's **state** and, as a **separate** step, notifies a named consumer,
 which keeps a synchronized view. State changes tell no one; a lifecycle `notify` targets one consumer.
@@ -193,7 +194,7 @@ sequenceDiagram
     T->>P: POST …/certificates/{id}/revisions
     Note over P: appends a new revision (state only, no notification)
     T->>P: POST …/certificates/{id}/notify {messageId, consumerId, …}
-    P->>C: POST /notifications, MODIFIED (derived: new revision, light subset)
+    P->>C: POST /notifications, AVAILABLE (derived: new revision, light subset)
     Note over C: known-certificate view bumps to the new revision
     T->>P: POST …/certificates/{id}/withdraw
     Note over P: lifecycle to WITHDRAWN (state only)
@@ -203,16 +204,16 @@ sequenceDiagram
 ```
 
 1. **Revise (state)** — `POST …/certificates/{id}/revisions` appends a `revision` with the caller's
-   issued validity + documents (uploaded first via `POST …/{pc}/documents`); `CREATED → MODIFIED`,
-   cert-level metadata carried over. No notification.
+   issued validity + documents (uploaded first via `POST …/{pc}/documents`); the lifecycle stays
+   `AVAILABLE`, cert-level metadata carried over. No notification.
 2. **Withdraw (state)** — `POST …/certificates/{id}/withdraw` sets `WITHDRAWN`:
    `GET /certificates/{id}` → `200` with the minimal `{certificateId, status: WITHDRAWN}` body, search
    excludes it, a second withdraw → `409`. No notification.
-3. **Notify** — `POST …/certificates/{id}/notify` pushes the **derived** lifecycle status (`MODIFIED`
+3. **Notify** — `POST …/certificates/{id}/notify` pushes the **derived** lifecycle status (`AVAILABLE`
    with the light-triage subset of the latest revision; `WITHDRAWN` with the certificateId only) to one
    named consumer.
-4. **Consumer reacts** — updates `GET …/{pc}/consumer/certificates/{id}`: `MODIFIED` bumps the known
-   revision, `WITHDRAWN` marks it unavailable.
+4. **Consumer reacts** — updates `GET …/{pc}/consumer/certificates/{id}`: an `AVAILABLE` with a higher
+   revision bumps the known revision, `WITHDRAWN` marks it unavailable.
 
 **Variants**
 
@@ -220,7 +221,7 @@ sequenceDiagram
 |--------|--------------------------------------------------------------------------------------|
 | **C1** | Provider revise — the new revision is served and searchable                          |
 | **C2** | Provider withdraw — `200` status body, excluded from search, a second withdraw `409` |
-| **C3** | Consumer reacts to `MODIFIED` (bumps revision) / `WITHDRAWN` (marks unavailable)     |
+| **C3** | Consumer reacts to `AVAILABLE` (bumps revision) / `WITHDRAWN` (marks unavailable)    |
 
 ---
 

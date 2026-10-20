@@ -32,8 +32,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * The provider&rarr;consumer notifier is multiplexed: the {@code @Primary} {@link ConsumerNotifier} is
  * {@link DispatchingConsumerNotifier}, which reads each exchange's {@link ExchangeBinding#protocolId()} and routes
  * to that protocol's adapter. This proves the routing end-to-end: a bound exchange, notified through the
- * {@code ConsumerNotifier}, reaches its version's wire endpoint — v3 the CloudEvents
- * {@code /certificate-notifications}. A missing binding is a data-integrity error, never a fallback —
+ * {@code ConsumerNotifier}, reaches its protocol's wire endpoint — for SCE the CloudEvents
+ * {@code /notifications}. A missing binding is a data-integrity error, never a fallback —
  * covered by the no-binding case.
  */
 @SpringBootTest
@@ -68,17 +68,17 @@ class DispatchingConsumerNotifierRoutingTest {
     @AfterEach
     void tearDown() throws Exception {
         consumer.shutdown();
-        bindings.deleteById(new ExchangeBindingId("exch-route-v3", CounterpartyRole.CONSUMER));
+        bindings.deleteById(new ExchangeBindingId("exch-route-sce", CounterpartyRole.CONSUMER));
     }
 
     @Test
     void v3BoundExchange_routesToTheCloudEventsEndpoint() throws Exception {
-        bindings.record(new ExchangeBinding("exch-route-v3", "cert-route-v3", Sce.PROTOCOL_ID,
+        bindings.record(new ExchangeBinding("exch-route-sce", "cert-route-sce", Sce.PROTOCOL_ID,
                 CounterpartyRole.CONSUMER, TestTenants.CONSUMER_DID));
         consumer.enqueue(new MockResponse().setResponseCode(204));
 
         var delivered = notifier.notifyFulfillment(
-                new FulfillmentStatusData("exch-route-v3", "cert-route-v3", 1, FulfillmentStatus.FULFILLED, null), call);
+                new FulfillmentStatusData("exch-route-sce", "cert-route-sce", 1, FulfillmentStatus.FULFILLED, null), call);
 
         assertThat(delivered).isTrue();
         RecordedRequest request = consumer.takeRequest(5, TimeUnit.SECONDS);

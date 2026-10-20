@@ -10,10 +10,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * a certificate request.
  *
  * <p>The carried {@code certificate} is only a subset: the light-triage fields for
- * {@code CREATED}/{@code MODIFIED} (the consumer pulls the rest), the id alone for {@code WITHDRAWN}.
+ * {@code AVAILABLE} (the consumer pulls the rest), the id alone for {@code WITHDRAWN}.
  * Document content is never carried.
  *
- * @param status      the lifecycle status: CREATED, MODIFIED or WITHDRAWN (mandatory)
+ * @param status      the lifecycle status: AVAILABLE or WITHDRAWN (mandatory)
  * @param certificate the certificate record (mandatory); subset depends on status
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)

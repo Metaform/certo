@@ -37,7 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static java.util.UUID.randomUUID;
-import static org.metaform.certo.common.model.LifecycleStatus.MODIFIED;
+import static org.metaform.certo.common.model.LifecycleStatus.AVAILABLE;
 import static org.metaform.certo.common.model.LifecycleStatus.WITHDRAWN;
 import static org.metaform.certo.common.web.ApiException.badRequest;
 import static org.metaform.certo.common.web.ApiException.notFound;
@@ -128,8 +128,8 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
 
     /**
      * State change: creates a <b>new version</b> of an existing certificate — appends a revision with the
-     * caller's issued validity window and documents, lifecycle {@code CREATED → MODIFIED} (the SCE specification
-     * &sect;2.2.4). Does <b>not</b> notify any consumer — that is a separate, explicitly-targeted notify.
+     * caller's issued validity window and documents; the lifecycle stays {@code AVAILABLE} — the revision
+     * counter carries the versioning. Does <b>not</b> notify any consumer — that is a separate, explicitly-targeted notify.
      */
     public CertificateLifecycleResult addRevision(String contextId, String certificateId, NewRevision request) {
         var certificate = resolveActiveCertificate(contextId, certificateId);
@@ -141,7 +141,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
                 request.validUntil(),
                 request.documentIds()));
         certificateStore.save(certificate);
-        return new CertificateLifecycleResult(certificateId, revision, MODIFIED);
+        return new CertificateLifecycleResult(certificateId, revision, AVAILABLE);
     }
 
     /**

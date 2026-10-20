@@ -56,7 +56,7 @@ certificates on startup (each revision references one generated PDF document):
 
 | certificateId (fixed UUID)             | type      | revisions                 | validUntil (latest)  |
 |----------------------------------------|-----------|---------------------------|----------------------|
-| `00000000-0000-0000-0000-000000009001` | iso9001   | 1, 2 (CREATED → MODIFIED) | 2027-01-24           |
+| `00000000-0000-0000-0000-000000009001` | iso9001   | 1, 2 (AVAILABLE)          | 2027-01-24           |
 | `00000000-0000-0000-0000-000000014001` | iso14001  | 1                         | 2027-05-31           |
 | `00000000-0000-0000-0000-000000000001` | iatf16949 | 1                         | 2020-01-01 (expired) |
 
@@ -71,7 +71,8 @@ it (the grounds travel in the `errors` array).
   provider-owned **Fulfillment** phase (`PENDING → FULFILLED`, or `DECLINED`)
   and then a consumer-owned **Acceptance** phase (a terminal `ACCEPTED`/`REJECTED` reached directly from
   `FULFILLED`). Acceptance feedback is optional — an exchange without it rests at `FULFILLED`.
-- A **Certificate Lifecycle** tracks the artifact itself (`CREATED → MODIFIED* → WITHDRAWN`), keyed by
+- A **Certificate Lifecycle** tracks the artifact itself (`AVAILABLE → WITHDRAWN`; revisions are not
+  lifecycle transitions), keyed by
   `(certificateId, revision)`, independently of any exchange. Lifecycle events are purely informational —
   they never open, alter, or close an exchange.
 - A **certificate** is metadata (`certifiedLocations[]` with `legalEntityId`/`siteId`/`addressId`,
@@ -167,7 +168,7 @@ curl -s -X POST $B/notifications \
     "specversion":"1.0","type":"org.dsaf.sce.CertificateLifecycleStatus.v1",
     "source":"did:web:provider","subject":"00000000-0000-0000-0000-000000009001","id":"'$(uuidgen)'",
     "time":"2026-05-04T07:00:00Z",
-    "data":{"status":"CREATED",
+    "data":{"status":"AVAILABLE",
             "certificate":{"certificateId":"00000000-0000-0000-0000-000000009001","revision":2,"certificateType":"iso9001",
                            "validFrom":"2023-01-25","validUntil":"2027-01-24"}}}'
 
@@ -215,7 +216,7 @@ curl -s -X POST "$CM/certificate-requests/$EX/poll?flowId=<flowId>"
 ### Certificate lifecycle — revise / withdraw + notify (single-target)
 
 **State** and **notification** are separate. A state change updates the artifact but tells no one:
-`POST …/{pc}/certificates/{id}/revisions` creates a **new version** (lifecycle `CREATED → MODIFIED`);
+`POST …/{pc}/certificates/{id}/revisions` creates a **new version** (the lifecycle stays `AVAILABLE`);
 `POST …/{pc}/certificates/{id}/withdraw` revokes it (`WITHDRAWN`). To inform a consumer you then `notify`
 **one named target** — the event's status and revision are **derived from the certificate's current
 state**, and the caller's `messageId` becomes the pushed event id verbatim (a retry reuses it; the consumer
@@ -228,8 +229,8 @@ C=00000000-0000-0000-0000-000000014001
 TARGET='"protocol":"sce-1.0","consumerId":"did:web:consumer","flowId":"<flowId>"'
 
 curl -s -X POST $PM/certificates/$C/notify -H 'Content-Type: application/json' \
-  -d '{"messageId":"'$(uuidgen)'",'"$TARGET"'}'          # notify CREATED r1
-# state: new revision (no notification), then notify again -> MODIFIED r2 is derived
+  -d '{"messageId":"'$(uuidgen)'",'"$TARGET"'}'          # notify AVAILABLE r1
+# state: new revision (no notification), then notify again -> AVAILABLE r2 is derived
 curl -s -X POST $PM/certificates/$C/revisions -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST $PM/certificates/$C/notify -H 'Content-Type: application/json' \
   -d '{"messageId":"'$(uuidgen)'",'"$TARGET"'}'

@@ -12,7 +12,7 @@ import org.metaform.certo.common.security.outbound.OutboundCall;
  * protocol registers itself under {@link #protocolId()}; {@link DispatchingConsumerNotifier} selects
  * the right one from the exchange's {@link ExchangeBinding} and delegates. Each adapter renders its own wire
  * format; the token and counterparty endpoint are resolved from the siglet cache via the {@link OutboundCall}'s
- * flow. The {@code binding} is passed through for adapters that need its per-exchange detail; the v3 adapter
+ * flow. The {@code binding} is passed through for adapters that need its per-exchange detail; the SCE adapter
  * does not use it.
  */
 public interface ProtocolNotifier {

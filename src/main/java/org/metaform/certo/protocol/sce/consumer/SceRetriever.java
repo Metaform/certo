@@ -80,7 +80,7 @@ public class SceRetriever implements ProtocolRetriever {
             if (body == null) {
                 throw new IOException("Provider returned an empty body for certificate " + certificateId);
             }
-            // Deserialize the v3 wire certificate and map it to the neutral domain record.
+            // Deserialize the SCE wire certificate and map it to the neutral domain record.
             metadata = SceCertificateCodec.toDomain(mapper.readValue(body.string(), SceCertificate.class));
         }
 

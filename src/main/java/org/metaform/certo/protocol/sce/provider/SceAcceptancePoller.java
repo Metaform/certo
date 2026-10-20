@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The v3 {@link AcceptancePoller}: GETs the consumer's
+ * The SCE {@link AcceptancePoller}: GETs the consumer's
  * {@code /certificate-acceptance-status/{exchangeId}}, with the token + endpoint
  * resolved from the siglet cache for the given flow. A {@code 404} means the consumer has not decided yet.
  */

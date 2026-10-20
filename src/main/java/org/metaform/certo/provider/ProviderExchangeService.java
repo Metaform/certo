@@ -354,7 +354,7 @@ public class ProviderExchangeService {
      * the outcome of this one push is returned synchronously, and the caller retries per counterparty.
      * Certo keeps no registry of counterparties; to reach several consumers, the caller notifies once per
      * consumer. The event payload is derived from the certificate — the light-triage subset of the latest
-     * revision for {@code CREATED}/{@code MODIFIED}, the id alone for {@code WITHDRAWN}. The caller's
+     * revision for {@code AVAILABLE}, the id alone for {@code WITHDRAWN}. The caller's
      * {@code messageId} becomes the pushed event's id verbatim: a retry that reuses it is absorbed by the
      * consumer's dedup, a fresh one is a new event — identity across retries is the caller's to manage.
      */

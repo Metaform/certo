@@ -138,7 +138,7 @@ public class ConsumerManagementController {
 
     /**
      * {@code GET /consumer/certificates/{id}} — the consumer's lifecycle view of a certificate it has
-     * learned about (updated from CREATED/MODIFIED/WITHDRAWN events).
+     * learned about (updated from AVAILABLE/WITHDRAWN events).
      */
     @PreAuthorize("@mgmtScopes.can(authentication, 'consumer:read')")
     @GetMapping(path = "/certificates/{id}", produces = MediaType.APPLICATION_JSON_VALUE)

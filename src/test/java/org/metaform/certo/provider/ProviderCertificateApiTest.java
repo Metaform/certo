@@ -399,7 +399,7 @@ class ProviderCertificateApiTest {
                         .content("{\"validFrom\":\"2026-01-01\",\"validUntil\":\"2029-01-01\",\"documentIds\":[\"" + documentId + "\"]}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.revision").value(2))
-                .andExpect(jsonPath("$.lifecycleStatus").value("MODIFIED"));
+                .andExpect(jsonPath("$.lifecycleStatus").value("AVAILABLE"));
 
         mvc.perform(get("/certificates/{id}", "cert-mod-test"))
                 .andExpect(status().isOk())

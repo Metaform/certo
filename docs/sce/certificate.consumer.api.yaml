@@ -31,7 +31,7 @@ paths:
       summary: Receive certificate lifecycle and fulfillment status events
       description: |
         Invoked by a Certificate Provider to push certificate lifecycle events
-        (`CREATED`, `MODIFIED`, `WITHDRAWN`) and fulfillment status events for
+        (`AVAILABLE`, `WITHDRAWN`) and fulfillment status events for
         exchanges opened by this Certificate Consumer. Notifications are purely
         informational: they never open a Certificate Exchange and never carry
         document content.

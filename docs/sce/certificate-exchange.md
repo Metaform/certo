@@ -171,9 +171,9 @@ long-lived: it may be published, revised, and eventually withdrawn.
 A [=Certificate=] is identified by a `certificateId` that is stable for the life of the certificate. A modification
 does not create a new identifier; instead, the certificate is versioned by a [=Revision=] counter:
 
-- `CREATED` makes the first `revision` of the certificate available for retrieval.
-- Each `MODIFIED` publishes a new `revision` under the same `certificateId`, superseding the previous one. The latest
-  `revision` is authoritative.
+- Publication makes the first `revision` of the certificate available for retrieval.
+- Each subsequent publication adds a new `revision` under the same `certificateId`, superseding the previous one. The
+  latest `revision` is authoritative.
 - A certificate version is therefore identified by the pair (`certificateId`, `revision`). A [=Certificate Exchange=]
   delivers one specific version.
 
@@ -183,8 +183,8 @@ record's metadata).
 
 The `certificateId` and initial `revision` MAY be assigned before the certificate is published: when a
 [=Certificate Provider=] accepts a request and produces the certificate later, the identifier is allocated at
-acceptance so that an in-progress [=Certificate Exchange=] can reference its certificate. Publication (`CREATED`)
-occurs when the certificate becomes available.
+acceptance so that an in-progress [=Certificate Exchange=] can reference its certificate. The certificate enters the
+lifecycle (`AVAILABLE`) when it becomes available.
 
 #### Lifecycle State Machine
 
@@ -193,34 +193,34 @@ They are independent of the certificate's validity (see [Validity](#validity-as-
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED
-    CREATED --> MODIFIED
-    MODIFIED --> MODIFIED
-    CREATED --> WITHDRAWN
-    MODIFIED --> WITHDRAWN
+    [*] --> AVAILABLE
+    AVAILABLE --> WITHDRAWN
     WITHDRAWN --> [*]
 ```
 
-| State       | Terminal | Description                                                                                                                 |
-|-------------|----------|-----------------------------------------------------------------------------------------------------------------------------|
-| `CREATED`   | No       | The certificate was first published under a new `certificateId`, establishing its initial version.                          |
-| `MODIFIED`  | No       | A new `revision` of the certificate was published under the same `certificateId`; the `revision` is incremented. May recur. |
-| `WITHDRAWN` | Yes      | The provider withdrew (removed) the certificate; it is no longer available. Terminal.                                       |
+| State       | Terminal | Description                                                                                            |
+|-------------|----------|----------------------------------------------------------------------------------------------------------|
+| `AVAILABLE` | No       | The certificate is published and retrievable at its latest `revision`.                                 |
+| `WITHDRAWN` | Yes      | The provider withdrew (removed) the certificate; it is no longer available. Terminal.                  |
+
+Publishing a new `revision` is not a lifecycle transition: the certificate remains `AVAILABLE` and the `revision`
+counter carries the versioning (see [Identity and Versioning](#identity-and-versioning)).
 
 #### Validity as a Separate Dimension
 
 A [=Certificate=]'s validity is an independent dimension derived from its `validFrom` and `validUntil` dates, not from
 the publication states defined above. A given `revision` is *active* within its validity window and *expired*
 afterward; this status changes with the passage of time alone — no lifecycle transition occurs. The two dimensions are
-orthogonal: a certificate MAY be `WITHDRAWN` while still within its validity window, or remain `CREATED`/`MODIFIED`
+orthogonal: a certificate MAY be `WITHDRAWN` while still within its validity window, or remain `AVAILABLE`
 after it has expired.
 
 #### Relationship to the Certificate Exchange
 
-Lifecycle transitions are communicated to [=Certificate Consumers=] as certificate lifecycle events (see
+Lifecycle state is communicated to [=Certificate Consumers=] as certificate lifecycle events (see
 [Certificate Lifecycle Events](#certificate-lifecycle-events)). These events are purely informational: no lifecycle
-event opens, alters, or closes a [=Certificate Exchange=]. A `MODIFIED` revises the certificate in place under the
-same `certificateId` without initiating a new delivery, and a `WITHDRAWN` ends the certificate's availability.
+event opens, alters, or closes a [=Certificate Exchange=]. An `AVAILABLE` reporting a new `revision` revises the
+certificate in place under the same `certificateId` without initiating a new delivery, and a `WITHDRAWN` ends the
+certificate's availability.
 
 ## Protocol Events
 
@@ -229,24 +229,25 @@ following event types are defined:
 
 | Event Type                                     | Direction           | Purpose                                                              |
 |------------------------------------------------|---------------------|----------------------------------------------------------------------|
-| `org.dsaf.sce.CertificateLifecycleStatus.v1`   | Provider → Consumer | Communicates a [=Certificate Lifecycle=] transition                  |
+| `org.dsaf.sce.CertificateLifecycleStatus.v1`   | Provider → Consumer | Communicates the current [=Certificate Lifecycle=] state             |
 | `org.dsaf.sce.CertificateFulfillmentStatus.v1` | Provider → Consumer | Communicates the Fulfillment-phase status of a [=Certificate Exchange=] |
 | `org.dsaf.sce.CertificateAcceptanceStatus.v1`  | Consumer → Provider | Communicates the Acceptance-phase status of a [=Certificate Exchange=]  |
 
 ### Certificate Lifecycle Status Event
 
-A `CertificateLifecycleStatus` event communicates a transition of the [=Certificate Lifecycle=] state machine. It is a
-pure notification: it MUST NOT open a [=Certificate Exchange=] and MUST NOT carry [=Document=] content.
+A `CertificateLifecycleStatus` event reports the current [=Certificate Lifecycle=] state of a [=Certificate=]:
+`AVAILABLE` at its latest `revision`, or `WITHDRAWN`. It is a pure notification: it MUST NOT open a
+[=Certificate Exchange=] and MUST NOT carry [=Document=] content.
 
 The `data` payload has the following structure:
 
 |              |                                                                                                                        |
 |--------------|--------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.lifecycle.status.event.schema.json)                                                   |
-| **Required** | - `status`: One of `CREATED`, `MODIFIED`, `WITHDRAWN`.                                                                 |
+| **Required** | - `status`: One of `AVAILABLE`, `WITHDRAWN`.                                                                           |
 |              | - `certificate`: A summary of the certificate record (see below).                                                      |
 
-For `CREATED` and `MODIFIED`, the `certificate` object MUST contain exactly the following summary fields, which let a
+For `AVAILABLE`, the `certificate` object MUST contain exactly the following summary fields, which let a
 consumer triage relevance without retrieving the certificate: `certificateId`, `revision`, `certificateType`,
 `validFrom`, and `validUntil`. The provider MUST NOT include any other certificate fields — in particular not
 `certifiedLocations` or `documents`.
@@ -255,7 +256,7 @@ For `WITHDRAWN`, the `certificate` object MUST contain only `certificateId`.
 
 The `subject` attribute of the event MUST be set to the `certificateId`.
 
-The following is a non-normative example of a `CREATED` notification:
+The following is a non-normative example of an `AVAILABLE` notification:
 
 ```json
 {
@@ -267,7 +268,7 @@ The following is a non-normative example of a `CREATED` notification:
   "time": "2026-05-04T07:00:00Z",
   "datacontenttype": "application/json",
   "data": {
-    "status": "CREATED",
+    "status": "AVAILABLE",
     "certificate": {
       "certificateId": "550e8400-e29b-41d4-a716-446655440000",
       "revision": 1,
@@ -281,18 +282,19 @@ The following is a non-normative example of a `CREATED` notification:
 
 ### Certificate Fulfillment Status Event
 
-A `CertificateFulfillmentStatus` event reports the Fulfillment-phase status of a [=Certificate Exchange=] to the
+A `CertificateFulfillmentStatus` event reports the Fulfillment-phase outcome of a [=Certificate Exchange=] to the
 [=Certificate Consumer=] that opened it. It never carries a certificate record.
 
 The `subject` attribute of the event MUST be set to the `exchangeId`.
 
-The `data` payload is the [Exchange](#exchange-object) representation, restricted to Fulfillment-phase states:
+The `data` payload is the [Exchange](#exchange-object) representation, restricted to the terminal Fulfillment-phase
+states:
 
 |              |                                                                                                                            |
 |--------------|------------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.fulfillment.status.event.schema.json)                                                     |
 | **Required** | - `exchangeId`: The identifier of the [=Certificate Exchange=].                                                            |
-|              | - `status`: One of `PENDING`, `FULFILLED`, `DECLINED`.                                                                      |
+|              | - `status`: One of `FULFILLED`, `DECLINED`.                                                                                 |
 | **Optional** | - `certificateId`, `revision`: The certificate version the exchange concerns. MUST be present when `status` is `FULFILLED`. |
 |              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `DECLINED`.          |
 
@@ -381,8 +383,8 @@ with solid lines and their responses with dashed lines.
 
 ### Notification-Initiated Flow
 
-The [=Certificate Provider=] publishes a new [=Certificate=] and notifies the [=Certificate Consumer=] with a
-`CREATED` lifecycle event. The notification is purely informational; the consumer opens a [=Certificate Exchange=] by
+The [=Certificate Provider=] publishes a new [=Certificate=] and notifies the [=Certificate Consumer=] with an
+`AVAILABLE` lifecycle event. The notification is purely informational; the consumer opens a [=Certificate Exchange=] by
 submitting a certificate request, which the provider — already holding the certificate — fulfills immediately in the
 request response. The consumer then retrieves the certificate and reports acceptance:
 
@@ -390,7 +392,7 @@ request response. The consumer then retrieves the certificate and reports accept
 sequenceDiagram
     participant con as Certificate Consumer
     participant prov as Certificate Provider
-    prov ->> con: CertificateLifecycleStatus (CREATED)
+    prov ->> con: CertificateLifecycleStatus (AVAILABLE)
     con ->> prov: POST /exchanges
     prov -->> con: 201 Exchange (FULFILLED)
     con ->> prov: GET /certificates/:certificateId
@@ -403,7 +405,7 @@ sequenceDiagram
 ### Request-Initiated Flow
 
 The [=Certificate Consumer=] requests a [=Certificate=] the [=Certificate Provider=] does not yet hold. The provider
-accepts the request (`PENDING`) and reports Fulfillment progress with fulfillment status events. Once
+accepts the request (`PENDING`) and reports the Fulfillment outcome with a fulfillment status event. Once
 `FULFILLED`, the consumer retrieves the certificate and reports acceptance:
 
 ```mermaid
@@ -456,11 +458,14 @@ single [=Event=] or a batch (a JSON array) as defined by [[sce-cm]].
 
 A [=Certificate Provider=] MUST push:
 
-- a `CertificateLifecycleStatus` event for every [=Certificate Lifecycle=] transition (`CREATED`, `MODIFIED`,
-  `WITHDRAWN`) of a certificate the consumer is entitled to, and
+- a `CertificateLifecycleStatus` event whenever a certificate the consumer is entitled to is published, revised, or
+  withdrawn, reporting the resulting state (`AVAILABLE` at the latest `revision`, or `WITHDRAWN`), and
 - a `CertificateFulfillmentStatus` event when an exchange opened by the consumer reaches `FULFILLED` or `DECLINED`.
 
-A provider MAY additionally push `CertificateFulfillmentStatus` events for the intermediate `PENDING` state.
+A provider MAY additionally push an `AVAILABLE` event when a consumer becomes entitled to an existing certificate.
+
+The intermediate `PENDING` state is never pushed: it is only entered when an exchange is created and is reported
+synchronously in the creation response; a consumer MAY observe it at any time via the exchange status endpoint.
 
 |                 |                                                                                                                                            |
 |-----------------|--------------------------------------------------------------------------------------------------------------------------------------------|
