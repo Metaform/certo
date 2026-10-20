@@ -55,7 +55,7 @@ stateDiagram-v2
 > **Decoupling.** Both roles run in one process, but the provider never auto-calls the consumer (or
 > vice versa) — that wiring is the control plane, which is out of scope. Each flow is driven by calling
 > the relevant endpoints; cross-role calls are real OkHttp calls (through a **retrying** client) against
-> the counterparty endpoint the siglet cache returns for the flow.
+> the counterparty endpoint the Siglet cache returns for the flow.
 
 ## Flow index
 
@@ -87,7 +87,7 @@ sequenceDiagram
     participant C as Consumer
     participant P as Provider
     T->>C: POST …/consumer/certificate-requests {messageId, protocol, providerId, certificateType, certifiedLocations?, flowId}
-    C->>P: POST /exchanges {messageId, certificateType, certifiedLocations?} (siglet token)
+    C->>P: POST /exchanges {messageId, certificateType, certifiedLocations?} (Siglet token)
     alt A1 provider already holds a covering cert
         P-->>C: 201 Exchange {status FULFILLED, certificateId, revision}
     else otherwise provider must produce it
@@ -293,24 +293,25 @@ caller-chosen when supplied (URL-safe, unique). Everything is tenant-scoped, no 
 protocol call is scoped to the tenant its token **audience** (`aud` = a tenant DID) resolves to (fulfil
 only from that tenant's holdings; retrieval/search never cross the boundary), and a management call names
 the tenant **in the path** — every provider/consumer operation lives under
-`/management/v1/participant-contexts/{participantContextId}/…` (siglet's
+`/management/v1/participant-contexts/{participantContextId}/…` (Siglet's
 `/tokens/{participant_context_id}/…` convention). A resource addressed by id must belong to the path
 tenant (else `404`); queries return only that tenant's resources. The only tenant-agnostic management
 endpoints are the participant-context registry itself.
 
 ## Security & the consumer extension point
 
-Security tokens on the protocol layer are **always on** and always come from a **siglet** STS
-(`certo.security.siglet-base-url` is required; dev/test point at a mock siglet). The management API is
-OAuth2-protected, never siglet-secured; it only carries `flowId` as data.
+Security tokens on the protocol layer are **always on** and always come from a
+**[Siglet](https://github.com/eclipse-dataplane-core/dsdk-facet-rs)** STS
+(`certo.security.siglet-base-url` is required; dev/test point at a mock Siglet). The management API is
+OAuth2-protected, never Siglet-secured; it only carries `flowId` as data.
 
-- **Inbound** protocol calls are verified via siglet's revocation-aware `POST /tokens/verify`. The
+- **Inbound** protocol calls are verified via Siglet's revocation-aware `POST /tokens/verify`. The
   subject (`sub`, the caller's **DID**) is the one identity used for all correlation — it becomes the
   exchange counterparty, and a mismatched DID cannot address another counterparty's exchange. An
   optional `dataspaceidentifier` claim carries the dataspace-assigned id. The token **audience** resolves
   to the receiving tenant.
 - **Outbound** calls are made on behalf of the sender's participant context; the token **and
-  counterparty endpoint** come from the siglet cache (`GET /tokens/{participantContextId}/{flowId}`), so
+  counterparty endpoint** come from the Siglet cache (`GET /tokens/{participantContextId}/{flowId}`), so
   the URL travels with the token (no configured-URL fallback). Outbound HTTP runs through a **retrying**
   client (Failsafe, EDC-style). `flowId` is **ephemeral** — supplied fresh on each management request
   that triggers an outbound call (`notify`, `fulfill`/`decline`, `poll-acceptance`, consumer
@@ -339,6 +340,6 @@ analogue of the provider's certification-authority backend.
 
 ## Operational endpoints
 
-Public, token-free (not protocol paths, so the siglet interceptor never applies): `GET /health`
+Public, token-free (not protocol paths, so the Siglet interceptor never applies): `GET /health`
 (liveness — process up, dependency-free), `GET /readiness` (liveness **and** DB reachable → `200`/`503`),
 and `GET /info` (descriptor).

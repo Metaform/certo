@@ -274,17 +274,17 @@ fulfils only from that tenant's holdings, a retrieval or search never crosses th
 ## Security & the consumer extension point
 
 Security tokens on the protocol layer are **always on** and always come from a
-**[siglet](https://github.com/eclipse-dataplane-core/dsdk-facet-rs)** STS; the
-management API is OAuth2-protected, never siglet-secured. A deployment must point at a siglet —
-`certo.security.siglet-base-url` is required (dev/test point at a mock siglet).
+**[Siglet](https://github.com/eclipse-dataplane-core/dsdk-facet-rs)** STS; the
+management API is OAuth2-protected, never Siglet-secured. A deployment must point at a Siglet —
+`certo.security.siglet-base-url` is required (dev/test point at a mock Siglet).
 
-- **Inbound** protocol calls must present a `Bearer` token; it is verified by calling siglet's
+- **Inbound** protocol calls must present a `Bearer` token; it is verified by calling Siglet's
   revocation-aware verification endpoint `POST /tokens/verify`. The subject (`sub`, the caller's **DID**)
   is the one identity used for all correlation — it becomes the exchange's counterparty. An optional
   `dataspaceidentifier` claim carries the dataspace-assigned id where one exists. The token **audience**
   (a tenant DID) resolves to the receiving tenant's participant context.
 - **Outbound** calls are made on behalf of the sender's participant context, addressed to the counterparty
-  (its DID). The token **and the counterparty endpoint** come from the siglet cache
+  (its DID). The token **and the counterparty endpoint** come from the Siglet cache
   (`GET /tokens/{participantContextId}/{flowId}`) — there is no configured-URL fallback. Outbound HTTP runs
   through a **retrying client** (Failsafe) that retries a transient `IOException`/`5xx` with backoff; every
   outbound call is idempotent, so retries are safe.
@@ -308,7 +308,7 @@ curl -s -X POST $CM/exchanges/query -H 'Content-Type: application/json' -d '{"aw
 
 ## Operational endpoints
 
-Public, token-free endpoints (not protocol paths, so the siglet interceptor never applies) for container
+Public, token-free endpoints (not protocol paths, so the Siglet interceptor never applies) for container
 probes and inspection — they expose no tenant data:
 
 | Endpoint         | Purpose                                                                                                                         |
