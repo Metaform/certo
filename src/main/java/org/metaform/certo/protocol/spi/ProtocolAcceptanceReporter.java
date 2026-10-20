@@ -28,7 +28,6 @@ public interface ProtocolAcceptanceReporter {
      */
     boolean report(ExchangeBinding binding,
                    String exchangeId,
-                   String certificateId,
                    AcceptanceStatus status,
                    List<StatusError> errors,
                    OutboundCall call);

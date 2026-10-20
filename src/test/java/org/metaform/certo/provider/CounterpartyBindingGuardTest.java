@@ -73,7 +73,7 @@ class CounterpartyBindingGuardTest {
                   "type": "org.dsaf.sce.CertificateAcceptanceStatus.v1",
                   "source": "%s",
                   "id": "aaaaaaaa-0000-0000-0000-000000000001",
-                  "data": { "exchangeId": "%s", "certificateId": "cert-x", "status": "ACCEPTED" }
+                  "data": { "exchangeId": "%s", "status": "ACCEPTED" }
                 }
                 """.formatted(sourceDid, exchangeId);
     }

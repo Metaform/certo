@@ -245,8 +245,6 @@ public class ConsumerExchangeService {
                 .orElseThrow(() -> ApiException.notFound("No acceptance status for exchange: " + exchangeId));
         return new CertificateAcceptanceStatusResponse(
                 exchange.exchangeId(),
-                exchange.certificateId(),
-                exchange.revision(),
                 exchange.acceptanceStatus(),
                 exchange.acceptanceErrors());
     }
@@ -318,7 +316,7 @@ public class ConsumerExchangeService {
         // mark it reported (in its own transaction) ONLY if delivery succeeded, so a lost report stays surfaced
         // by the reconciliation query ({@link #queryExchanges}) for a re-drive.
         afterCommit(() -> {
-            if (acceptanceClient.report(exchangeId, exchange.certificateId(), status, call, errors)) {
+            if (acceptanceClient.report(exchangeId, status, call, errors)) {
                 tx.executeWithoutResult(_ -> exchangeStore.findById(exchangeId)
                         .ifPresent(ConsumerCertificateExchange::markAcceptanceReported));
             }

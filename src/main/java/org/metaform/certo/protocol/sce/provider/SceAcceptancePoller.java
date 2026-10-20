@@ -69,7 +69,6 @@ public class SceAcceptancePoller implements AcceptancePoller {
                 return Optional.empty();
             }
             return Optional.of(new AcceptanceStatusData(parsed.exchangeId(),
-                    parsed.certificateId(),
                     parsed.status(), parsed.errors()));
         }
     }
@@ -77,7 +76,6 @@ public class SceAcceptancePoller implements AcceptancePoller {
     /** Mirrors the consumer's {@code CertificateAcceptanceStatusResponse} (only the fields we consume). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record AcceptanceStatusResponse(String exchangeId,
-                                            String certificateId,
                                             AcceptanceStatus status,
                                             List<StatusError> errors) {
     }

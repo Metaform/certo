@@ -105,7 +105,6 @@ class ConsumerCertificateApiTest {
         var status = getAcceptanceStatus(exchangeId);
         assertThat(status.statusCode()).isEqualTo(200);
         var body = mapper.readTree(status.body());
-        assertThat(body.get("certificateId").asString()).isEqualTo(TestTenants.ISO14001_CERT_ID);
         assertThat(body.get("status").asString()).isEqualTo("ACCEPTED");
     }
 

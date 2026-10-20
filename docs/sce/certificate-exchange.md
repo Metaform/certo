@@ -336,7 +336,8 @@ The following is a non-normative example of a `FULFILLED` notification:
 ### Certificate Acceptance Status Event
 
 A `CertificateAcceptanceStatus` event reports the Acceptance-phase status of a [=Certificate Exchange=] to the
-[=Certificate Provider=]. The event is correlated to its exchange by the `exchangeId`.
+[=Certificate Provider=]. The event is correlated to its exchange by the `exchangeId`, which alone identifies the
+certificate version the verdict applies to — the exchange pins it.
 
 The `subject` attribute of the event MUST be set to the `exchangeId`.
 
@@ -347,8 +348,7 @@ The `data` payload has the following structure:
 | **Schema**   | [JSON Schema](./schemas/certificate.acceptance.status.event.schema.json)                                                              |
 | **Required** | - `exchangeId`: The identifier of the [=Certificate Exchange=] the status applies to.                                              |
 |              | - `status`: One of `ACCEPTED`, `REJECTED`.                                                                                         |
-| **Optional** | - `certificateId`, `revision`: The certificate version the status applies to.                                                      |
-|              | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `REJECTED`; MUST NOT be present otherwise. |
+| **Optional** | - `errors`: An array of [error objects](#error-object). MUST be present and non-empty when `status` is `REJECTED`; MUST NOT be present otherwise. |
 
 The following is a non-normative example of a `REJECTED` acceptance status event:
 
@@ -363,8 +363,6 @@ The following is a non-normative example of a `REJECTED` acceptance status event
   "datacontenttype": "application/json",
   "data": {
     "exchangeId": "7f3a9c12-4b8e-4d6a-9e21-0c5b2a1d8f44",
-    "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-    "revision": 1,
     "status": "REJECTED",
     "errors": [
       {

@@ -20,5 +20,5 @@ public interface AcceptanceReporter {
      * (a {@code 2xx}); {@code false} on any delivery failure — never throws — so the caller can leave the
      * exchange flagged for a reconciliation re-drive rather than marking it reported.
      */
-    boolean report(String exchangeId, String certificateId, AcceptanceStatus status, OutboundCall call, List<StatusError> errors);
+    boolean report(String exchangeId, AcceptanceStatus status, OutboundCall call, List<StatusError> errors);
 }

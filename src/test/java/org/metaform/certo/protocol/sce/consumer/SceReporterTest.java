@@ -73,7 +73,7 @@ class SceReporterTest {
     void reportsAcceptedAsCloudEvent() throws Exception {
         provider.enqueue(new MockResponse().setResponseCode(204));
 
-        client.report(null, "exch-1", "cert-1", AcceptanceStatus.ACCEPTED, null, call);
+        client.report(null, "exch-1", AcceptanceStatus.ACCEPTED, null, call);
 
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
@@ -90,7 +90,8 @@ class SceReporterTest {
 
         var data = body.get("data");
         assertThat(data.get("exchangeId").asString()).isEqualTo("exch-1");
-        assertThat(data.get("certificateId").asString()).isEqualTo("cert-1");
+        // No certificateId/revision: the exchangeId alone identifies the pinned certificate version.
+        assertThat(data.has("certificateId")).isFalse();
         assertThat(data.get("status").asString()).isEqualTo("ACCEPTED");
         assertThat(data.has("errors")).isFalse(); // omitted when null
     }
@@ -99,7 +100,7 @@ class SceReporterTest {
     void reportsRejectedWithErrors() throws Exception {
         provider.enqueue(new MockResponse().setResponseCode(204));
 
-        client.report(null, "exch-2", "cert-2", AcceptanceStatus.REJECTED,
+        client.report(null, "exch-2", AcceptanceStatus.REJECTED,
                 List.of(new StatusError("Certificate has expired")), call);
 
         RecordedRequest request = provider.takeRequest(5, TimeUnit.SECONDS);
@@ -114,7 +115,7 @@ class SceReporterTest {
         // Provider responds 404 (unknown exchange) — the callback is best-effort and must not throw.
         provider.enqueue(new MockResponse().setResponseCode(404));
 
-        client.report(null, "exch-unknown", "cert-3", AcceptanceStatus.ACCEPTED, null, call);
+        client.report(null, "exch-unknown", AcceptanceStatus.ACCEPTED, null, call);
 
         assertThat(provider.takeRequest(5, TimeUnit.SECONDS)).isNotNull();
     }

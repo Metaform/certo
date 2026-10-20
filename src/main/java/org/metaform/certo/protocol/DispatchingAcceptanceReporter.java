@@ -36,7 +36,6 @@ public class DispatchingAcceptanceReporter implements AcceptanceReporter {
 
     @Override
     public boolean report(String exchangeId,
-                          String certificateId,
                           AcceptanceStatus status,
                           OutboundCall call,
                           List<StatusError> errors) {
@@ -47,6 +46,6 @@ public class DispatchingAcceptanceReporter implements AcceptanceReporter {
         if (reporter == null) {
             throw new IllegalStateException("No acceptance reporter registered for protocol " + binding.protocolId());
         }
-        return reporter.report(binding, exchangeId, certificateId, status, errors, call);
+        return reporter.report(binding, exchangeId, status, errors, call);
     }
 }

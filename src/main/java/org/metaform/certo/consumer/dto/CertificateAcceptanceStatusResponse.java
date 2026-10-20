@@ -8,15 +8,12 @@ import java.util.List;
 
 /**
  * Current acceptance status of a {@code Certificate Exchange} on the consumer,
- * returned from {@code GET /certificate-acceptance-status/{id}}. The exchange is identified by
- * {@code exchangeId}; {@code certificateId} and {@code revision} identify the certificate version the
- * status applies to (informational).
+ * returned from the acceptance-status query. The {@code exchangeId} alone identifies the certificate
+ * version the verdict applies to — the exchange pins it.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CertificateAcceptanceStatusResponse(
         String exchangeId,
-        String certificateId,
-        Integer revision,
         AcceptanceStatus status,
         List<StatusError> errors) {
 }

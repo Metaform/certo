@@ -103,11 +103,11 @@ class MultiTenantIsolationTest {
         var certificateId = fulfilledForC.get("certificate").get("certificateId").asString();
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
                         .header("Authorization", bearer("did:web:tenant-d"))
-                        .content(acceptanceEvent(exchangeId, certificateId)))
+                        .content(acceptanceEvent(exchangeId)))
                 .andExpect(status().isNotFound());
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
                         .header("Authorization", bearer("did:web:tenant-c"))
-                        .content(acceptanceEvent(exchangeId, certificateId)))
+                        .content(acceptanceEvent(exchangeId)))
                 .andExpect(status().isNoContent());
     }
 
@@ -159,12 +159,12 @@ class MultiTenantIsolationTest {
     }
 
     /** A minimal {@code CertificateAcceptanceStatus} CloudEvent (ACCEPTED) for the given exchange. */
-    private static String acceptanceEvent(String exchangeId, String certificateId) {
+    private static String acceptanceEvent(String exchangeId) {
         return """
                 { "specversion": "1.0", "type": "org.dsaf.sce.CertificateAcceptanceStatus.v1",
                   "source": "did:web:mt-consumer",
                   "id": "acc-%s", "time": "2025-05-04T08:00:00Z",
-                  "data": { "exchangeId": "%s", "certificateId": "%s", "status": "ACCEPTED" } }
-                """.formatted(exchangeId, exchangeId, certificateId);
+                  "data": { "exchangeId": "%s", "status": "ACCEPTED" } }
+                """.formatted(exchangeId, exchangeId);
     }
 }

@@ -149,7 +149,7 @@ curl -s -X POST $B/notifications \
   -H 'Content-Type: application/cloudevents+json' -d '{
     "specversion":"1.0","type":"org.dsaf.sce.CertificateAcceptanceStatus.v1",
     "source":"did:web:consumer","id":"'$(uuidgen)'","time":"2026-05-04T08:00:00Z",
-    "data":{"exchangeId":"<exchangeId>","certificateId":"00000000-0000-0000-0000-000000009001","status":"ACCEPTED"}}'
+    "data":{"exchangeId":"<exchangeId>","status":"ACCEPTED"}}'
 ```
 
 Retrieval is **two-step**: `GET /certificates/{id}` returns metadata listing the documents by reference;

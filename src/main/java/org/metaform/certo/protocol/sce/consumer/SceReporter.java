@@ -54,9 +54,9 @@ public class SceReporter implements ProtocolAcceptanceReporter {
      * {@code true} on successful delivery.
      */
     @Override
-    public boolean report(ExchangeBinding binding, String exchangeId, String certificateId,
+    public boolean report(ExchangeBinding binding, String exchangeId,
                           AcceptanceStatus status, List<StatusError> errors, OutboundCall call) {
-        var data = new AcceptanceStatusData(exchangeId, certificateId, status, errors);
+        var data = new AcceptanceStatusData(exchangeId, status, errors);
         var event = new CloudEvent<>(
                 CloudEvent.SPEC_VERSION,
                 Sce.TYPE_ACCEPTANCE_STATUS,

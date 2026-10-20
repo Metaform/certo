@@ -180,32 +180,30 @@ class ProviderCertificateApiTest {
     @Test
     void acceptanceNotification_recordsStatus_thenUnknownIs404_andRejectedNeedsErrors() throws Exception {
         var exchangeId = openExchange();
-        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
 
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent("exch-unknown", certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent("exch-unknown", "ACCEPTED", false)))
                 .andExpect(status().isNotFound());
 
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "REJECTED", false)))
+                        .content(acceptanceEvent(exchangeId, "REJECTED", false)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void acceptanceNotification_directTerminalWithoutRetrieved_isRecorded() throws Exception {
         var exchangeId = openExchange();
-        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
 
         assertThat(exchangeView(exchangeId).get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
@@ -214,24 +212,23 @@ class ProviderCertificateApiTest {
     @Test
     void acceptanceNotification_duplicateReReport_isAcknowledgedWithoutTransition() throws Exception {
         var exchangeId = openExchange();
-        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
 
         // A re-report of the current state (fresh event id) is a duplicate: 204, no transition (SCE).
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
         assertThat(exchangeView(exchangeId).get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
 
         // A transition out of a terminal state is invalid: 409 (SCE).
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "REJECTED", true)))
+                        .content(acceptanceEvent(exchangeId, "REJECTED", true)))
                 .andExpect(status().isConflict());
     }
 
@@ -248,7 +245,7 @@ class ProviderCertificateApiTest {
                   "source": "did:web:consumer",
                   "id": "acc-specifier-%s",
                   "time": "2025-05-04T08:00:00Z",
-                  "data": { "exchangeId": "%s", "certificateId": "%s", "status": "REJECTED",
+                  "data": { "exchangeId": "%s", "status": "REJECTED",
                             "errors": [ {"message": "Certificate has expired"},
                                         {"specifier": "SITE000000000002", "message": "Site rejected"} ] }
                 }
@@ -335,21 +332,20 @@ class ProviderCertificateApiTest {
         var exchangeId = mapper.readTree(result.getResponse().getContentAsString()).get("exchangeId").asString();
 
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, "cert-not-yet-issued", "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void acceptance_afterTerminal_isConflict() throws Exception {
         var exchangeId = openExchange();
-        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
 
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(exchangeId, certificateId, "REJECTED", true)))
+                        .content(acceptanceEvent(exchangeId, "REJECTED", true)))
                 .andExpect(status().isConflict());
     }
 
@@ -454,7 +450,7 @@ class ProviderCertificateApiTest {
                   "type": "org.dsaf.sce.CertificateAcceptanceStatus.v1",
                   "source": "did:web:somebody-else",
                   "id": "bad-source-1",
-                  "data": { "exchangeId": "exch-x", "certificateId": "cert-x", "status": "ACCEPTED" }
+                  "data": { "exchangeId": "exch-x", "status": "ACCEPTED" }
                 }
                 """;
         mvc.perform(post("/notifications")
@@ -483,10 +479,9 @@ class ProviderCertificateApiTest {
     @Test
     void acceptanceBatch_isAtomic_oneBadEventAppliesNone() throws Exception {
         var exchangeId = openExchange();
-        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
 
-        var batch = "[" + acceptanceEvent(exchangeId, certificateId, "ACCEPTED", false)
-                + "," + acceptanceEvent(exchangeId, certificateId, "REJECTED", false) + "]";
+        var batch = "[" + acceptanceEvent(exchangeId, "ACCEPTED", false)
+                + "," + acceptanceEvent(exchangeId, "REJECTED", false) + "]";
         mvc.perform(post("/notifications")
                         .contentType("application/cloudevents+json").content(batch))
                 .andExpect(status().isBadRequest());
@@ -497,16 +492,15 @@ class ProviderCertificateApiTest {
     @Test
     void acceptanceEvent_duplicateIsIgnored() throws Exception {
         var exchangeId = openExchange();
-        var certificateId = exchangeView(exchangeId).get("certificateId").asString();
         var id = "dup-" + exchangeId;
 
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(id, exchangeId, certificateId, "ACCEPTED", false)))
+                        .content(acceptanceEvent(id, exchangeId, "ACCEPTED", false)))
                 .andExpect(status().isNoContent());
         assertThat(exchangeView(exchangeId).get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
 
         mvc.perform(post("/notifications").contentType("application/cloudevents+json")
-                        .content(acceptanceEvent(id, exchangeId, certificateId, "REJECTED", true)))
+                        .content(acceptanceEvent(id, exchangeId, "REJECTED", true)))
                 .andExpect(status().isNoContent());
         assertThat(exchangeView(exchangeId).get("acceptanceStatus").asString()).isEqualTo("ACCEPTED");
     }
@@ -592,12 +586,13 @@ class ProviderCertificateApiTest {
         return "{\"certificateType\":\"" + type + "\"}";
     }
 
-    private static String acceptanceEvent(String exchangeId, String certificateId, String acceptanceStatus, boolean withErrors) {
-        return acceptanceEvent("acc-" + exchangeId + "-" + acceptanceStatus, exchangeId, certificateId, acceptanceStatus, withErrors);
+    private static String acceptanceEvent(String exchangeId, String acceptanceStatus, boolean withErrors) {
+        return acceptanceEvent("acc-" + exchangeId + "-" + acceptanceStatus, exchangeId, acceptanceStatus, withErrors);
     }
 
-    private static String acceptanceEvent(String id, String exchangeId, String certificateId, String acceptanceStatus, boolean withErrors) {
+    private static String acceptanceEvent(String id, String exchangeId, String acceptanceStatus, boolean withErrors) {
         String errors = withErrors ? ",\"errors\":[{\"message\":\"bad\"}]" : "";
+        // No certificateId: the exchangeId alone identifies the pinned certificate version.
         return """
                 {
                   "specversion": "1.0",
@@ -605,8 +600,8 @@ class ProviderCertificateApiTest {
                   "source": "did:web:consumer",
                   "id": "%s",
                   "time": "2025-05-04T08:00:00Z",
-                  "data": { "exchangeId": "%s", "certificateId": "%s", "status": "%s"%s }
+                  "data": { "exchangeId": "%s", "status": "%s"%s }
                 }
-                """.formatted(id, exchangeId, certificateId, acceptanceStatus, errors);
+                """.formatted(id, exchangeId, acceptanceStatus, errors);
     }
 }
