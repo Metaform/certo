@@ -56,9 +56,9 @@ certificates on startup (each revision references one generated PDF document):
 
 | certificateId (fixed UUID)             | type      | revisions                 | validUntil (latest)  |
 |----------------------------------------|-----------|---------------------------|----------------------|
-| `00000000-0000-0000-0000-000000009001` | iso9001   | 1, 2 (AVAILABLE)          | 2027-01-24           |
-| `00000000-0000-0000-0000-000000014001` | iso14001  | 1                         | 2027-05-31           |
-| `00000000-0000-0000-0000-000000000001` | iatf16949 | 1                         | 2020-01-01 (expired) |
+| `00000000-0000-0000-0000-000000009001` | iso9001   | 0, 1 (AVAILABLE)          | 2027-01-24           |
+| `00000000-0000-0000-0000-000000014001` | iso14001  | 0                         | 2027-05-31           |
+| `00000000-0000-0000-0000-000000000001` | iatf16949 | 0                         | 2020-01-01 (expired) |
 
 The set of certificate types is open, but type codes MUST be lowercase Latin letters and digits only
 (`iso9001`) — a non-conformant spelling is rejected with `400` wherever a type enters the system. A
@@ -139,7 +139,7 @@ curl -s $B/exchanges/<exchangeId>
 
 # Retrieve certificate metadata (latest revision, or pin one with ?revision=)
 curl -s $B/certificates/00000000-0000-0000-0000-000000009001
-curl -s "$B/certificates/00000000-0000-0000-0000-000000009001?revision=1"
+curl -s "$B/certificates/00000000-0000-0000-0000-000000009001?revision=0"
 
 # Retrieve a document binary by its opaque id (served with Content-Type = its mediaType)
 curl -s "$B/documents/<documentId>" -o certificate.pdf
@@ -170,7 +170,7 @@ curl -s -X POST $B/notifications \
     "source":"did:web:provider","subject":"00000000-0000-0000-0000-000000009001","id":"'$(uuidgen)'",
     "time":"2026-05-04T07:00:00Z",
     "data":{"status":"AVAILABLE",
-            "certificate":{"certificateId":"00000000-0000-0000-0000-000000009001","revision":2,"certificateType":"iso9001",
+            "certificate":{"certificateId":"00000000-0000-0000-0000-000000009001","revision":1,"certificateType":"iso9001",
                            "validFrom":"2023-01-25","validUntil":"2027-01-24"}}}'
 
 # A provider queries the consumer's acceptance decision (404 until one is reported)
@@ -182,7 +182,7 @@ curl -s -X POST $B/notifications \
     "specversion":"1.0","type":"org.dsaf.sce.CertificateFulfillmentStatus.v1",
     "source":"did:web:provider","subject":"<exchangeId>","id":"'$(uuidgen)'","time":"2026-05-04T07:30:00Z",
     "data":{"exchangeId":"<exchangeId>","status":"FULFILLED",
-            "certificate":{"certificateId":"00000000-0000-0000-0000-000000009001","revision":2,"certificateType":"iso9001",
+            "certificate":{"certificateId":"00000000-0000-0000-0000-000000009001","revision":1,"certificateType":"iso9001",
                            "validFrom":"2024-01-24","validUntil":"2027-01-24"}}}'
 ```
 
@@ -232,8 +232,8 @@ C=00000000-0000-0000-0000-000000014001
 TARGET='"protocol":"sce-1.0","consumerId":"did:web:consumer","flowId":"<flowId>"'
 
 curl -s -X POST $PM/certificates/$C/notify -H 'Content-Type: application/json' \
-  -d '{"messageId":"'$(uuidgen)'",'"$TARGET"'}'          # notify AVAILABLE r1
-# state: new revision (no notification), then notify again -> AVAILABLE r2 is derived
+  -d '{"messageId":"'$(uuidgen)'",'"$TARGET"'}'          # notify AVAILABLE r0
+# state: new revision (no notification), then notify again -> AVAILABLE r1 is derived
 curl -s -X POST $PM/certificates/$C/revisions -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST $PM/certificates/$C/notify -H 'Content-Type: application/json' \
   -d '{"messageId":"'$(uuidgen)'",'"$TARGET"'}'

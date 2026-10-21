@@ -26,6 +26,16 @@ class CertificateTest {
     @Test
     void firstRevision_isAvailable() {
         var certificate = certificate();
+        certificate.addRevision(revision(0));
+        assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.AVAILABLE);
+        assertThat(certificate.latestRevision().revision()).isEqualTo(0);
+        assertThat(certificate.nextRevisionNumber()).isEqualTo(1);
+    }
+
+    @Test
+    void secondRevision_staysAvailable_revisionCarriesTheVersioning() {
+        var certificate = certificate();
+        certificate.addRevision(revision(0));
         certificate.addRevision(revision(1));
         assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.AVAILABLE);
         assertThat(certificate.latestRevision().revision()).isEqualTo(1);
@@ -33,22 +43,12 @@ class CertificateTest {
     }
 
     @Test
-    void secondRevision_staysAvailable_revisionCarriesTheVersioning() {
-        var certificate = certificate();
-        certificate.addRevision(revision(1));
-        certificate.addRevision(revision(2));
-        assertThat(certificate.lifecycleStatus()).isEqualTo(LifecycleStatus.AVAILABLE);
-        assertThat(certificate.latestRevision().revision()).isEqualTo(2);
-        assertThat(certificate.nextRevisionNumber()).isEqualTo(3);
-    }
-
-    @Test
     void revisionByNumber_resolvesOnlyExistingRevisions() {
         var certificate = certificate();
+        certificate.addRevision(revision(0));
         certificate.addRevision(revision(1));
-        certificate.addRevision(revision(2));
+        assertThat(certificate.revision(0)).isPresent();
         assertThat(certificate.revision(1)).isPresent();
-        assertThat(certificate.revision(2)).isPresent();
         assertThat(certificate.revision(99)).isEmpty();
     }
 

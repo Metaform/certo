@@ -57,7 +57,7 @@ class ProviderCertificateApiTest {
                 .andExpect(jsonPath("$.status").value("FULFILLED"))
                 // FULFILLED embeds the full record — the hand-off delivers the metadata in the 201.
                 .andExpect(jsonPath("$.certificate.certificateId").value(TestTenants.ISO9001_CERT_ID))
-                .andExpect(jsonPath("$.certificate.revision").value(2))
+                .andExpect(jsonPath("$.certificate.revision").value(1))
                 .andExpect(jsonPath("$.certificate.certificateType").value("iso9001"))
                 .andExpect(jsonPath("$.certificate.certifiedLocations[0].siteId").value("SITE00000003AYRE"))
                 .andExpect(jsonPath("$.certificate.documents[0].documentId").isNotEmpty())
@@ -68,7 +68,7 @@ class ProviderCertificateApiTest {
         mvc.perform(get("/exchanges/{id}", exchangeId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exchangeId").value(exchangeId))
-                .andExpect(jsonPath("$.certificate.revision").value(2))
+                .andExpect(jsonPath("$.certificate.revision").value(1))
                 .andExpect(jsonPath("$.certificate.certificateType").value("iso9001"))
                 .andExpect(jsonPath("$.status").value("FULFILLED"));
     }
@@ -112,7 +112,7 @@ class ProviderCertificateApiTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.certificateId").value(TestTenants.ISO9001_CERT_ID))
-                .andExpect(jsonPath("$.revision").value(2)) // latest by default
+                .andExpect(jsonPath("$.revision").value(1)) // latest by default
                 .andExpect(jsonPath("$.certificateType").value("iso9001"))
                 .andExpect(jsonPath("$.certifiedLocations[0].siteId").value("SITE00000003AYRE"))
                 .andExpect(jsonPath("$.certifiedLocations[0].locationRole").value("MAIN_LOCATION"))
@@ -152,7 +152,7 @@ class ProviderCertificateApiTest {
                         .content(searchByType("iso9001")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result[0].certificateId").value(TestTenants.ISO9001_CERT_ID))
-                .andExpect(jsonPath("$.result[0].revision").value(2));
+                .andExpect(jsonPath("$.result[0].revision").value(1));
     }
 
     @Test
@@ -399,15 +399,15 @@ class ProviderCertificateApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"validFrom\":\"2026-01-01\",\"validUntil\":\"2029-01-01\",\"documentIds\":[\"" + documentId + "\"]}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.revision").value(2))
+                .andExpect(jsonPath("$.revision").value(1))
                 .andExpect(jsonPath("$.lifecycleStatus").value("AVAILABLE"));
 
         mvc.perform(get("/certificates/{id}", "cert-mod-test"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision").value(2));
+                .andExpect(jsonPath("$.revision").value(1));
         mvc.perform(post("/search").contentType(MediaType.APPLICATION_JSON)
                         .content(searchByType("modtest")))
-                .andExpect(jsonPath("$.result[0].revision").value(2));
+                .andExpect(jsonPath("$.result[0].revision").value(1));
     }
 
     @Test
@@ -438,7 +438,7 @@ class ProviderCertificateApiTest {
                 null, null);
         var documentId = "doc-" + certificateId + "-r1";
         documentStore.save(new Document(documentId, TestTenants.PROVIDER_PCTX, LocalDate.of(2024, 1, 1), "en", "application/pdf", new byte[]{'%', 'P', 'D', 'F'}));
-        cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of(documentId)));
+        cert.addRevision(new CertificateRevision(0, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of(documentId)));
         certificateStore.save(cert);
     }
 

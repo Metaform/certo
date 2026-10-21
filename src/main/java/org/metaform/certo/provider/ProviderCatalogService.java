@@ -121,7 +121,7 @@ public class ProviderCatalogService implements org.metaform.certo.provider.spi.H
                 request.certifiedLocations(),
                 request.issuer(),
                 request.validator());
-        certificate.addRevision(new CertificateRevision(1, request.validFrom(), request.validUntil(), docIds));
+        certificate.addRevision(new CertificateRevision(0, request.validFrom(), request.validUntil(), docIds));
         certificateStore.save(certificate);
         return new CertificateAdded(certificateId, certificate.latestRevision().revision());
     }

@@ -162,7 +162,7 @@ does not create a new identifier; instead, the certificate is versioned by a [=R
 - A certificate version is therefore identified by the pair (`certificateId`, `revision`). A [=Certificate Exchange=]
   delivers one specific version.
 
-The `revision` is a positive integer with an initial value of `1` that MUST be incremented by `1` for every update of
+The `revision` is a non-negative integer with an initial value of `0` that MUST be incremented by `1` for every update of
 the certificate record, including changes that do not alter the certified content (for example, a correction to the
 record's metadata).
 
@@ -267,7 +267,7 @@ The following is a non-normative example of an `AVAILABLE` notification:
     "status": "AVAILABLE",
     "certificate": {
       "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-      "revision": 1,
+      "revision": 0,
       "certificateType": "iso9001",
       "validFrom": "2026-01-25",
       "validUntil": "2029-01-24"
@@ -312,7 +312,7 @@ The following is a non-normative example of a `FULFILLED` notification:
     "status": "FULFILLED",
     "certificate": {
       "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-      "revision": 1,
+      "revision": 0,
       "certificateType": "iso14001",
       "certificateTypeVersion": "2015",
       "validFrom": "2026-06-01",
@@ -595,7 +595,7 @@ The following is a non-normative example of a `FULFILLED` exchange:
   "status": "FULFILLED",
   "certificate": {
     "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-    "revision": 1,
+    "revision": 0,
     "certificateType": "iso14001",
     "certificateTypeVersion": "2015",
     "validFrom": "2026-06-01",
@@ -619,7 +619,7 @@ The following is a non-normative example of an `ACCEPTED` exchange (the referenc
   "status": "ACCEPTED",
   "certificate": {
     "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-    "revision": 1
+    "revision": 0
   }
 }
 ```
@@ -741,7 +741,7 @@ The following is a non-normative example of a search request and response:
   "result": [
     {
       "certificateId": "550e8400-e29b-41d4-a716-446655440000",
-      "revision": 1,
+      "revision": 0,
       "certificateType": "iso14001",
       "certificateTypeVersion": "2015",
       "registrationNumber": "12 100 4711",
@@ -781,7 +781,7 @@ A certificate record exchanged under this specification MUST conform to the foll
 |--------------|----------------------------------------------------------------------------------------------------------------------------|
 | **Schema**   | [JSON Schema](./schemas/certificate.schema.json)                                                                       |
 | **Required** | - `certificateId`: Unique identifier of the certificate. MUST be a UUID [[rfc9562]].                                   |
-|              | - `revision`: Positive integer identifying the certificate version (see [Identity and Versioning](#identity-and-versioning)). |
+|              | - `revision`: Non-negative integer identifying the certificate version (see [Identity and Versioning](#identity-and-versioning)). |
 |              | - `certificateType`: The [certificate type](#certificate-type).                                                        |
 |              | - `validFrom`: Inclusive validity start date.                                                                          |
 |              | - `validUntil`: Inclusive validity end date.                                                                           |

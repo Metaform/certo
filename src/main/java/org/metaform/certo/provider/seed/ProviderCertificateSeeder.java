@@ -79,8 +79,8 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
                 "Production and assembly of powertrain components",
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE00000003AYRE", "ADDR000000000001", LocationRole.MAIN_LOCATION)),
                 acmeCert, new CertificateValidator("Acme Certification", "LE0000000003EF"));
-        iso9001.addRevision(revision(iso9001, 1, LocalDate.of(2023, 1, 25), LocalDate.of(2026, 1, 24)));
-        iso9001.addRevision(revision(iso9001, 2, LocalDate.of(2023, 1, 25), LocalDate.of(2027, 1, 24)));
+        iso9001.addRevision(revision(iso9001, 0, LocalDate.of(2023, 1, 25), LocalDate.of(2026, 1, 24)));
+        iso9001.addRevision(revision(iso9001, 1, LocalDate.of(2023, 1, 25), LocalDate.of(2027, 1, 24)));
         certificates.save(iso9001);
 
         // An ISO14001 certificate with a single revision.
@@ -88,7 +88,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
                 SEED_ISO14001_CERTIFICATE_ID, pctx, "iso14001", "2015", "14 200 0815", null,
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE00000003AYRE", "ADDR000000000002", LocationRole.MAIN_LOCATION)),
                 acmeCert, null);
-        iso14001.addRevision(revision(iso14001, 1, LocalDate.of(2024, 6, 1), LocalDate.of(2027, 5, 31)));
+        iso14001.addRevision(revision(iso14001, 0, LocalDate.of(2024, 6, 1), LocalDate.of(2027, 5, 31)));
         certificates.save(iso14001);
 
         // An already-expired certificate, so the consumer's REJECTED path can be exercised end-to-end.
@@ -96,7 +96,7 @@ public class ProviderCertificateSeeder implements CommandLineRunner {
                 SEED_EXPIRED_CERTIFICATE_ID, pctx, "iatf16949", "2016", "16 949 0001", null,
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE00000003AYRE", "ADDR000000000003", LocationRole.MAIN_LOCATION)),
                 acmeCert, null);
-        expired.addRevision(revision(expired, 1, LocalDate.of(2018, 1, 1), LocalDate.of(2020, 1, 1)));
+        expired.addRevision(revision(expired, 0, LocalDate.of(2018, 1, 1), LocalDate.of(2020, 1, 1)));
         certificates.save(expired);
 
         LOG.info("Seeded {} sample certificates for tenant {}", certificates.findAll().size(), pctx);

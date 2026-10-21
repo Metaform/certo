@@ -259,18 +259,18 @@ class ConsumerCertificateApiTest {
                 List.of(new CertifiedLocation("LE00000001AXS", "SITE0000000E2ELC", "ADDR000000000099", LocationRole.MAIN_LOCATION)),
                 null, null);
         providerDocuments.save(new Document("doc-e2e-lc-r1", TestTenants.PROVIDER_PCTX, LocalDate.of(2024, 1, 1), "en", "application/pdf", new byte[]{'%', 'P', 'D', 'F'}));
-        cert.addRevision(new CertificateRevision(1, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of("doc-e2e-lc-r1")));
+        cert.addRevision(new CertificateRevision(0, LocalDate.of(2024, 1, 1), LocalDate.of(2030, 1, 1), List.of("doc-e2e-lc-r1")));
         providerCertificates.save(cert);
 
-        // Notify the consumer: the event is derived from the certificate's current state (AVAILABLE, r1).
+        // Notify the consumer: the event is derived from the certificate's current state (AVAILABLE, r0).
         postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/cert-e2e-lc/notify",
                 "{\"protocol\":\"sce-1.0\",\"messageId\":\"3f0e8e2e-0000-4000-8000-00000000e2e1\",\"flowId\":\"flow-1\"," + SELF_TARGET + "}");
         var created = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-e2e-lc").body());
         assertThat(created.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
-        assertThat(created.get("revision").asInt()).isEqualTo(1);
+        assertThat(created.get("revision").asInt()).isEqualTo(0);
 
         // State change: a new revision (upload its document, add the revision); the lifecycle stays
-        // AVAILABLE and the notify derives AVAILABLE r2 from that state.
+        // AVAILABLE and the notify derives AVAILABLE r1 from that state.
         var docId = mapper.readTree(postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/documents",
                 "{\"mediaType\":\"application/pdf\",\"contentBase64\":\"c2FtcGxlLXBkZg==\"}").body()).get("documentId").asString();
         postJson("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/cert-e2e-lc/revisions",
@@ -279,7 +279,7 @@ class ConsumerCertificateApiTest {
                 "{\"protocol\":\"sce-1.0\",\"messageId\":\"3f0e8e2e-0000-4000-8000-00000000e2e2\",\"flowId\":\"flow-1\"," + SELF_TARGET + "}");
         var modified = mapper.readTree(get("/management/v1/participant-contexts/" + TestTenants.CONSUMER_PCTX + "/consumer/certificates/cert-e2e-lc").body());
         assertThat(modified.get("lifecycleStatus").asString()).isEqualTo("AVAILABLE");
-        assertThat(modified.get("revision").asInt()).isEqualTo(2);
+        assertThat(modified.get("revision").asInt()).isEqualTo(1);
 
         // State change (withdraw), then a notify per counterparty — the WITHDRAWN event is derived.
         postEmpty("/management/v1/participant-contexts/" + TestTenants.PROVIDER_PCTX + "/certificates/cert-e2e-lc/withdraw");

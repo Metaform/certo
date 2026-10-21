@@ -104,7 +104,7 @@ public class Certificate {
     }
 
     public int nextRevisionNumber() {
-        return revisions.size() + 1;
+        return revisions.size();
     }
 
     public String certificateId() {
