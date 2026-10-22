@@ -426,6 +426,13 @@ fulfillment status events.
 All endpoint URLs in this specification are relative. The base URL MUST use the HTTPS scheme. The base URL is
 implementation-specific and may include additional context information such as a sub-path that indicates a version.
 
+## Error Responses
+
+Every `4xx` error response of the APIs defined by this specification carries a JSON body of the form
+`{ "message": "<human-readable description>" }`. The `message` is diagnostic, intended for developers and logs;
+machine-readable discrimination is carried by the status code, and business-level grounds by the `errors` arrays of
+the constructs that define them (a `DECLINED` or `REJECTED` outcome's [error objects](#error-object)).
+
 ## Certificate Consumer API
 
 > OpenAPI specification: [certificate.consumer.api.yaml](./certificate.consumer.api.yaml)
