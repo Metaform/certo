@@ -64,7 +64,7 @@ the response. Every request opens an exchange — including one the provider dec
 terminates immediately at `DECLINED`; the `exchangeId` is still returned so the outcome remains correlatable.
 
 Notifications never open an exchange. A certificate lifecycle event (see
-[Certificate Lifecycle Events](#certificate-lifecycle-events)) is purely informational; a [=Certificate Consumer=]
+[Certificate Lifecycle Status Event](#certificate-lifecycle-status-event)) is purely informational; a [=Certificate Consumer=]
 that wants a correlated delivery of a [=Certificate=] it was notified about opens an exchange by submitting a
 certificate request. A provider that already holds the [=Certificate=] can fulfill such a request immediately.
 
@@ -205,7 +205,7 @@ The two state machines are independent: a [=Certificate Exchange=] governs the *
 [=Certificate Lifecycle=] the certificate artifact itself, and no transition of one is a transition of the other.
 
 Lifecycle state is communicated to [=Certificate Consumers=] as certificate lifecycle events (see
-[Certificate Lifecycle Events](#certificate-lifecycle-events)). These events are purely informational: no lifecycle
+[Certificate Lifecycle Status Event](#certificate-lifecycle-status-event)). These events are purely informational: no lifecycle
 event opens, alters, or closes a [=Certificate Exchange=]. An `AVAILABLE` reporting a new `revision` revises the
 certificate in place under the same `certificateId` without initiating a new delivery, and a `WITHDRAWN` ends the
 certificate's availability. A change to a certificate that has already been delivered does not reopen or alter the
